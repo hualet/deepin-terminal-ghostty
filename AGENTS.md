@@ -12,8 +12,9 @@ The project is intentionally small and focused: it opens a Qt window, spawns the
 
 - **Language:** C++20
 - **Build System:** CMake >= 3.16
-- **UI Framework:** Qt6 Widgets
+- **UI Framework:** Qt6 Widgets, DTK6 (Deepin Tool Kit)
 - **Terminal Engine:** `libghostty-vt` (Ghostty C API)
+- **UI Toolkit:** DTK6 (`DApplication`, `DMainWindow`, `DGuiApplicationHelper` theming)
 - **Platform:** Linux only (PTY layer uses `forkpty`)
 
 ## Project Structure
@@ -42,7 +43,7 @@ There are no other configuration files (no `pyproject.toml`, `package.json`, `Ca
 On Debian/Ubuntu:
 
 ```bash
-sudo apt install cmake qt6-base-dev build-essential binutils
+sudo apt install cmake qt6-base-dev build-essential binutils libdtk6widget-dev libdtk6core-dev libdtk6gui-dev
 ```
 
 You also need Ghostty C headers (`ghostty/vt/*.h`). The build system auto-detects them from common sibling paths, or you can set `GHOSTTY_INCLUDE_DIR` explicitly.
@@ -122,7 +123,7 @@ A `QWidget` that owns the full Ghostty VT stack:
 
 ### deepin-terminal-ghostty (`src/app/main.cpp`)
 
-The demo application. Creates `QApplication`, a `QMainWindow`, instantiates `TerminalWidget`, and connects the title-changed signal to the window title.
+The demo application. Creates `DApplication`, a `DMainWindow`, instantiates `TerminalWidget`, and connects the title-changed signal to the window title.
 
 ## Code Style Guidelines
 

@@ -1,6 +1,6 @@
 # deepin-terminal-ghostty
 
-A minimal terminal emulator built with **C++20 / Qt6 Widgets** and the **libghostty-vt** virtual terminal library extracted from [Ghostty](https://ghostty.org).
+A minimal terminal emulator built with **C++20 / Qt6 Widgets / DTK6** and the **libghostty-vt** virtual terminal library extracted from [Ghostty](https://ghostty.org).
 
 This is a proof-of-concept reference implementation showing how to embed `libghostty-vt` into a Qt application. It supports PTY shell sessions, VT sequence parsing, incremental render-state based drawing, keyboard encoding (including Kitty keyboard protocol), focus events, and scrollback scrolling.
 
@@ -13,13 +13,14 @@ This is a proof-of-concept reference implementation showing how to embed `libgho
 - Linux (PTY layer uses `forkpty`)
 - CMake >= 3.16
 - Qt6 Widgets development packages
+- DTK6 development packages (`libdtk6widget-dev`, `libdtk6core-dev`, `libdtk6gui-dev`)
 - Ghostty C headers (`ghostty/vt/*.h`) — the build system auto-detects them from common locations
 - `readelf` (for auto-detecting `libghostty-vt` SONAME)
 
 On Debian/Ubuntu:
 
 ```bash
-sudo apt install cmake qt6-base-dev build-essential binutils
+sudo apt install cmake qt6-base-dev build-essential binutils libdtk6widget-dev libdtk6core-dev libdtk6gui-dev
 ```
 
 ## Build
@@ -111,7 +112,7 @@ A `QWidget` that owns the full Ghostty VT stack:
 
 ### deepin-terminal-ghostty (`src/app/main.cpp`)
 
-A minimal demo application that links against `libqtghostty`. It creates a `QMainWindow`, embeds a `TerminalWidget`, and wires the `terminalTitleChanged` signal to the window title.
+A minimal demo application that links against `libqtghostty`. It uses `DApplication` and `DMainWindow` for Deepin-style window chrome, embeds a `TerminalWidget`, and wires the `terminalTitleChanged` signal to the window title.
 
 ## Known Limitations
 

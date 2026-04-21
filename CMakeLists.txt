@@ -20,6 +20,7 @@ set(GHOSTTY_INCLUDE_DIR "" CACHE PATH
 set(GHOSTTY_STAGED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/ghostty-include")
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Dtk6 COMPONENTS Widget Core Gui REQUIRED)
 
 set(GHOSTTY_SOURCE_LIBRARY "${CMAKE_CURRENT_SOURCE_DIR}/lib/libghostty-vt.so")
 if(NOT EXISTS "${GHOSTTY_SOURCE_LIBRARY}")
@@ -149,6 +150,9 @@ target_include_directories(qtghostty PUBLIC
 
 target_link_libraries(qtghostty PUBLIC
   Qt6::Widgets
+  Dtk6::Widget
+  Dtk6::Core
+  Dtk6::Gui
   ghostty-vt
   util
 )
@@ -165,6 +169,9 @@ add_executable(deepin-terminal-ghostty
 
 target_link_libraries(deepin-terminal-ghostty PRIVATE
   qtghostty
+  Dtk6::Widget
+  Dtk6::Core
+  Dtk6::Gui
 )
 
 add_dependencies(deepin-terminal-ghostty ghostty-vt-stage ghostty-headers-stage)
