@@ -3,11 +3,9 @@
 #include "PtySession.h"
 
 #include <QClipboard>
-#include <QContextMenuEvent>
 #include <QFontMetrics>
 #include <QGuiApplication>
 #include <QKeyEvent>
-#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QWheelEvent>
@@ -762,38 +760,6 @@ void TerminalWidget::onPtyDataReceived(const QByteArray &data) {
 
 void TerminalWidget::onPtySessionClosed() {
     Q_EMIT sessionClosed();
-}
-
-void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
-    QMenu menu(this);
-
-    if (hasSelection())
-        menu.addAction(tr("Copy"), this, &TerminalWidget::copyToClipboard);
-
-    auto *pasteAction = menu.addAction(tr("Paste"), this, &TerminalWidget::pasteFromClipboard);
-    pasteAction->setEnabled(!QGuiApplication::clipboard()->text().isEmpty());
-
-    menu.addSeparator();
-    auto *searchAction = menu.addAction(tr("Search"));
-    menu.addSeparator();
-    auto *hSplit = menu.addAction(tr("Horizontal Split"));
-    auto *vSplit = menu.addAction(tr("Vertical Split"));
-    menu.addSeparator();
-    auto *closeSplit = menu.addAction(tr("Close Split"));
-    menu.addSeparator();
-    auto *settingsAction = menu.addAction(tr("Settings"));
-
-    auto *action = menu.exec(event->globalPos());
-    if (action == searchAction)
-        Q_EMIT requestSearch();
-    else if (action == hSplit)
-        Q_EMIT requestHorizontalSplit();
-    else if (action == vSplit)
-        Q_EMIT requestVerticalSplit();
-    else if (action == closeSplit)
-        Q_EMIT requestCloseSplit();
-    else if (action == settingsAction)
-        Q_EMIT requestSettings();
 }
 
 // ---------------------------------------------------------------------------

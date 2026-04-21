@@ -19,6 +19,7 @@ private slots:
     void cleanupTestCase() {}
 
     void testInitialize();
+    void testNoAppSpecificSignals();
     void testSizeReport();
     void testTitleChanged();
     void testGridSize();
@@ -30,6 +31,19 @@ private slots:
 void TestTerminalWidget::testInitialize() {
     TerminalWidget widget;
     QVERIFY(widget.initialize());
+}
+
+void TestTerminalWidget::testNoAppSpecificSignals() {
+    TerminalWidget widget;
+
+    const QMetaObject *metaObject = widget.metaObject();
+    QVERIFY(metaObject);
+
+    QCOMPARE(metaObject->indexOfSignal("requestHorizontalSplit()"), -1);
+    QCOMPARE(metaObject->indexOfSignal("requestVerticalSplit()"), -1);
+    QCOMPARE(metaObject->indexOfSignal("requestCloseSplit()"), -1);
+    QCOMPARE(metaObject->indexOfSignal("requestSearch()"), -1);
+    QCOMPARE(metaObject->indexOfSignal("requestSettings()"), -1);
 }
 
 void TestTerminalWidget::testSizeReport() {

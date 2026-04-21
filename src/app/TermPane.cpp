@@ -5,8 +5,12 @@
 #include "PtySession.h"
 #include "TerminalWidget.h"
 
+#include <QClipboard>
+#include <QContextMenuEvent>
 #include <QDebug>
+#include <QGuiApplication>
 #include <QKeyEvent>
+#include <QMenu>
 #include <QResizeEvent>
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -84,11 +88,6 @@ void TermPane::setupTerminalConnections(TerminalWidget *term) {
     });
     connect(term, &TerminalWidget::sessionClosed, this, [this, term]() { removeTerminal(term); });
     connect(term, &TerminalWidget::focusGained, this, [this, term]() { setCurrentTerminal(term); });
-    connect(term, &TerminalWidget::requestHorizontalSplit, this, [this]() { splitCurrent(Qt::Horizontal); });
-    connect(term, &TerminalWidget::requestVerticalSplit, this, [this]() { splitCurrent(Qt::Vertical); });
-    connect(term, &TerminalWidget::requestCloseSplit, this, &TermPane::closeCurrentSplit);
-    connect(term, &TerminalWidget::requestSearch, this, &TermPane::showSearchBar);
-    connect(term, &TerminalWidget::requestSettings, this, &TermPane::requestSettings);
 }
 
 void TermPane::setCurrentTerminal(TerminalWidget *term) {
@@ -212,14 +211,21 @@ void TermPane::resizeEvent(QResizeEvent *event) {
 }
 
 bool TermPane::eventFilter(QObject *watched, QEvent *event) {
-    if (event->type() != QEvent::KeyPress)
-        return false;
-
-    auto *keyEvent = static_cast<QKeyEvent *>(event);
     auto *term = qobject_cast<TerminalWidget *>(watched);
     if (!term)
         return false;
 
+    if (event->type() == QEvent::ContextMenu) {
+        auto *contextMenuEvent = static_cast<QContextMenuEvent *>(event);
+        setCurrentTerminal(term);
+        showTerminalContextMenu(term, contextMenuEvent->globalPos());
+        return true;
+    }
+
+    if (event->type() != QEvent::KeyPress)
+        return false;
+
+    auto *keyEvent = static_cast<QKeyEvent *>(event);
     auto *settings = AppSettings::instance();
 
     if (matchesShortcut(keyEvent, settings->shortcut("find"))) {
@@ -278,6 +284,41 @@ bool TermPane::eventFilter(QObject *watched, QEvent *event) {
     }
 
     return false;
+}
+
+void TermPane::showTerminalContextMenu(TerminalWidget *term, const QPoint &globalPos) {
+    if (!term)
+        return;
+
+    QMenu menu(this);
+
+    if (term->hasSelection())
+        menu.addAction(tr("Copy"), term, &TerminalWidget::copyToClipboard);
+
+    auto *pasteAction = menu.addAction(tr("Paste"), term, &TerminalWidget::pasteFromClipboard);
+    pasteAction->setEnabled(!QGuiApplication::clipboard()->text().isEmpty());
+
+    menu.addSeparator();
+    auto *searchAction = menu.addAction(tr("Search"));
+    menu.addSeparator();
+    auto *hSplitAction = menu.addAction(tr("Horizontal Split"));
+    auto *vSplitAction = menu.addAction(tr("Vertical Split"));
+    menu.addSeparator();
+    auto *closeSplitAction = menu.addAction(tr("Close Split"));
+    menu.addSeparator();
+    auto *settingsAction = menu.addAction(tr("Settings"));
+
+    auto *action = menu.exec(globalPos);
+    if (action == searchAction)
+        showSearchBar();
+    else if (action == hSplitAction)
+        splitCurrent(Qt::Horizontal);
+    else if (action == vSplitAction)
+        splitCurrent(Qt::Vertical);
+    else if (action == closeSplitAction)
+        closeCurrentSplit();
+    else if (action == settingsAction)
+        Q_EMIT requestSettings();
 }
 
 void TermPane::showSearchBar() {

@@ -36,6 +36,7 @@ private:
     void setupTerminalConnections(TerminalWidget *term);
     void setCurrentTerminal(TerminalWidget *term);
     void removeTerminal(TerminalWidget *term);
+    void showTerminalContextMenu(TerminalWidget *term, const QPoint &globalPos);
     void showSearchBar();
     void hideSearchBar();
     void onSearchKeywordChanged(const QString &keyword);

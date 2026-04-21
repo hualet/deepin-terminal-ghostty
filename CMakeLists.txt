@@ -36,6 +36,7 @@ set(APP_TRANSLATABLE_SOURCES
   src/app/MainWindow.cpp
   src/app/AppSettings.cpp
   src/app/SettingsDialog.cpp
+  src/app/TermPane.cpp
   src/libqtghostty/TerminalWidget.cpp
   ${APP_SETTINGS_I18N_SOURCES}
 )

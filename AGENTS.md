@@ -124,6 +124,25 @@ When changing PTY, input, tab, or window-close behavior, prefer running the most
 - paints with `QPainter`
 - emits `terminalTitleChanged()` and `sessionClosed()`
 
+### `qtghostty` vs `app` Boundary
+
+- `src/libqtghostty/` must stay reusable as a library layer.
+- `qtghostty` may own terminal-facing capabilities only:
+  - PTY/session lifecycle
+  - terminal rendering and input encoding
+  - selection, copy/paste, scrollback, search, title propagation
+  - generic Qt widget behavior required to present a terminal
+- `qtghostty` must not encode application product concepts:
+  - menus or menu structure
+  - tabs, panes, split management, window management
+  - settings dialogs, app actions, or other DTK-specific workflow
+- `src/app/` owns all application composition:
+  - context menus and action wiring
+  - split-pane orchestration
+  - tab/window behavior
+  - settings UI and other app-specific commands
+- When a feature crosses the boundary, prefer exposing a narrow terminal capability from `qtghostty` and let `app` decide how it is triggered or presented.
+
 ### `MainWindow`
 
 `src/app/MainWindow.cpp`
