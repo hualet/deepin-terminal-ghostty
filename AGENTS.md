@@ -170,6 +170,17 @@ This is intentionally a **minimal** implementation. Notable gaps:
 - **No GPU rendering** — everything is CPU-rendered via `QPainter`.
 - **No tabs, splits, settings UI, or session persistence.**
 
+## Reference Code Locations
+
+When extending this project, the following local codebases are the primary references:
+
+| Project | Local Path | What to reference |
+|---------|-----------|-------------------|
+| **Ghostty** (source + C headers) | `/home/hualet/projects/g/ghostty` | C API definitions: `zig-out/include/ghostty/vt/*.h` — terminal, render, key, mouse, focus, modes, device, size_report, style, color, etc. |
+| **Ghostling** (macOS reference impl) | `/home/hualet/projects/g/ghostling` | `main.c` — complete raylib-based reference showing PTY setup, render loop, input handling (keyboard + mouse), effects callbacks, and Kitty graphics |
+
+These paths are expected to exist on the development machine. The build system already auto-detects Ghostty headers from `/home/hualet/projects/g/ghostty/include` (via the `../../g/ghostty/include` sibling search).
+
 ## Dependency: Ghostty Headers and Library
 
 The build requires:
