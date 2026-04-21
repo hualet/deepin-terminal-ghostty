@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2024 UnionTech Software Technology Co., Ltd.
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+name: Build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: docker.io/hualet/deepin:25.1-builder
+      options: --privileged
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            cmake \
+            clang-format \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            libdtk6core-dev \
+            libdtk6gui-dev \
+            libdtk6widget-dev
+
+      - name: Clone Ghostty headers
+        run: |
+          git clone --depth 1 https://github.com/ghostty-org/ghostty.git /tmp/ghostty
+
+      - name: Verify clang-format
+        run: |
+          clang-format --dry-run --Werror $(find src tests -name '*.cpp' -o -name '*.h')
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DGHOSTTY_INCLUDE_DIR=/tmp/ghostty/include
+
+      - name: Build
+        run: cmake --build build --parallel "$(nproc)"
+
+      - name: Test
+        run: |
+          cd build && ctest --output-on-failure
+
+      - name: Stage install tree
+        run: DESTDIR="${PWD}/stage" cmake --install build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deepin-terminal-ghostty-install-tree
+          path: stage/usr/

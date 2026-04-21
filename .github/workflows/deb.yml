@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2024 UnionTech Software Technology Co., Ltd.
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+name: Build Debian Package
+
+on:
+  push:
+    tags:
+      - "v*"
+  release:
+    types:
+      - published
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+    container:
+      image: docker.io/hualet/deepin:25.1-builder
+      options: --privileged
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            build-essential \
+            debhelper \
+            dpkg-dev \
+            cmake \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            libdtk6core-dev \
+            libdtk6gui-dev \
+            libdtk6widget-dev
+
+      - name: Clone Ghostty headers
+        run: |
+          git clone --depth 1 https://github.com/ghostty-org/ghostty.git /tmp/ghostty
+
+      - name: Build Debian package
+        run: |
+          GHOSTTY_INCLUDE_DIR=/tmp/ghostty/include dpkg-buildpackage -us -uc -b
+          mkdir -p output
+          find .. -maxdepth 1 -type f \
+            -name 'deepin-terminal-ghostty_*.deb' \
+            -exec cp {} output/ \;
+
+      - name: Upload Debian package
+        uses: actions/upload-artifact@v4
+        with:
+          name: deepin-terminal-ghostty-deb
+          path: output/deepin-terminal-ghostty_*.deb
+
+      - name: Publish release assets
+        if: github.event_name == 'push' || github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: output/deepin-terminal-ghostty_*.deb
+          generate_release_notes: ${{ github.event_name == 'push' }}
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
