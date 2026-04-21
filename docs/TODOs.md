@@ -1,5 +1,5 @@
 - [ ] 多标签
-  - [ ] 标签页支持
+  - [x] 标签页支持
   - [ ] 垂直标题栏支持
 - [ ] 快捷键设置
 - [ ] 个性化设置
@@ -7,9 +7,10 @@
   - [ ] 字体
 - [ ] 屏幕拆分
 - [ ] 查找
-- [ ] shell standard keybindings
+- [x] shell standard keybindings
 - [ ] kitty image protocol
 - [ ] 面向多 Agent 优化
 - [ ] SE
-  - [ ] 添加单元测试
+  - [x] 添加单元测试
+  - [ ] 添加benchmar
   - [ ] 添加自动化构建和打包
