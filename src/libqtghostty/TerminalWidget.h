@@ -24,6 +24,7 @@ public:
 
 signals:
     void terminalTitleChanged(const QString &title);
+    void sessionClosed();
 
 protected:
     void paintEvent(QPaintEvent *event) override;

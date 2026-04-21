@@ -12,7 +12,8 @@ MainWindow::MainWindow(QWidget *parent)
     , m_stackWidget(new QStackedWidget(this))
 {
     // Prevent DTK or Qt default actions from intercepting standard
-    // terminal keybindings (Ctrl+C, Ctrl+V, Ctrl+A, etc.).
+    // terminal keybindings (Ctrl+A–Z). In a terminal every Ctrl+letter
+    // combo must be sent to the PTY as a C0 control character.
     for (QAction *action : findChildren<QAction *>()) {
         QKeySequence seq = action->shortcut();
         if (seq.isEmpty())
@@ -20,9 +21,8 @@ MainWindow::MainWindow(QWidget *parent)
         int key = seq[0].key();
         Qt::KeyboardModifiers mods = seq[0].keyboardModifiers();
         if ((mods & Qt::ControlModifier) &&
-            (key == Qt::Key_C || key == Qt::Key_V ||
-             key == Qt::Key_A || key == Qt::Key_X ||
-             key == Qt::Key_Z)) {
+            !(mods & Qt::ShiftModifier) &&
+            key >= Qt::Key_A && key <= Qt::Key_Z) {
             action->setShortcut(QKeySequence());
         }
     }
@@ -83,6 +83,8 @@ void MainWindow::addTab(bool activate)
 
     connect(terminal, &TerminalWidget::terminalTitleChanged,
             this, &MainWindow::onTerminalTitleChanged);
+    connect(terminal, &TerminalWidget::sessionClosed,
+            this, &MainWindow::onTerminalSessionClosed);
 
     int stackIndex = m_stackWidget->addWidget(terminal);
 
@@ -159,6 +161,32 @@ void MainWindow::onTerminalTitleChanged(const QString &title)
             if (m_tabBar->currentIndex() == i)
                 setWindowTitle(title);
             break;
+        }
+    }
+}
+
+void MainWindow::onTerminalSessionClosed()
+{
+    auto *terminal = qobject_cast<TerminalWidget *>(sender());
+    if (!terminal)
+        return;
+
+    closeTerminal(terminal);
+}
+
+void MainWindow::closeTerminal(TerminalWidget *terminal)
+{
+    if (!terminal)
+        return;
+
+    const int stackIndex = m_stackWidget->indexOf(terminal);
+    if (stackIndex < 0)
+        return;
+
+    for (int i = 0; i < m_tabBar->count(); ++i) {
+        if (m_tabBar->tabData(i).toInt() == stackIndex) {
+            onTabCloseRequested(i);
+            return;
         }
     }
 }

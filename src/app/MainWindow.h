@@ -23,10 +23,12 @@ private slots:
     void onTabCloseRequested(int index);
     void onTabCurrentChanged(int index);
     void onTerminalTitleChanged(const QString &title);
+    void onTerminalSessionClosed();
 
 private:
     void setupTitleBar();
     void addTab(bool activate = true);
+    void closeTerminal(TerminalWidget *terminal);
     TerminalWidget *currentTerminal() const;
 
     DTabBar *m_tabBar = nullptr;

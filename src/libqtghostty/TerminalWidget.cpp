@@ -565,10 +565,23 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event)
         return;
     }
 
+    // Fast path: if Qt already translated the key into a single C0 control
+    // character (common on some platforms for Ctrl+letter), send it directly
+    // without going through the encoder. This also handles the case where
+    // Qt reports the key as Qt::Key_unknown but the text is a control char.
+    QByteArray text = event->text().toUtf8();
+    if (text.size() == 1) {
+        unsigned char c = static_cast<unsigned char>(text.at(0));
+        if (c <= 0x1F || c == 0x7F) {
+            m_ptySession->write(text);
+            return;
+        }
+    }
+
     ghostty_key_encoder_setopt_from_terminal(m_keyEncoder, m_terminal);
 
     GhosttyKey gkey = mapQtKeyToGhostty(event->key());
-    if (gkey == GHOSTTY_KEY_UNIDENTIFIED && event->text().isEmpty()) {
+    if (gkey == GHOSTTY_KEY_UNIDENTIFIED && text.isEmpty()) {
         QWidget::keyPressEvent(event);
         return;
     }
@@ -719,5 +732,5 @@ void TerminalWidget::onPtyDataReceived(const QByteArray &data)
 
 void TerminalWidget::onPtySessionClosed()
 {
-    // Minimal implementation: nothing special on session close
+    Q_EMIT sessionClosed();
 }
