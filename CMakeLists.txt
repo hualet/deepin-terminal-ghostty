@@ -136,20 +136,35 @@ set_target_properties(ghostty-vt PROPERTIES
   IMPORTED_LOCATION "${GHOSTTY_STAGED_LIBRARY}"
 )
 
-add_executable(deepin-terminal-ghostty
-  src/main.cpp
-  src/PtySession.cpp
-  src/TerminalWidget.cpp
+add_library(qtghostty SHARED
+  src/libqtghostty/PtySession.cpp
+  src/libqtghostty/TerminalWidget.cpp
 )
 
-target_include_directories(deepin-terminal-ghostty PRIVATE
+target_include_directories(qtghostty PUBLIC
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/libqtghostty>"
+  "$<INSTALL_INTERFACE:include>"
   "${GHOSTTY_STAGED_INCLUDE_DIR}"
 )
 
-target_link_libraries(deepin-terminal-ghostty PRIVATE
+target_link_libraries(qtghostty PUBLIC
   Qt6::Widgets
   ghostty-vt
   util
+)
+
+add_dependencies(qtghostty ghostty-vt-stage ghostty-headers-stage)
+
+set_target_properties(qtghostty PROPERTIES
+  OUTPUT_NAME qtghostty
+)
+
+add_executable(deepin-terminal-ghostty
+  src/app/main.cpp
+)
+
+target_link_libraries(deepin-terminal-ghostty PRIVATE
+  qtghostty
 )
 
 add_dependencies(deepin-terminal-ghostty ghostty-vt-stage ghostty-headers-stage)
@@ -158,5 +173,12 @@ add_custom_command(TARGET deepin-terminal-ghostty POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
           "${GHOSTTY_STAGED_LIBRARY}"
           "$<TARGET_FILE_DIR:deepin-terminal-ghostty>/${GHOSTTY_SONAME}"
+  VERBATIM
+)
+
+add_custom_command(TARGET deepin-terminal-ghostty POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "$<TARGET_FILE:qtghostty>"
+          "$<TARGET_FILE_DIR:deepin-terminal-ghostty>/"
   VERBATIM
 )

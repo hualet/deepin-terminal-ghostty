@@ -24,9 +24,11 @@ The project is intentionally small and focused: it opens a Qt window, spawns the
 ├── lib/
 │   └── libghostty-vt.so    # libghostty-vt runtime library (prebuilt)
 ├── src/
-│   ├── main.cpp            # QApplication entry point, top-level window
-│   ├── PtySession.h/.cpp   # PTY lifecycle: forkpty, non-blocking I/O, child reaping
-│   └── TerminalWidget.h/.cpp # Ghostty VT integration, QPainter rendering, input encoding
+│   ├── libqtghostty/       # Qt wrapper library around libghostty-vt
+│   │   ├── PtySession.h/.cpp   # PTY lifecycle: forkpty, non-blocking I/O, child reaping
+│   │   └── TerminalWidget.h/.cpp # Ghostty VT integration, QPainter rendering, input encoding
+│   └── app/
+│       └── main.cpp        # QApplication entry point, top-level window
 └── docs/
     └── superpowers/        # Design specs and implementation plans (agent workspace)
 ```
@@ -67,9 +69,13 @@ The build system will:
 
 ## Runtime Architecture
 
-The application is a single-process, single-threaded Qt Widgets program with three layers:
+The project produces two artifacts: a shared library (`libqtghostty`) and an executable (`deepin-terminal-ghostty`). The application is a single-process, single-threaded Qt Widgets program built on top of `libqtghostty`:
 
-### 1. PtySession (`src/PtySession.cpp`)
+### libqtghostty (`src/libqtghostty/`)
+
+A Qt6 wrapper around `libghostty-vt` providing reusable terminal components:
+
+### 1. PtySession (`src/libqtghostty/PtySession.cpp`)
 
 A `QObject` that wraps the Linux PTY APIs:
 
@@ -79,7 +85,7 @@ A `QObject` that wraps the Linux PTY APIs:
 - Applies `TIOCSWINSZ` when terminal dimensions change.
 - Handles graceful child shutdown (`SIGHUP` → wait → `SIGKILL`) and emits `dataReceived(QByteArray)` and `sessionClosed()` signals.
 
-### 2. TerminalWidget (`src/TerminalWidget.cpp`)
+### 2. TerminalWidget (`src/libqtghostty/TerminalWidget.cpp`)
 
 A `QWidget` that owns the full Ghostty VT stack:
 
@@ -114,9 +120,9 @@ A `QWidget` that owns the full Ghostty VT stack:
 - `title_changed` — emits `terminalTitleChanged()` signal to update the window title.
 - `color_scheme` — returns false (no OS scheme query implemented yet).
 
-### 3. main.cpp
+### deepin-terminal-ghostty (`src/app/main.cpp`)
 
-Creates `QApplication`, a `QMainWindow`, instantiates `TerminalWidget`, and connects the title-changed signal to the window title.
+The demo application. Creates `QApplication`, a `QMainWindow`, instantiates `TerminalWidget`, and connects the title-changed signal to the window title.
 
 ## Code Style Guidelines
 
@@ -203,6 +209,6 @@ cmake -B build
 
 ## Deployment Notes
 
-- The executable expects `libghostty-vt.so.*` (with the correct SONAME) to be in the same directory at runtime, because `RPATH` is set to `$ORIGIN`.
-- The build stages the library into the build directory automatically via a `POST_BUILD` custom command.
+- The executable expects both `libqtghostty.so` and `libghostty-vt.so.*` (with the correct SONAME) to be in the same directory at runtime, because `RPATH` is set to `$ORIGIN`.
+- The build stages both libraries into the build directory automatically via `POST_BUILD` custom commands.
 - No install target is currently defined.

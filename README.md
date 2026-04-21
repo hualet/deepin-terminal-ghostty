@@ -49,16 +49,22 @@ To run:
 ├── lib/
 │   └── libghostty-vt.so    # libghostty-vt runtime library
 ├── src/
-│   ├── main.cpp            # Application entry point
-│   ├── PtySession.h/.cpp   # PTY lifecycle: forkpty, non-blocking I/O, child reaping
-│   └── TerminalWidget.h/.cpp # Ghostty VT integration, QPainter rendering, input encoding
+│   ├── libqtghostty/       # Qt wrapper library around libghostty-vt
+│   │   ├── PtySession.h/.cpp   # PTY lifecycle: forkpty, non-blocking I/O, child reaping
+│   │   └── TerminalWidget.h/.cpp # Ghostty VT integration, QPainter rendering, input encoding
+│   └── app/
+│       └── main.cpp        # Application entry point
 └── docs/
     └── superpowers/        # Design plans and specs (agent workspace)
 ```
 
 ## Architecture
 
-### PtySession
+The project is split into a reusable Qt library (`libqtghostty`) and a minimal demo application.
+
+### libqtghostty
+
+#### PtySession
 
 Wraps `forkpty()` into a Qt-friendly `QObject`:
 
@@ -68,7 +74,7 @@ Wraps `forkpty()` into a Qt-friendly `QObject`:
 - Handles graceful + forced child shutdown (`SIGHUP` → `SIGKILL`)
 - Emits `dataReceived(QByteArray)` and `sessionClosed()` signals
 
-### TerminalWidget
+#### TerminalWidget
 
 A `QWidget` that owns the full Ghostty VT stack:
 
@@ -102,6 +108,10 @@ A `QWidget` that owns the full Ghostty VT stack:
 - `xtversion` — reports `"deepin-terminal-ghostty"`
 - `title_changed` — emits `terminalTitleChanged()` signal to update the window title
 - `color_scheme` — returns false (no OS scheme query implemented yet)
+
+### deepin-terminal-ghostty (`src/app/main.cpp`)
+
+A minimal demo application that links against `libqtghostty`. It creates a `QMainWindow`, embeds a `TerminalWidget`, and wires the `terminalTitleChanged` signal to the window title.
 
 ## Known Limitations
 
