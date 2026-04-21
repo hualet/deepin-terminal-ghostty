@@ -53,6 +53,9 @@ protected:
     void focusOutEvent(QFocusEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
     bool focusNextPrevChild(bool next) override;
 
 private slots:
@@ -69,6 +72,13 @@ private:
 
     void updateSearchHighlight();
     QString textForScreenRow(int row) const;
+    QString selectedText() const;
+    void copyToClipboard();
+    void pasteFromClipboard();
+    bool hasSelection() const;
+
+    int screenRowForViewportRow(int viewportRow) const;
+    bool cellInSelection(int screenRow, int col) const;
 
     GhosttyKey mapQtKeyToGhostty(int key) const;
     uint32_t unshiftedCodepointForKey(int key) const;
@@ -114,6 +124,16 @@ private:
     };
     QVector<SearchMatch> m_searchMatches;
     int m_currentSearchIndex = -1;
+
+    // Selection (screen coordinates)
+    struct Selection {
+        int startRow = 0;
+        int startCol = 0;
+        int endRow = 0;
+        int endCol = 0;
+        bool active = false;
+    };
+    Selection m_selection;
 
     friend class TermPane;
 

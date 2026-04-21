@@ -2,10 +2,13 @@
 
 #include "PtySession.h"
 
+#include <QClipboard>
 #include <QContextMenuEvent>
 #include <QFontMetrics>
+#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QWheelEvent>
 
@@ -315,6 +318,11 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
                 }
             }
 
+            // Selection highlight
+            if (cellInSelection(screenRow, col)) {
+                painter.fillRect(x, y, m_cellWidth, m_cellHeight, QColor(0, 120, 215, 180));
+            }
+
             if (graphemeLen > 0) {
                 uint32_t codepoints[16];
                 uint32_t len = graphemeLen < 16 ? graphemeLen : 16;
@@ -559,6 +567,16 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         return;
     }
 
+    if (event->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier) && event->key() == Qt::Key_C) {
+        copyToClipboard();
+        return;
+    }
+
+    if (event->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier) && event->key() == Qt::Key_V) {
+        pasteFromClipboard();
+        return;
+    }
+
     if (!m_terminal || !m_keyEncoder || !m_keyEvent || !m_ptySession) {
         QWidget::keyPressEvent(event);
         return;
@@ -763,6 +781,14 @@ void TerminalWidget::onPtySessionClosed() {
 
 void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
     QMenu menu(this);
+
+    if (hasSelection())
+        menu.addAction(tr("Copy"), this, &TerminalWidget::copyToClipboard);
+
+    auto *pasteAction = menu.addAction(tr("Paste"), this, &TerminalWidget::pasteFromClipboard);
+    pasteAction->setEnabled(!QGuiApplication::clipboard()->text().isEmpty());
+
+    menu.addSeparator();
     auto *searchAction = menu.addAction(tr("Search"));
     menu.addSeparator();
     auto *hSplit = menu.addAction(tr("Horizontal Split"));
@@ -864,4 +890,134 @@ void TerminalWidget::findPrevious() {
 
 bool TerminalWidget::hasSearchMatches() const {
     return !m_searchMatches.isEmpty();
+}
+
+// ---------------------------------------------------------------------------
+// Mouse selection
+// ---------------------------------------------------------------------------
+
+void TerminalWidget::mousePressEvent(QMouseEvent *event) {
+    if (event->button() == Qt::LeftButton) {
+        m_selection.active = false;
+        m_selection.startCol = event->pos().x() / m_cellWidth;
+        m_selection.startRow = screenRowForViewportRow(event->pos().y() / m_cellHeight);
+        m_selection.endCol = m_selection.startCol;
+        m_selection.endRow = m_selection.startRow;
+        update();
+    }
+}
+
+void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
+    if (event->buttons() & Qt::LeftButton) {
+        m_selection.endCol = event->pos().x() / m_cellWidth;
+        m_selection.endRow = screenRowForViewportRow(event->pos().y() / m_cellHeight);
+        m_selection.active = true;
+        update();
+    }
+}
+
+void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
+    if (event->button() == Qt::LeftButton) {
+        m_selection.endCol = event->pos().x() / m_cellWidth;
+        m_selection.endRow = screenRowForViewportRow(event->pos().y() / m_cellHeight);
+        m_selection.active = true;
+        update();
+    }
+}
+
+int TerminalWidget::screenRowForViewportRow(int viewportRow) const {
+    if (!m_terminal)
+        return viewportRow;
+    GhosttyTerminalScrollbar scrollbar = {};
+    if (ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &scrollbar) != GHOSTTY_SUCCESS)
+        return viewportRow;
+    return static_cast<int>(viewportRow + scrollbar.offset);
+}
+
+bool TerminalWidget::cellInSelection(int screenRow, int col) const {
+    if (!m_selection.active)
+        return false;
+
+    int top = qMin(m_selection.startRow, m_selection.endRow);
+    int bottom = qMax(m_selection.startRow, m_selection.endRow);
+    if (screenRow < top || screenRow > bottom)
+        return false;
+
+    int left = qMin(m_selection.startCol, m_selection.endCol);
+    int right = qMax(m_selection.startCol, m_selection.endCol);
+
+    if (m_selection.startRow == m_selection.endRow) {
+        return screenRow == top && col >= left && col <= right;
+    }
+
+    if (screenRow == top)
+        return col >= m_selection.startCol;
+    if (screenRow == bottom)
+        return col <= m_selection.endCol;
+    return col >= left && col <= right;
+}
+
+QString TerminalWidget::selectedText() const {
+    if (!m_selection.active || !m_terminal)
+        return QString();
+
+    int top = qMin(m_selection.startRow, m_selection.endRow);
+    int bottom = qMax(m_selection.startRow, m_selection.endRow);
+
+    QStringList lines;
+    for (int row = top; row <= bottom; ++row) {
+        QString line;
+        int left = 0;
+        int right = m_cols - 1;
+
+        if (row == top && row == bottom) {
+            left = qMin(m_selection.startCol, m_selection.endCol);
+            right = qMax(m_selection.startCol, m_selection.endCol);
+        } else if (row == top) {
+            left = m_selection.startCol;
+        } else if (row == bottom) {
+            right = m_selection.endCol;
+        }
+
+        for (int col = left; col <= right; ++col) {
+            GhosttyPoint point = {
+                .tag = GHOSTTY_POINT_TAG_SCREEN,
+                .value = {.coordinate = {.x = static_cast<uint16_t>(col), .y = static_cast<uint32_t>(row)}}};
+            GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+            if (ghostty_terminal_grid_ref(m_terminal, point, &ref) != GHOSTTY_SUCCESS)
+                continue;
+
+            uint32_t graphemes[16];
+            size_t len = 0;
+            if (ghostty_grid_ref_graphemes(&ref, graphemes, 16, &len) == GHOSTTY_SUCCESS && len > 0) {
+                for (size_t i = 0; i < len; ++i) {
+                    if (graphemes[i] < 0x10000) {
+                        line.append(QChar(static_cast<ushort>(graphemes[i])));
+                    } else {
+                        line.append(QChar::fromUcs4(graphemes[i]));
+                    }
+                }
+            }
+        }
+        lines.append(line);
+    }
+    return lines.join("\n");
+}
+
+bool TerminalWidget::hasSelection() const {
+    return m_selection.active;
+}
+
+void TerminalWidget::copyToClipboard() {
+    QString text = selectedText();
+    if (!text.isEmpty())
+        QGuiApplication::clipboard()->setText(text);
+}
+
+void TerminalWidget::pasteFromClipboard() {
+    if (!m_ptySession)
+        return;
+    QString text = QGuiApplication::clipboard()->text();
+    if (!text.isEmpty())
+        m_ptySession->write(text.toUtf8());
 }
