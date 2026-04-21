@@ -2,7 +2,11 @@
 
 #include <QFont>
 #include <QObject>
-#include <QSettings>
+
+namespace Dtk::Core {
+class DSettings;
+class QSettingBackend;
+} // namespace Dtk::Core
 
 class AppSettings : public QObject {
     Q_OBJECT
@@ -10,6 +14,8 @@ class AppSettings : public QObject {
 public:
     static AppSettings *instance();
     static void releaseInstance();
+
+    Dtk::Core::DSettings *dsettings() const;
 
     QFont terminalFont() const;
     void setTerminalFont(const QFont &font);
@@ -31,7 +37,9 @@ signals:
 
 private:
     explicit AppSettings(QObject *parent = nullptr);
+    void init();
 
-    QSettings *m_settings;
+    Dtk::Core::DSettings *m_dsettings = nullptr;
+    Dtk::Core::QSettingBackend *m_backend = nullptr;
     static AppSettings *s_instance;
 };

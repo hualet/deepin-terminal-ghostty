@@ -12,12 +12,14 @@ include_directories(
 add_executable(test_appsettings
   test_appsettings.cpp
   ${CMAKE_SOURCE_DIR}/src/app/AppSettings.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/settings/resources.qrc
 )
 
 target_link_libraries(test_appsettings PRIVATE
   Qt6::Core
   Qt6::Gui
   Qt6::Test
+  Dtk6::Core
 )
 
 add_test(NAME AppSettings COMMAND test_appsettings)
@@ -78,6 +80,7 @@ add_executable(test_main_window
   ${CMAKE_SOURCE_DIR}/src/app/SettingsDialog.cpp
   ${CMAKE_SOURCE_DIR}/src/app/TermPane.cpp
   ${CMAKE_SOURCE_DIR}/src/app/PageSearchBar.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/settings/resources.qrc
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/PtySession.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalWidget.cpp
 )

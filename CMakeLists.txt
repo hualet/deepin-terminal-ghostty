@@ -178,6 +178,7 @@ add_executable(deepin-terminal-ghostty
   src/app/SettingsDialog.cpp
   src/app/TermPane.cpp
   src/app/PageSearchBar.cpp
+  src/app/settings/resources.qrc
 )
 
 target_link_libraries(deepin-terminal-ghostty PRIVATE

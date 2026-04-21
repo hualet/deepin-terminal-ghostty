@@ -1,0 +1,52 @@
+{
+    "groups": [
+        {
+            "key": "basic",
+            "name": "Basic",
+            "groups": [
+                {
+                    "key": "interface",
+                    "name": "Interface",
+                    "options": [
+                        {
+                            "key": "fontFamily",
+                            "name": "Font family",
+                            "type": "combobox",
+                            "default": "Monospace"
+                        },
+                        {
+                            "key": "fontSize",
+                            "name": "Font size",
+                            "type": "spinbutton",
+                            "default": 11,
+                            "min": 5,
+                            "max": 72,
+                            "step": 1
+                        },
+                        {
+                            "key": "cursorShape",
+                            "name": "Cursor shape",
+                            "type": "combobox",
+                            "default": 0
+                        },
+                        {
+                            "key": "cursorBlink",
+                            "text": "Cursor blink",
+                            "type": "checkbox",
+                            "default": true
+                        },
+                        {
+                            "key": "scrollbackLines",
+                            "name": "Scrollback lines",
+                            "type": "spinbutton",
+                            "default": 1000,
+                            "min": 100,
+                            "max": 50000,
+                            "step": 100
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

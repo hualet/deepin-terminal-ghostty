@@ -1,6 +1,7 @@
 #include "AppSettings.h"
 
 #include <QFont>
+#include <QGuiApplication>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTest>
@@ -68,7 +69,7 @@ private slots:
 };
 
 int main(int argc, char *argv[]) {
-    QCoreApplication app(argc, argv);
+    QGuiApplication app(argc, argv);
     TestAppSettings tc;
     QTEST_SET_MAIN_SOURCE_PATH
     return QTest::qExec(&tc, argc, argv);
