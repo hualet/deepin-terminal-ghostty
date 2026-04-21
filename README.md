@@ -77,7 +77,9 @@ Individual test binaries:
 │   ├── test_pty_session.cpp    # PtySession unit tests
 │   └── test_terminal_widget.cpp # TerminalWidget unit tests
 └── docs/
-    └── superpowers/        # Design plans and specs (agent workspace)
+    ├── superpowers/        # Design plans and specs (agent workspace)
+    └── research/           # Technical research reports
+        └── 2026-04-21-gpu-rendering-feasibility.md
 ```
 
 ## Architecture

@@ -37,7 +37,9 @@ The project is intentionally small and focused: it opens a Qt window, spawns the
 │   ├── test_pty_session.cpp    # PtySession unit tests
 │   └── test_terminal_widget.cpp # TerminalWidget unit tests
 └── docs/
-    └── superpowers/        # Design specs and implementation plans (agent workspace)
+    ├── superpowers/        # Design specs and implementation plans (agent workspace)
+    └── research/           # Technical research reports
+        └── 2026-04-21-gpu-rendering-feasibility.md
 ```
 
 There are no other configuration files (no `pyproject.toml`, `package.json`, `Cargo.toml`, etc.). The entire build is driven by `CMakeLists.txt`.
