@@ -259,13 +259,25 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     if (err != GHOSTTY_SUCCESS)
         return;
 
+    // Get viewport scroll offset for search highlight mapping
+    size_t scrollOffset = 0;
+    if (m_terminal && !m_searchMatches.isEmpty()) {
+        GhosttyTerminalScrollbar scrollbar = {};
+        if (ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &scrollbar) == GHOSTTY_SUCCESS)
+            scrollOffset = scrollbar.offset;
+    }
+
     int y = 0;
     while (ghostty_render_state_row_iterator_next(m_rowIter)) {
         err = ghostty_render_state_row_get(m_rowIter, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &m_rowCells);
         if (err != GHOSTTY_SUCCESS)
             continue;
 
+        int viewportRow = y / m_cellHeight;
+        int screenRow = static_cast<int>(viewportRow + scrollOffset);
+
         int x = 0;
+        int col = 0;
         while (ghostty_render_state_row_cells_next(m_rowCells)) {
             uint32_t graphemeLen = 0;
             ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN,
@@ -291,6 +303,18 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
                 painter.fillRect(x, y, m_cellWidth, m_cellHeight, QColor(bgColor.r, bgColor.g, bgColor.b));
             }
 
+            // Search highlight
+            if (!m_searchMatches.isEmpty()) {
+                for (int i = 0; i < m_searchMatches.size(); ++i) {
+                    const auto &match = m_searchMatches[i];
+                    if (match.row == screenRow && col >= match.startCol && col < match.endCol) {
+                        QColor hl = (i == m_currentSearchIndex) ? QColor(255, 165, 0, 180) : QColor(255, 255, 0, 120);
+                        painter.fillRect(x, y, m_cellWidth, m_cellHeight, hl);
+                        break;
+                    }
+                }
+            }
+
             if (graphemeLen > 0) {
                 uint32_t codepoints[16];
                 uint32_t len = graphemeLen < 16 ? graphemeLen : 16;
@@ -314,6 +338,7 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
                 painter.setFont(m_font);
             }
 
+            col++;
             x += m_cellWidth;
         }
 
@@ -529,6 +554,11 @@ bool isC0ControlChar(const QByteArray &text) {
 } // anonymous namespace
 
 void TerminalWidget::keyPressEvent(QKeyEvent *event) {
+    if (event->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier) && event->key() == Qt::Key_F) {
+        Q_EMIT requestSearch();
+        return;
+    }
+
     if (!m_terminal || !m_keyEncoder || !m_keyEvent || !m_ptySession) {
         QWidget::keyPressEvent(event);
         return;
@@ -733,16 +763,105 @@ void TerminalWidget::onPtySessionClosed() {
 
 void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
     QMenu menu(this);
+    auto *searchAction = menu.addAction(tr("Search"));
+    menu.addSeparator();
     auto *hSplit = menu.addAction(tr("Horizontal Split"));
     auto *vSplit = menu.addAction(tr("Vertical Split"));
     menu.addSeparator();
     auto *closeSplit = menu.addAction(tr("Close Split"));
 
     auto *action = menu.exec(event->globalPos());
-    if (action == hSplit)
+    if (action == searchAction)
+        Q_EMIT requestSearch();
+    else if (action == hSplit)
         Q_EMIT requestHorizontalSplit();
     else if (action == vSplit)
         Q_EMIT requestVerticalSplit();
     else if (action == closeSplit)
         Q_EMIT requestCloseSplit();
+}
+
+// ---------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------
+
+QString TerminalWidget::textForScreenRow(int row) const {
+    if (!m_terminal)
+        return QString();
+
+    QString result;
+    for (int col = 0; col < m_cols; ++col) {
+        GhosttyPoint point = {
+            .tag = GHOSTTY_POINT_TAG_SCREEN,
+            .value = {.coordinate = {.x = static_cast<uint16_t>(col), .y = static_cast<uint32_t>(row)}}};
+        GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+        if (ghostty_terminal_grid_ref(m_terminal, point, &ref) != GHOSTTY_SUCCESS)
+            continue;
+
+        uint32_t graphemes[16];
+        size_t len = 0;
+        if (ghostty_grid_ref_graphemes(&ref, graphemes, 16, &len) == GHOSTTY_SUCCESS && len > 0) {
+            for (size_t i = 0; i < len; ++i) {
+                if (graphemes[i] < 0x10000) {
+                    result.append(QChar(static_cast<ushort>(graphemes[i])));
+                } else {
+                    result.append(QChar::fromUcs4(graphemes[i]));
+                }
+            }
+        }
+    }
+    return result;
+}
+
+void TerminalWidget::performSearch(const QString &query) {
+    m_searchMatches.clear();
+    m_currentSearchIndex = -1;
+
+    if (query.isEmpty() || !m_terminal) {
+        update();
+        return;
+    }
+
+    size_t totalRows = 0;
+    ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_TOTAL_ROWS, &totalRows);
+
+    for (size_t row = 0; row < totalRows; ++row) {
+        QString line = textForScreenRow(static_cast<int>(row));
+        int pos = 0;
+        while ((pos = line.indexOf(query, pos, Qt::CaseInsensitive)) != -1) {
+            m_searchMatches.append({static_cast<int>(row), pos, static_cast<int>(pos + query.length())});
+            pos += query.length();
+        }
+    }
+
+    if (!m_searchMatches.isEmpty())
+        m_currentSearchIndex = 0;
+
+    update();
+}
+
+void TerminalWidget::clearSearch() {
+    m_searchMatches.clear();
+    m_currentSearchIndex = -1;
+    update();
+}
+
+void TerminalWidget::findNext() {
+    if (m_searchMatches.isEmpty())
+        return;
+    m_currentSearchIndex = (m_currentSearchIndex + 1) % m_searchMatches.size();
+    update();
+}
+
+void TerminalWidget::findPrevious() {
+    if (m_searchMatches.isEmpty())
+        return;
+    m_currentSearchIndex = m_currentSearchIndex - 1;
+    if (m_currentSearchIndex < 0)
+        m_currentSearchIndex = m_searchMatches.size() - 1;
+    update();
+}
+
+bool TerminalWidget::hasSearchMatches() const {
+    return !m_searchMatches.isEmpty();
 }

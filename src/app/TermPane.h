@@ -2,6 +2,7 @@
 
 #include <QWidget>
 
+class PageSearchBar;
 class QVBoxLayout;
 class QSplitter;
 class TerminalWidget;
@@ -16,6 +17,9 @@ public:
     void splitCurrent(Qt::Orientation orientation);
     void closeCurrentSplit();
 
+protected:
+    void resizeEvent(QResizeEvent *event) override;
+
 signals:
     void terminalTitleChanged(const QString &title);
     void sessionClosed();
@@ -26,8 +30,14 @@ private:
     void setupTerminalConnections(TerminalWidget *term);
     void setCurrentTerminal(TerminalWidget *term);
     void removeTerminal(TerminalWidget *term);
+    void showSearchBar();
+    void hideSearchBar();
+    void onSearchKeywordChanged(const QString &keyword);
+    void onSearchFindNext();
+    void onSearchFindPrev();
 
     QVBoxLayout *m_layout = nullptr;
     QWidget *m_rootWidget = nullptr;
     TerminalWidget *m_currentTerm = nullptr;
+    PageSearchBar *m_searchBar = nullptr;
 };

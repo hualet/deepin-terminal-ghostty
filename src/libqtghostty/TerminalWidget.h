@@ -30,6 +30,12 @@ public:
     void setCursorBlinkEnabled(bool blink);
     void setScrollbackLines(int lines);
 
+    void performSearch(const QString &query);
+    void clearSearch();
+    void findNext();
+    void findPrevious();
+    bool hasSearchMatches() const;
+
 signals:
     void terminalTitleChanged(const QString &title);
     void sessionClosed();
@@ -37,6 +43,7 @@ signals:
     void requestHorizontalSplit();
     void requestVerticalSplit();
     void requestCloseSplit();
+    void requestSearch();
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -59,6 +66,9 @@ private:
     void updateGridSize();
     void renderTerminal(QPainter &painter);
     void sendFocusEvent(bool gained);
+
+    void updateSearchHighlight();
+    QString textForScreenRow(int row) const;
 
     GhosttyKey mapQtKeyToGhostty(int key) const;
     uint32_t unshiftedCodepointForKey(int key) const;
@@ -95,6 +105,17 @@ private:
 
     // Scrollback
     int m_scrollbackLines = 1000;
+
+    // Search
+    struct SearchMatch {
+        int row = 0;
+        int startCol = 0;
+        int endCol = 0;
+    };
+    QVector<SearchMatch> m_searchMatches;
+    int m_currentSearchIndex = -1;
+
+    friend class TermPane;
 
     // Effects callbacks
     friend void effectWritePty(GhosttyTerminal terminal, void *userdata, const uint8_t *data, size_t len);

@@ -1,9 +1,11 @@
 #include "TermPane.h"
 
 #include "AppSettings.h"
+#include "PageSearchBar.h"
 #include "TerminalWidget.h"
 
 #include <QDebug>
+#include <QResizeEvent>
 #include <QSplitter>
 #include <QVBoxLayout>
 
@@ -16,6 +18,12 @@ TermPane::TermPane(QWidget *parent) : QWidget(parent) {
     m_layout->addWidget(term);
     m_rootWidget = term;
     setCurrentTerminal(term);
+
+    m_searchBar = new PageSearchBar(this);
+    connect(m_searchBar, &PageSearchBar::findNext, this, &TermPane::onSearchFindNext);
+    connect(m_searchBar, &PageSearchBar::findPrev, this, &TermPane::onSearchFindPrev);
+    connect(m_searchBar, &PageSearchBar::keywordChanged, this, &TermPane::onSearchKeywordChanged);
+    connect(m_searchBar, &PageSearchBar::closeSearchBar, this, &TermPane::hideSearchBar);
 }
 
 TerminalWidget *TermPane::currentTerminal() const {
@@ -47,6 +55,7 @@ void TermPane::setupTerminalConnections(TerminalWidget *term) {
     connect(term, &TerminalWidget::requestHorizontalSplit, this, [this]() { splitCurrent(Qt::Horizontal); });
     connect(term, &TerminalWidget::requestVerticalSplit, this, [this]() { splitCurrent(Qt::Vertical); });
     connect(term, &TerminalWidget::requestCloseSplit, this, &TermPane::closeCurrentSplit);
+    connect(term, &TerminalWidget::requestSearch, this, &TermPane::showSearchBar);
 }
 
 void TermPane::setCurrentTerminal(TerminalWidget *term) {
@@ -161,4 +170,50 @@ void TermPane::removeTerminal(TerminalWidget *term) {
             m_currentTerm = nullptr;
         }
     }
+}
+
+void TermPane::resizeEvent(QResizeEvent *event) {
+    QWidget::resizeEvent(event);
+    if (m_searchBar && m_searchBar->isVisible())
+        m_searchBar->move(width() - m_searchBar->width(), 0);
+}
+
+void TermPane::showSearchBar() {
+    if (!m_searchBar)
+        return;
+    m_searchBar->raise();
+    m_searchBar->show();
+    m_searchBar->move(width() - m_searchBar->width(), 0);
+    m_searchBar->setFocusOnEdit();
+}
+
+void TermPane::hideSearchBar() {
+    if (!m_searchBar)
+        return;
+    m_searchBar->hide();
+    if (m_currentTerm)
+        m_currentTerm->clearSearch();
+    if (m_currentTerm)
+        m_currentTerm->setFocus();
+}
+
+void TermPane::onSearchKeywordChanged(const QString &keyword) {
+    if (!m_currentTerm)
+        return;
+    m_currentTerm->performSearch(keyword);
+    m_searchBar->setNoMatchAlert(!keyword.isEmpty() && !m_currentTerm->hasSearchMatches());
+}
+
+void TermPane::onSearchFindNext() {
+    if (!m_currentTerm)
+        return;
+    m_currentTerm->findNext();
+    m_searchBar->setNoMatchAlert(!m_currentTerm->hasSearchMatches());
+}
+
+void TermPane::onSearchFindPrev() {
+    if (!m_currentTerm)
+        return;
+    m_currentTerm->findPrevious();
+    m_searchBar->setNoMatchAlert(!m_currentTerm->hasSearchMatches());
 }
