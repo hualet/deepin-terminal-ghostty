@@ -50,6 +50,8 @@ else()
     "${CMAKE_CURRENT_SOURCE_DIR}/../../g/ghostty/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/../ghostty/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/ghostty/include"
+    "/usr/include/ghostty"
+    "/usr/local/include/ghostty"
   )
     if(IS_DIRECTORY "${_ghostty_candidate}")
       set(_ghostty_include_source "${_ghostty_candidate}")
@@ -189,6 +191,31 @@ add_custom_command(TARGET deepin-terminal-ghostty POST_BUILD
           "$<TARGET_FILE:qtghostty>"
           "$<TARGET_FILE_DIR:deepin-terminal-ghostty>/"
   VERBATIM
+)
+
+# ---------------------------------------------------------------------------
+# Install
+# ---------------------------------------------------------------------------
+include(GNUInstallDirs)
+
+set_target_properties(deepin-terminal-ghostty PROPERTIES
+  INSTALL_RPATH ""
+)
+set_target_properties(qtghostty PROPERTIES
+  INSTALL_RPATH ""
+)
+
+install(TARGETS deepin-terminal-ghostty
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(TARGETS qtghostty
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
+install(FILES ${GHOSTTY_SOURCE_LIBRARY}
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RENAME ${GHOSTTY_SONAME}
 )
 
 # ---------------------------------------------------------------------------

@@ -70,6 +70,24 @@ Run:
 ./build/deepin-terminal-ghostty
 ```
 
+## Debian Package Build
+
+Build dependencies:
+
+```bash
+sudo apt install build-essential debhelper cmake
+```
+
+The build requires Ghostty headers. If they are not in a standard system path,
+set the environment variable before building:
+
+```bash
+export GHOSTTY_INCLUDE_DIR=/path/to/ghostty/include
+dpkg-buildpackage -us -uc -b
+```
+
+Built `.deb` files will appear in the parent directory.
+
 ## Test Commands
 
 Run all tests:

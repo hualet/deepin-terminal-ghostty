@@ -1,0 +1,22 @@
+Source: deepin-terminal-ghostty
+Section: utils
+Priority: optional
+Maintainer: Deepin Packages <packages@deepin.org>
+Build-Depends: cmake (>= 3.16),
+               debhelper-compat (= 13),
+               qt6-base-dev,
+               libdtk6widget-dev,
+               libdtk6core-dev,
+               libdtk6gui-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/linuxdeepin/deepin-terminal-ghostty
+
+Package: deepin-terminal-ghostty
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Deepin terminal emulator based on Ghostty
+ deepin-terminal-ghostty is a Linux terminal emulator built with
+ C++20, Qt6 Widgets, DTK6, and libghostty-vt.
+ .
+ It provides a tabbed terminal interface with deepin-style UI
+ integration.
