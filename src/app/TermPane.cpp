@@ -225,6 +225,32 @@ bool TermPane::eventFilter(QObject *watched, QEvent *event) {
         return true;
     }
 
+    // Workspace navigation and close — intercept before TerminalWidget sends to PTY
+    if (pressed == settings->shortcut("select_upper_workspace")) {
+        focusNavigation(Qt::TopEdge);
+        return true;
+    }
+    if (pressed == settings->shortcut("select_lower_workspace")) {
+        focusNavigation(Qt::BottomEdge);
+        return true;
+    }
+    if (pressed == settings->shortcut("select_left_workspace")) {
+        focusNavigation(Qt::LeftEdge);
+        return true;
+    }
+    if (pressed == settings->shortcut("select_right_workspace")) {
+        focusNavigation(Qt::RightEdge);
+        return true;
+    }
+    if (pressed == settings->shortcut("close_workspace")) {
+        closeCurrentSplit();
+        return true;
+    }
+    if (pressed == settings->shortcut("close_other_workspaces")) {
+        closeOtherTerminals();
+        return true;
+    }
+
     return false;
 }
 
