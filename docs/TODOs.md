@@ -14,3 +14,8 @@
   - [x] 添加单元测试
   - [ ] 添加benchmar
   - [ ] 添加自动化构建和打包
+- [ ] 兼容性和性能测试
+  - [ ] 兼容性: vttest + ucs-detect
+  - [ ] 吞吐: vtebench + termbench
+  - [ ] 交互体验: typometer
+
