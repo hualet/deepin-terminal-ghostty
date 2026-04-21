@@ -127,6 +127,7 @@ void MainWindow::addTab(bool activate) {
     connect(pane, &TermPane::terminalTitleChanged, this, &MainWindow::onTerminalTitleChanged);
     connect(pane, &TermPane::sessionClosed, this, &MainWindow::onTerminalSessionClosed);
     connect(pane, &TermPane::currentTerminalChanged, this, &MainWindow::onPaneTerminalChanged);
+    connect(pane, &TermPane::requestSettings, this, &MainWindow::onSettingsTriggered);
 
     int stackIndex = m_stackWidget->addWidget(pane);
 

@@ -88,6 +88,7 @@ void TermPane::setupTerminalConnections(TerminalWidget *term) {
     connect(term, &TerminalWidget::requestVerticalSplit, this, [this]() { splitCurrent(Qt::Vertical); });
     connect(term, &TerminalWidget::requestCloseSplit, this, &TermPane::closeCurrentSplit);
     connect(term, &TerminalWidget::requestSearch, this, &TermPane::showSearchBar);
+    connect(term, &TerminalWidget::requestSettings, this, &TermPane::requestSettings);
 }
 
 void TermPane::setCurrentTerminal(TerminalWidget *term) {

@@ -780,6 +780,8 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
     auto *vSplit = menu.addAction(tr("Vertical Split"));
     menu.addSeparator();
     auto *closeSplit = menu.addAction(tr("Close Split"));
+    menu.addSeparator();
+    auto *settingsAction = menu.addAction(tr("Settings"));
 
     auto *action = menu.exec(event->globalPos());
     if (action == searchAction)
@@ -790,6 +792,8 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
         Q_EMIT requestVerticalSplit();
     else if (action == closeSplit)
         Q_EMIT requestCloseSplit();
+    else if (action == settingsAction)
+        Q_EMIT requestSettings();
 }
 
 // ---------------------------------------------------------------------------

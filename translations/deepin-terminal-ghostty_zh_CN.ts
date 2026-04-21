@@ -461,5 +461,10 @@
         <source>Close Split</source>
         <translation>关闭分屏</translation>
     </message>
+    <message>
+        <location filename="../src/libqtghostty/TerminalWidget.cpp" line="784"/>
+        <source>Settings</source>
+        <translation>设置</translation>
+    </message>
 </context>
 </TS>

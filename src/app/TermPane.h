@@ -29,6 +29,7 @@ signals:
     void terminalTitleChanged(const QString &title);
     void sessionClosed();
     void currentTerminalChanged(TerminalWidget *term);
+    void requestSettings();
 
 private:
     TerminalWidget *createTerminal();

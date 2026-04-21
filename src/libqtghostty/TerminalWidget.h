@@ -49,6 +49,7 @@ signals:
     void requestVerticalSplit();
     void requestCloseSplit();
     void requestSearch();
+    void requestSettings();
 
 protected:
     void paintEvent(QPaintEvent *event) override;
