@@ -11,6 +11,32 @@
 #include <QSplitter>
 #include <QVBoxLayout>
 
+namespace {
+
+Qt::KeyboardModifiers normalizedModifiers(Qt::KeyboardModifiers modifiers) {
+    return modifiers & (Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier);
+}
+
+bool matchesShortcut(const QKeyEvent *event, const QKeySequence &shortcut) {
+    if (!event || shortcut.isEmpty())
+        return false;
+
+    const Qt::KeyboardModifiers eventModifiers = normalizedModifiers(event->modifiers());
+    const auto eventKey = static_cast<Qt::Key>(event->key());
+
+    for (qsizetype i = 0; i < shortcut.count(); ++i) {
+        const QKeyCombination combination = shortcut[i];
+        if (combination.key() != eventKey)
+            continue;
+        if (normalizedModifiers(combination.keyboardModifiers()) == eventModifiers)
+            return true;
+    }
+
+    return false;
+}
+
+} // namespace
+
 TermPane::TermPane(QWidget *parent) : QWidget(parent) {
     m_layout = new QVBoxLayout(this);
     m_layout->setSpacing(0);
@@ -193,60 +219,59 @@ bool TermPane::eventFilter(QObject *watched, QEvent *event) {
     if (!term)
         return false;
 
-    QKeySequence pressed(keyEvent->keyCombination());
     auto *settings = AppSettings::instance();
 
-    if (pressed == settings->shortcut("find")) {
+    if (matchesShortcut(keyEvent, settings->shortcut("find"))) {
         showSearchBar();
         return true;
     }
-    if (pressed == settings->shortcut("copy")) {
+    if (matchesShortcut(keyEvent, settings->shortcut("copy"))) {
         term->copyToClipboard();
         return true;
     }
-    if (pressed == settings->shortcut("paste")) {
+    if (matchesShortcut(keyEvent, settings->shortcut("paste"))) {
         term->pasteFromClipboard();
         return true;
     }
-    if (pressed == settings->shortcut("select_all")) {
+    if (matchesShortcut(keyEvent, settings->shortcut("select_all"))) {
         term->selectAll();
         return true;
     }
-    if (pressed == settings->shortcut("zoom_in")) {
+    if (matchesShortcut(keyEvent, settings->shortcut("zoom_in"))) {
         term->zoomIn();
         return true;
     }
-    if (pressed == settings->shortcut("zoom_out")) {
+    if (matchesShortcut(keyEvent, settings->shortcut("zoom_out"))) {
         term->zoomOut();
         return true;
     }
-    if (pressed == settings->shortcut("default_size")) {
+    if (matchesShortcut(keyEvent, settings->shortcut("default_size"))) {
         term->setTerminalFont(settings->terminalFont());
         return true;
     }
 
     // Workspace navigation and close — intercept before TerminalWidget sends to PTY
-    if (pressed == settings->shortcut("select_upper_workspace")) {
+    if (matchesShortcut(keyEvent, settings->shortcut("select_upper_workspace"))) {
         focusNavigation(Qt::TopEdge);
         return true;
     }
-    if (pressed == settings->shortcut("select_lower_workspace")) {
+    if (matchesShortcut(keyEvent, settings->shortcut("select_lower_workspace"))) {
         focusNavigation(Qt::BottomEdge);
         return true;
     }
-    if (pressed == settings->shortcut("select_left_workspace")) {
+    if (matchesShortcut(keyEvent, settings->shortcut("select_left_workspace"))) {
         focusNavigation(Qt::LeftEdge);
         return true;
     }
-    if (pressed == settings->shortcut("select_right_workspace")) {
+    if (matchesShortcut(keyEvent, settings->shortcut("select_right_workspace"))) {
         focusNavigation(Qt::RightEdge);
         return true;
     }
-    if (pressed == settings->shortcut("close_workspace")) {
+    if (matchesShortcut(keyEvent, settings->shortcut("close_workspace"))) {
         closeCurrentSplit();
         return true;
     }
-    if (pressed == settings->shortcut("close_other_workspaces")) {
+    if (matchesShortcut(keyEvent, settings->shortcut("close_other_workspaces"))) {
         closeOtherTerminals();
         return true;
     }

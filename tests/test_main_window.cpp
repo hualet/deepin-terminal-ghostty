@@ -17,9 +17,16 @@ class TestMainWindow : public QObject {
 private slots:
     void testSingleTabCtrlDClosesWindow();
     void testClosedSessionRemovesOnlyCurrentTab();
+    void testAltArrowWithKeypadModifierIsConsumedByPane();
 };
 
 namespace {
+
+class ExposedTermPane : public TermPane {
+public:
+    using TermPane::eventFilter;
+    using TermPane::TermPane;
+};
 
 TerminalWidget *currentTerminal(MainWindow &window) {
     auto *stack = window.findChild<QStackedWidget *>();
@@ -29,6 +36,13 @@ TerminalWidget *currentTerminal(MainWindow &window) {
     if (!pane)
         return nullptr;
     return pane->currentTerminal();
+}
+
+TermPane *currentPane(MainWindow &window) {
+    auto *stack = window.findChild<QStackedWidget *>();
+    if (!stack)
+        return nullptr;
+    return qobject_cast<TermPane *>(stack->currentWidget());
 }
 
 DTabBar *tabBar(MainWindow &window) {
@@ -101,6 +115,24 @@ void TestMainWindow::testClosedSessionRemovesOnlyCurrentTab() {
 
     QTRY_COMPARE_WITH_TIMEOUT(tabs->count(), 1, 5000);
     QVERIFY(window.isVisible());
+}
+
+void TestMainWindow::testAltArrowWithKeypadModifierIsConsumedByPane() {
+    ExposedTermPane pane;
+    pane.resize(1200, 800);
+    pane.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&pane));
+
+    pane.splitCurrent(Qt::Vertical);
+
+    const QList<TerminalWidget *> terminals = pane.findChildren<TerminalWidget *>();
+    QCOMPARE(terminals.count(), 2);
+
+    auto *sourceTerminal = pane.currentTerminal();
+    QVERIFY(sourceTerminal);
+
+    QKeyEvent keyPress(QEvent::KeyPress, Qt::Key_Left, Qt::AltModifier | Qt::KeypadModifier);
+    QVERIFY(pane.eventFilter(sourceTerminal, &keyPress));
 }
 
 int main(int argc, char *argv[]) {

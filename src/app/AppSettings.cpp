@@ -10,6 +10,25 @@
 
 AppSettings *AppSettings::s_instance = nullptr;
 
+namespace {
+
+QString shortcutPath(Dtk::Core::DSettings *settings, const QString &name) {
+    static const QStringList kGroups = {"terminal", "tab", "advanced"};
+
+    if (!settings)
+        return QString("shortcuts.terminal.%1").arg(name);
+
+    for (const QString &group : kGroups) {
+        const QString path = QString("shortcuts.%1.%2").arg(group, name);
+        if (settings->option(path))
+            return path;
+    }
+
+    return QString("shortcuts.terminal.%1").arg(name);
+}
+
+} // namespace
+
 AppSettings *AppSettings::instance() {
     if (!s_instance)
         s_instance = new AppSettings();
@@ -128,9 +147,9 @@ void AppSettings::setScrollbackLines(int lines) {
 }
 
 QKeySequence AppSettings::shortcut(const QString &name) const {
-    return QKeySequence(m_dsettings->value(QString("shortcuts.terminal.%1").arg(name)).toString());
+    return QKeySequence(m_dsettings->value(shortcutPath(m_dsettings, name)).toString());
 }
 
 void AppSettings::setShortcut(const QString &name, const QKeySequence &seq) {
-    m_dsettings->setOption(QString("shortcuts.terminal.%1").arg(name), seq.toString());
+    m_dsettings->setOption(shortcutPath(m_dsettings, name), seq.toString());
 }
