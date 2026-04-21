@@ -2,6 +2,7 @@
 
 #include "AppSettings.h"
 #include "PageSearchBar.h"
+#include "PtySession.h"
 #include "TerminalWidget.h"
 
 #include <QDebug>
@@ -48,9 +49,12 @@ TerminalWidget *TermPane::createTerminal() {
 
 void TermPane::setupTerminalConnections(TerminalWidget *term) {
     connect(term, &TerminalWidget::terminalTitleChanged, this, [this, term](const QString &title) {
-        term->setProperty("currentTitle", title);
+        QString displayTitle = term->property("customTitle").toString();
+        if (displayTitle.isEmpty())
+            displayTitle = title;
+        term->setProperty("currentTitle", displayTitle);
         if (m_currentTerm == term)
-            Q_EMIT terminalTitleChanged(title);
+            Q_EMIT terminalTitleChanged(displayTitle);
     });
     connect(term, &TerminalWidget::sessionClosed, this, [this, term]() { removeTerminal(term); });
     connect(term, &TerminalWidget::focusGained, this, [this, term]() { setCurrentTerminal(term); });
@@ -262,4 +266,74 @@ void TermPane::onSearchFindPrev() {
         return;
     m_currentTerm->findPrevious();
     m_searchBar->setNoMatchAlert(!m_currentTerm->hasSearchMatches());
+}
+
+void TermPane::focusNavigation(Qt::Edge dir) {
+    if (!m_currentTerm)
+        return;
+
+    auto getComparePoint = [](TerminalWidget *term, Qt::Edge edge) -> QPoint {
+        QPoint leftTop = term->mapTo(term->window(), QPoint(0, 0));
+        QPoint leftBottom = term->mapTo(term->window(), QPoint(0, term->height()));
+        QPoint rightTop = term->mapTo(term->window(), QPoint(term->width(), 0));
+        switch (edge) {
+            case Qt::LeftEdge:
+                return leftTop + QPoint(-1, 1);
+            case Qt::RightEdge:
+                return rightTop + QPoint(1, 1);
+            case Qt::TopEdge:
+                return leftTop + QPoint(1, -1);
+            case Qt::BottomEdge:
+                return leftBottom + QPoint(1, 1);
+            default:
+                return leftTop;
+        }
+    };
+
+    auto getTermRect = [](TerminalWidget *term) -> QRect {
+        QPoint leftTop = term->mapTo(term->window(), QPoint(0, 0));
+        QPoint rightBottom = term->mapTo(term->window(), QPoint(term->width(), term->height()));
+        return QRect(leftTop, rightBottom);
+    };
+
+    QPoint comparPoint = getComparePoint(m_currentTerm, dir);
+    for (TerminalWidget *term : findChildren<TerminalWidget *>()) {
+        if (term == m_currentTerm)
+            continue;
+        if (getTermRect(term).contains(comparPoint)) {
+            setCurrentTerminal(term);
+            term->setFocus();
+            return;
+        }
+    }
+}
+
+void TermPane::closeOtherTerminals() {
+    QList<TerminalWidget *> terms = findChildren<TerminalWidget *>();
+    if (terms.count() < 2)
+        return;
+
+    QList<TerminalWidget *> toRemove;
+    for (TerminalWidget *term : terms) {
+        if (term != m_currentTerm)
+            toRemove.append(term);
+    }
+    for (TerminalWidget *term : toRemove)
+        removeTerminal(term);
+}
+
+void TermPane::executeCommand(const QString &command) {
+    if (!m_currentTerm || command.isEmpty())
+        return;
+    if (m_currentTerm->m_ptySession) {
+        m_currentTerm->m_ptySession->write(command.toUtf8());
+        m_currentTerm->m_ptySession->write("\n");
+    }
+}
+
+void TermPane::setCustomTitle(const QString &title) {
+    if (!m_currentTerm)
+        return;
+    m_currentTerm->setProperty("customTitle", title);
+    Q_EMIT terminalTitleChanged(title);
 }

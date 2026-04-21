@@ -41,6 +41,10 @@ private:
     void updateShortcut(QShortcut *shortcut, const QString &name);
     void closeOtherTabs();
     void gotoTab(int index);
+    void onShortcutRenameTitle();
+    void onShortcutDisplayShortcuts();
+    void onShortcutCustomCommand();
+    void onShortcutRemoteManagement();
 
     DTabBar *m_tabBar = nullptr;
     QStackedWidget *m_stackWidget = nullptr;
@@ -54,5 +58,14 @@ private:
     QShortcut *m_scVSplit = nullptr;
     QShortcut *m_scHSplit = nullptr;
     QShortcut *m_scCloseWorkspace = nullptr;
+    QShortcut *m_scCloseOtherWorkspaces = nullptr;
+    QShortcut *m_scSelectUpper = nullptr;
+    QShortcut *m_scSelectLower = nullptr;
+    QShortcut *m_scSelectLeft = nullptr;
+    QShortcut *m_scSelectRight = nullptr;
     QShortcut *m_scFullscreen = nullptr;
+    QShortcut *m_scRenameTitle = nullptr;
+    QShortcut *m_scDisplayShortcuts = nullptr;
+    QShortcut *m_scCustomCommand = nullptr;
+    QShortcut *m_scRemoteManagement = nullptr;
 };

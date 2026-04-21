@@ -16,6 +16,10 @@ public:
     TerminalWidget *currentTerminal() const;
     void splitCurrent(Qt::Orientation orientation);
     void closeCurrentSplit();
+    void focusNavigation(Qt::Edge dir);
+    void closeOtherTerminals();
+    void executeCommand(const QString &command);
+    void setCustomTitle(const QString &title);
 
 protected:
     void resizeEvent(QResizeEvent *event) override;

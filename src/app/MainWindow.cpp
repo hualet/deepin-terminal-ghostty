@@ -6,12 +6,17 @@
 #include "TerminalWidget.h"
 
 #include <DTitlebar>
+#include <QDialog>
 #include <QHBoxLayout>
+#include <QHeaderView>
 #include <QIcon>
+#include <QInputDialog>
 #include <QKeyEvent>
 #include <QMenu>
 #include <QShortcut>
 #include <QStackedWidget>
+#include <QTableWidget>
+#include <QVBoxLayout>
 
 MainWindow::MainWindow(QWidget *parent)
     : DMainWindow(parent), m_tabBar(new DTabBar(this)), m_stackWidget(new QStackedWidget(this)) {
@@ -287,12 +292,36 @@ void MainWindow::setupShortcuts() {
         if (auto *pane = currentPane())
             pane->closeCurrentSplit();
     });
+    createOnce(m_scCloseOtherWorkspaces, [this]() {
+        if (auto *pane = currentPane())
+            pane->closeOtherTerminals();
+    });
+    createOnce(m_scSelectUpper, [this]() {
+        if (auto *pane = currentPane())
+            pane->focusNavigation(Qt::TopEdge);
+    });
+    createOnce(m_scSelectLower, [this]() {
+        if (auto *pane = currentPane())
+            pane->focusNavigation(Qt::BottomEdge);
+    });
+    createOnce(m_scSelectLeft, [this]() {
+        if (auto *pane = currentPane())
+            pane->focusNavigation(Qt::LeftEdge);
+    });
+    createOnce(m_scSelectRight, [this]() {
+        if (auto *pane = currentPane())
+            pane->focusNavigation(Qt::RightEdge);
+    });
     createOnce(m_scFullscreen, [this]() {
         if (isFullScreen())
             showNormal();
         else
             showFullScreen();
     });
+    createOnce(m_scRenameTitle, &MainWindow::onShortcutRenameTitle);
+    createOnce(m_scDisplayShortcuts, &MainWindow::onShortcutDisplayShortcuts);
+    createOnce(m_scCustomCommand, &MainWindow::onShortcutCustomCommand);
+    createOnce(m_scRemoteManagement, &MainWindow::onShortcutRemoteManagement);
 
     // Create switch-to-tab shortcuts (1-9) once
     for (int i = 1; i <= 9; ++i) {
@@ -329,7 +358,16 @@ void MainWindow::setupShortcuts() {
     updateShortcut(m_scVSplit, "vertical_split");
     updateShortcut(m_scHSplit, "horionzal_split");
     updateShortcut(m_scCloseWorkspace, "close_workspace");
+    updateShortcut(m_scCloseOtherWorkspaces, "close_other_workspaces");
+    updateShortcut(m_scSelectUpper, "select_upper_workspace");
+    updateShortcut(m_scSelectLower, "select_lower_workspace");
+    updateShortcut(m_scSelectLeft, "select_left_workspace");
+    updateShortcut(m_scSelectRight, "select_right_workspace");
     updateShortcut(m_scFullscreen, "switch_fullscreen");
+    updateShortcut(m_scRenameTitle, "rename_title");
+    updateShortcut(m_scDisplayShortcuts, "display_shortcuts");
+    updateShortcut(m_scCustomCommand, "custom_command");
+    updateShortcut(m_scRemoteManagement, "remote_management");
 
     for (int i = 1; i <= 9; ++i) {
         for (QShortcut *sc : findChildren<QShortcut *>()) {
@@ -360,6 +398,106 @@ void MainWindow::closeOtherTabs() {
 void MainWindow::gotoTab(int index) {
     if (index >= 0 && index < m_tabBar->count())
         m_tabBar->setCurrentIndex(index);
+}
+
+void MainWindow::onShortcutRenameTitle() {
+    auto *pane = currentPane();
+    if (!pane)
+        return;
+    auto *term = pane->currentTerminal();
+    if (!term)
+        return;
+
+    bool ok = false;
+    QString currentText = m_tabBar->tabText(m_tabBar->currentIndex());
+    QString text =
+        QInputDialog::getText(this, tr("Rename title"), tr("New title:"), QLineEdit::Normal, currentText, &ok);
+    if (ok && !text.isEmpty())
+        pane->setCustomTitle(text);
+}
+
+void MainWindow::onShortcutDisplayShortcuts() {
+    auto *dialog = new QDialog(this);
+    dialog->setWindowTitle(tr("Keyboard Shortcuts"));
+    dialog->setMinimumSize(480, 520);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+
+    auto *table = new QTableWidget(dialog);
+    table->setColumnCount(2);
+    table->setHorizontalHeaderLabels(QStringList() << tr("Action") << tr("Shortcut"));
+    table->horizontalHeader()->setStretchLastSection(true);
+    table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+
+    struct Item {
+        QString name;
+        QString key;
+    };
+    QList<Item> items;
+    auto *settings = AppSettings::instance();
+
+    items << Item{tr("Copy"), settings->shortcut("copy").toString()};
+    items << Item{tr("Paste"), settings->shortcut("paste").toString()};
+    items << Item{tr("Find"), settings->shortcut("find").toString()};
+    items << Item{tr("Zoom in"), settings->shortcut("zoom_in").toString()};
+    items << Item{tr("Zoom out"), settings->shortcut("zoom_out").toString()};
+    items << Item{tr("Default size"), settings->shortcut("default_size").toString()};
+    items << Item{tr("Select all"), settings->shortcut("select_all").toString()};
+    items << Item{tr("New tab"), settings->shortcut("new_tab").toString()};
+    items << Item{tr("Close tab"), settings->shortcut("close_tab").toString()};
+    items << Item{tr("Close other tabs"), settings->shortcut("close_other_tabs").toString()};
+    items << Item{tr("Previous tab"), settings->shortcut("previous_tab").toString()};
+    items << Item{tr("Next tab"), settings->shortcut("next_tab").toString()};
+    items << Item{tr("Vertical split"), settings->shortcut("vertical_split").toString()};
+    items << Item{tr("Horizontal split"), settings->shortcut("horionzal_split").toString()};
+    items << Item{tr("Select upper workspace"), settings->shortcut("select_upper_workspace").toString()};
+    items << Item{tr("Select lower workspace"), settings->shortcut("select_lower_workspace").toString()};
+    items << Item{tr("Select left workspace"), settings->shortcut("select_left_workspace").toString()};
+    items << Item{tr("Select right workspace"), settings->shortcut("select_right_workspace").toString()};
+    items << Item{tr("Close workspace"), settings->shortcut("close_workspace").toString()};
+    items << Item{tr("Close other workspaces"), settings->shortcut("close_other_workspaces").toString()};
+    for (int i = 1; i <= 9; ++i)
+        items << Item{tr("Go to tab %1").arg(i), settings->shortcut(QString("switch_label_win_%1").arg(i)).toString()};
+    items << Item{tr("Fullscreen"), settings->shortcut("switch_fullscreen").toString()};
+    items << Item{tr("Rename title"), settings->shortcut("rename_title").toString()};
+    items << Item{tr("Custom command"), settings->shortcut("custom_command").toString()};
+    items << Item{tr("Remote management"), settings->shortcut("remote_management").toString()};
+
+    table->setRowCount(items.size());
+    for (int i = 0; i < items.size(); ++i) {
+        table->setItem(i, 0, new QTableWidgetItem(items[i].name));
+        table->setItem(i, 1, new QTableWidgetItem(items[i].key));
+    }
+
+    auto *layout = new QVBoxLayout(dialog);
+    layout->addWidget(table);
+    dialog->setLayout(layout);
+    dialog->show();
+}
+
+void MainWindow::onShortcutCustomCommand() {
+    auto *pane = currentPane();
+    if (!pane)
+        return;
+
+    bool ok = false;
+    QString command =
+        QInputDialog::getText(this, tr("Custom Command"), tr("Enter command:"), QLineEdit::Normal, QString(), &ok);
+    if (ok && !command.isEmpty())
+        pane->executeCommand(command);
+}
+
+void MainWindow::onShortcutRemoteManagement() {
+    auto *pane = currentPane();
+    if (!pane)
+        return;
+
+    bool ok = false;
+    QString address = QInputDialog::getText(this, tr("Remote Management"), tr("SSH address (user@host):"),
+                                            QLineEdit::Normal, QString(), &ok);
+    if (ok && !address.isEmpty())
+        pane->executeCommand(QString("ssh %1").arg(address));
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
