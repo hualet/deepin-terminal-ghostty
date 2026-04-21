@@ -44,6 +44,13 @@ private slots:
         QCOMPARE(s->scrollbackLines(), 5000);
     }
 
+    void testShortcutsAcrossGroups() {
+        auto *s = AppSettings::instance();
+        QCOMPARE(s->shortcut("copy"), QKeySequence(QStringLiteral("Ctrl+Shift+C")));
+        QCOMPARE(s->shortcut("select_left_workspace"), QKeySequence(QStringLiteral("Alt+Left")));
+        QCOMPARE(s->shortcut("switch_fullscreen"), QKeySequence(QStringLiteral("F11")));
+    }
+
     void testSignals() {
         auto *s = AppSettings::instance();
         QSignalSpy fontSpy(s, &AppSettings::terminalFontChanged);

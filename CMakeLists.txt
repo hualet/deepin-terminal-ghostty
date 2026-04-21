@@ -22,8 +22,36 @@ set(GHOSTTY_INCLUDE_DIR "" CACHE PATH
   "Path to the Ghostty headers")
 set(GHOSTTY_STAGED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/ghostty-include")
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets LinguistTools)
 find_package(Dtk6 COMPONENTS Widget Core Gui REQUIRED)
+
+set(APP_TRANSLATABLE_SOURCES
+  src/app/main.cpp
+  src/app/MainWindow.cpp
+  src/app/AppSettings.cpp
+  src/app/SettingsDialog.cpp
+  src/libqtghostty/TerminalWidget.cpp
+)
+
+set(APP_TRANSLATION_TS_FILES
+  translations/deepin-terminal-ghostty_zh_CN.ts
+  translations/deepin-terminal-ghostty_es.ts
+)
+
+qt_add_lrelease(TS_FILES
+  ${APP_TRANSLATION_TS_FILES}
+  QM_FILES_OUTPUT_VARIABLE APP_TRANSLATION_QM_FILES
+)
+
+add_custom_target(update_translations
+  COMMAND $<TARGET_FILE:Qt6::lupdate> ${APP_TRANSLATABLE_SOURCES} -ts ${APP_TRANSLATION_TS_FILES}
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  DEPENDS ${APP_TRANSLATABLE_SOURCES} ${APP_TRANSLATION_TS_FILES}
+  COMMENT "Updating translation source files"
+  VERBATIM
+)
+
+add_custom_target(app_translations DEPENDS ${APP_TRANSLATION_QM_FILES})
 
 set(GHOSTTY_SOURCE_LIBRARY "${CMAKE_CURRENT_SOURCE_DIR}/lib/libghostty-vt.so")
 if(NOT EXISTS "${GHOSTTY_SOURCE_LIBRARY}")
@@ -189,6 +217,7 @@ target_link_libraries(deepin-terminal-ghostty PRIVATE
 )
 
 add_dependencies(deepin-terminal-ghostty ghostty-vt-stage ghostty-headers-stage)
+add_dependencies(deepin-terminal-ghostty app_translations)
 
 add_custom_command(TARGET deepin-terminal-ghostty POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -201,6 +230,15 @@ add_custom_command(TARGET deepin-terminal-ghostty POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
           "$<TARGET_FILE:qtghostty>"
           "$<TARGET_FILE_DIR:deepin-terminal-ghostty>/"
+  VERBATIM
+)
+
+add_custom_command(TARGET deepin-terminal-ghostty POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E make_directory
+          "$<TARGET_FILE_DIR:deepin-terminal-ghostty>/translations"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          ${APP_TRANSLATION_QM_FILES}
+          "$<TARGET_FILE_DIR:deepin-terminal-ghostty>/translations"
   VERBATIM
 )
 
@@ -233,6 +271,10 @@ install(FILES
   src/libqtghostty/PtySession.h
   src/libqtghostty/TerminalWidget.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/qtghostty
+)
+
+install(FILES ${APP_TRANSLATION_QM_FILES}
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/translations
 )
 
 # ---------------------------------------------------------------------------
