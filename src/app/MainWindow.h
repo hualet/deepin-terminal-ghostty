@@ -8,6 +8,7 @@ class SettingsDialog;
 DWIDGET_USE_NAMESPACE
 
 class QStackedWidget;
+class TermPane;
 class TerminalWidget;
 
 class MainWindow : public DMainWindow {
@@ -26,12 +27,14 @@ private slots:
     void onTabCurrentChanged(int index);
     void onTerminalTitleChanged(const QString &title);
     void onTerminalSessionClosed();
+    void onPaneTerminalChanged(TerminalWidget *term);
     void onSettingsTriggered();
 
 private:
     void setupTitleBar();
     void addTab(bool activate = true);
-    void closeTerminal(TerminalWidget *terminal);
+    void closePane(TermPane *pane);
+    TermPane *currentPane() const;
     TerminalWidget *currentTerminal() const;
 
     DTabBar *m_tabBar = nullptr;

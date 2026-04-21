@@ -4,6 +4,8 @@
 #include <QTimer>
 #include <QWidget>
 
+class QContextMenuEvent;
+
 // Qt defines 'emit' as a no-op macro; ghostty headers use 'emit' as a struct
 // member name in formatter.h, so we must undefine it before inclusion.
 #ifdef emit
@@ -31,6 +33,10 @@ public:
 signals:
     void terminalTitleChanged(const QString &title);
     void sessionClosed();
+    void focusGained();
+    void requestHorizontalSplit();
+    void requestVerticalSplit();
+    void requestCloseSplit();
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -39,6 +45,7 @@ protected:
     void focusInEvent(QFocusEvent *event) override;
     void focusOutEvent(QFocusEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
+    void contextMenuEvent(QContextMenuEvent *event) override;
     bool focusNextPrevChild(bool next) override;
 
 private slots:

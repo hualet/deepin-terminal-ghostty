@@ -76,6 +76,7 @@ add_executable(test_main_window
   ${CMAKE_SOURCE_DIR}/src/app/MainWindow.cpp
   ${CMAKE_SOURCE_DIR}/src/app/AppSettings.cpp
   ${CMAKE_SOURCE_DIR}/src/app/SettingsDialog.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/TermPane.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/PtySession.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalWidget.cpp
 )

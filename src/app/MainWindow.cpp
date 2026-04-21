@@ -2,6 +2,7 @@
 
 #include "AppSettings.h"
 #include "SettingsDialog.h"
+#include "TermPane.h"
 #include "TerminalWidget.h"
 
 #include <DTitlebar>
@@ -40,20 +41,34 @@ MainWindow::MainWindow(QWidget *parent)
     auto *settings = AppSettings::instance();
     connect(settings, &AppSettings::terminalFontChanged, this, [this](const QFont &font) {
         for (int i = 0; i < m_stackWidget->count(); ++i) {
-            if (auto *term = qobject_cast<TerminalWidget *>(m_stackWidget->widget(i)))
-                term->setTerminalFont(font);
+            if (auto *pane = qobject_cast<TermPane *>(m_stackWidget->widget(i))) {
+                if (auto *term = pane->currentTerminal())
+                    term->setTerminalFont(font);
+            }
         }
     });
     connect(settings, &AppSettings::cursorShapeChanged, this, [this](int shape) {
         for (int i = 0; i < m_stackWidget->count(); ++i) {
-            if (auto *term = qobject_cast<TerminalWidget *>(m_stackWidget->widget(i)))
-                term->setCursorShape(shape);
+            if (auto *pane = qobject_cast<TermPane *>(m_stackWidget->widget(i))) {
+                if (auto *term = pane->currentTerminal())
+                    term->setCursorShape(shape);
+            }
         }
     });
     connect(settings, &AppSettings::cursorBlinkChanged, this, [this](bool blink) {
         for (int i = 0; i < m_stackWidget->count(); ++i) {
-            if (auto *term = qobject_cast<TerminalWidget *>(m_stackWidget->widget(i)))
-                term->setCursorBlinkEnabled(blink);
+            if (auto *pane = qobject_cast<TermPane *>(m_stackWidget->widget(i))) {
+                if (auto *term = pane->currentTerminal())
+                    term->setCursorBlinkEnabled(blink);
+            }
+        }
+    });
+    connect(settings, &AppSettings::scrollbackLinesChanged, this, [this](int lines) {
+        for (int i = 0; i < m_stackWidget->count(); ++i) {
+            if (auto *pane = qobject_cast<TermPane *>(m_stackWidget->widget(i))) {
+                if (auto *term = pane->currentTerminal())
+                    term->setScrollbackLines(lines);
+            }
         }
     });
 
@@ -98,24 +113,13 @@ void MainWindow::setupTitleBar() {
 }
 
 void MainWindow::addTab(bool activate) {
-    auto *terminal = new TerminalWidget(m_stackWidget);
+    auto *pane = new TermPane(m_stackWidget);
 
-    // Apply current settings to the new terminal before initialization
-    auto *settings = AppSettings::instance();
-    terminal->setTerminalFont(settings->terminalFont());
-    terminal->setCursorShape(settings->cursorShape());
-    terminal->setCursorBlinkEnabled(settings->cursorBlink());
-    terminal->setScrollbackLines(settings->scrollbackLines());
+    connect(pane, &TermPane::terminalTitleChanged, this, &MainWindow::onTerminalTitleChanged);
+    connect(pane, &TermPane::sessionClosed, this, &MainWindow::onTerminalSessionClosed);
+    connect(pane, &TermPane::currentTerminalChanged, this, &MainWindow::onPaneTerminalChanged);
 
-    if (!terminal->initialize()) {
-        terminal->deleteLater();
-        return;
-    }
-
-    connect(terminal, &TerminalWidget::terminalTitleChanged, this, &MainWindow::onTerminalTitleChanged);
-    connect(terminal, &TerminalWidget::sessionClosed, this, &MainWindow::onTerminalSessionClosed);
-
-    int stackIndex = m_stackWidget->addWidget(terminal);
+    int stackIndex = m_stackWidget->addWidget(pane);
 
     // DTabBar::addTab returns the visual tab index; we keep it in sync with stack index
     int tabIndex = m_tabBar->addTab("Terminal");
@@ -123,7 +127,8 @@ void MainWindow::addTab(bool activate) {
 
     if (activate) {
         m_tabBar->setCurrentIndex(tabIndex);
-        terminal->setFocus();
+        if (auto *term = pane->currentTerminal())
+            term->setFocus();
     }
 }
 
@@ -164,22 +169,20 @@ void MainWindow::onTabCurrentChanged(int index) {
     int stackIndex = m_tabBar->tabData(index).toInt();
     m_stackWidget->setCurrentIndex(stackIndex);
 
-    TerminalWidget *term = currentTerminal();
-    if (term) {
-        setWindowTitle(term->property("currentTitle").toString());
-        term->setFocus();
+    if (auto *pane = currentPane()) {
+        if (auto *term = pane->currentTerminal()) {
+            setWindowTitle(term->property("currentTitle").toString());
+            term->setFocus();
+        }
     }
 }
 
 void MainWindow::onTerminalTitleChanged(const QString &title) {
-    auto *term = qobject_cast<TerminalWidget *>(sender());
-    if (!term)
+    auto *pane = qobject_cast<TermPane *>(sender());
+    if (!pane)
         return;
 
-    // Store title on the widget so we can retrieve it later
-    term->setProperty("currentTitle", title);
-
-    int stackIndex = m_stackWidget->indexOf(term);
+    int stackIndex = m_stackWidget->indexOf(pane);
     for (int i = 0; i < m_tabBar->count(); ++i) {
         if (m_tabBar->tabData(i).toInt() == stackIndex) {
             m_tabBar->setTabText(i, title);
@@ -191,18 +194,28 @@ void MainWindow::onTerminalTitleChanged(const QString &title) {
 }
 
 void MainWindow::onTerminalSessionClosed() {
-    auto *terminal = qobject_cast<TerminalWidget *>(sender());
-    if (!terminal)
+    auto *pane = qobject_cast<TermPane *>(sender());
+    if (!pane)
         return;
 
-    closeTerminal(terminal);
+    closePane(pane);
 }
 
-void MainWindow::closeTerminal(TerminalWidget *terminal) {
-    if (!terminal)
+void MainWindow::onPaneTerminalChanged(TerminalWidget *term) {
+    if (!term)
+        return;
+    auto *pane = qobject_cast<TermPane *>(sender());
+    if (!pane || pane != currentPane())
+        return;
+    setWindowTitle(term->property("currentTitle").toString());
+    term->setFocus();
+}
+
+void MainWindow::closePane(TermPane *pane) {
+    if (!pane)
         return;
 
-    const int stackIndex = m_stackWidget->indexOf(terminal);
+    const int stackIndex = m_stackWidget->indexOf(pane);
     if (stackIndex < 0)
         return;
 
@@ -214,8 +227,14 @@ void MainWindow::closeTerminal(TerminalWidget *terminal) {
     }
 }
 
+TermPane *MainWindow::currentPane() const {
+    return qobject_cast<TermPane *>(m_stackWidget->currentWidget());
+}
+
 TerminalWidget *MainWindow::currentTerminal() const {
-    return qobject_cast<TerminalWidget *>(m_stackWidget->currentWidget());
+    if (auto *pane = currentPane())
+        return pane->currentTerminal();
+    return nullptr;
 }
 
 void MainWindow::onSettingsTriggered() {

@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 #include "PtySession.h"
+#include "TermPane.h"
 #include "TerminalWidget.h"
 
 #include <DApplication>
@@ -24,7 +25,10 @@ TerminalWidget *currentTerminal(MainWindow &window) {
     auto *stack = window.findChild<QStackedWidget *>();
     if (!stack)
         return nullptr;
-    return qobject_cast<TerminalWidget *>(stack->currentWidget());
+    auto *pane = qobject_cast<TermPane *>(stack->currentWidget());
+    if (!pane)
+        return nullptr;
+    return pane->currentTerminal();
 }
 
 DTabBar *tabBar(MainWindow &window) {

@@ -1,0 +1,164 @@
+#include "TermPane.h"
+
+#include "AppSettings.h"
+#include "TerminalWidget.h"
+
+#include <QDebug>
+#include <QSplitter>
+#include <QVBoxLayout>
+
+TermPane::TermPane(QWidget *parent) : QWidget(parent) {
+    m_layout = new QVBoxLayout(this);
+    m_layout->setSpacing(0);
+    m_layout->setContentsMargins(0, 0, 0, 0);
+
+    auto *term = createTerminal();
+    m_layout->addWidget(term);
+    m_rootWidget = term;
+    setCurrentTerminal(term);
+}
+
+TerminalWidget *TermPane::currentTerminal() const {
+    return m_currentTerm;
+}
+
+TerminalWidget *TermPane::createTerminal() {
+    auto *term = new TerminalWidget(this);
+    term->initialize();
+
+    auto *settings = AppSettings::instance();
+    term->setTerminalFont(settings->terminalFont());
+    term->setCursorShape(settings->cursorShape());
+    term->setCursorBlinkEnabled(settings->cursorBlink());
+    term->setScrollbackLines(settings->scrollbackLines());
+
+    setupTerminalConnections(term);
+    return term;
+}
+
+void TermPane::setupTerminalConnections(TerminalWidget *term) {
+    connect(term, &TerminalWidget::terminalTitleChanged, this, [this, term](const QString &title) {
+        term->setProperty("currentTitle", title);
+        if (m_currentTerm == term)
+            Q_EMIT terminalTitleChanged(title);
+    });
+    connect(term, &TerminalWidget::sessionClosed, this, [this, term]() { removeTerminal(term); });
+    connect(term, &TerminalWidget::focusGained, this, [this, term]() { setCurrentTerminal(term); });
+    connect(term, &TerminalWidget::requestHorizontalSplit, this, [this]() { splitCurrent(Qt::Horizontal); });
+    connect(term, &TerminalWidget::requestVerticalSplit, this, [this]() { splitCurrent(Qt::Vertical); });
+    connect(term, &TerminalWidget::requestCloseSplit, this, &TermPane::closeCurrentSplit);
+}
+
+void TermPane::setCurrentTerminal(TerminalWidget *term) {
+    if (m_currentTerm == term)
+        return;
+    m_currentTerm = term;
+    Q_EMIT currentTerminalChanged(term);
+}
+
+void TermPane::splitCurrent(Qt::Orientation orientation) {
+    if (!m_currentTerm)
+        return;
+
+    TerminalWidget *term = m_currentTerm;
+    auto *splitter = qobject_cast<QSplitter *>(term->parentWidget());
+
+    if (splitter && splitter->orientation() == orientation) {
+        // Same orientation: split the occupied space evenly
+        int index = splitter->indexOf(term);
+        QList<int> sizes = splitter->sizes();
+        int half = sizes.at(index) / 2;
+        sizes[index] = half;
+        sizes.insert(index + 1, half);
+        TerminalWidget *newTerm = createTerminal();
+        splitter->insertWidget(index + 1, newTerm);
+        splitter->setSizes(sizes);
+        setCurrentTerminal(newTerm);
+    } else if (splitter) {
+        // Different orientation: create a sub-splitter that occupies the same space
+        int index = splitter->indexOf(term);
+        QList<int> sizes = splitter->sizes();
+        auto *newSplitter = new QSplitter(orientation, this);
+        newSplitter->setChildrenCollapsible(false);
+        newSplitter->setHandleWidth(1);
+        term->setParent(nullptr);
+        TerminalWidget *newTerm = createTerminal();
+        newSplitter->addWidget(term);
+        newSplitter->addWidget(newTerm);
+        newSplitter->setSizes({1, 1});
+        splitter->insertWidget(index, newSplitter);
+        splitter->setSizes(sizes);
+        setCurrentTerminal(newTerm);
+    } else {
+        // No splitter yet: replace the root widget with a splitter
+        auto *newSplitter = new QSplitter(orientation, this);
+        newSplitter->setChildrenCollapsible(false);
+        newSplitter->setHandleWidth(1);
+        m_layout->removeWidget(term);
+        term->setParent(nullptr);
+        TerminalWidget *newTerm = createTerminal();
+        newSplitter->addWidget(term);
+        newSplitter->addWidget(newTerm);
+        newSplitter->setSizes({1, 1});
+        m_layout->addWidget(newSplitter);
+        m_rootWidget = newSplitter;
+        setCurrentTerminal(newTerm);
+    }
+}
+
+void TermPane::closeCurrentSplit() {
+    removeTerminal(m_currentTerm);
+}
+
+void TermPane::removeTerminal(TerminalWidget *term) {
+    if (!term)
+        return;
+
+    auto *splitter = qobject_cast<QSplitter *>(term->parentWidget());
+    if (!splitter) {
+        // This is the only terminal in the pane
+        if (m_currentTerm == term)
+            m_currentTerm = nullptr;
+        term->deleteLater();
+        Q_EMIT sessionClosed();
+        return;
+    }
+
+    int index = splitter->indexOf(term);
+    term->setParent(nullptr);
+    term->deleteLater();
+
+    // If the splitter now has only one widget left, promote it
+    if (splitter->count() == 1) {
+        QWidget *remaining = splitter->widget(0);
+        remaining->setParent(nullptr);
+        auto *parentSplitter = qobject_cast<QSplitter *>(splitter->parentWidget());
+        if (parentSplitter) {
+            int parentIndex = parentSplitter->indexOf(splitter);
+            QList<int> sizes = parentSplitter->sizes();
+            parentSplitter->insertWidget(parentIndex, remaining);
+            sizes.removeAt(parentIndex);
+            sizes.insert(parentIndex, splitter->sizes().first());
+            parentSplitter->setSizes(sizes);
+            splitter->setParent(nullptr);
+            splitter->deleteLater();
+        } else {
+            m_layout->removeWidget(splitter);
+            splitter->setParent(nullptr);
+            splitter->deleteLater();
+            m_layout->addWidget(remaining);
+            m_rootWidget = remaining;
+        }
+    }
+
+    // Update current terminal if the removed one was current
+    if (m_currentTerm == term) {
+        if (splitter->count() > 0) {
+            int newIndex = qMin(index, splitter->count() - 1);
+            if (auto *newTerm = qobject_cast<TerminalWidget *>(splitter->widget(newIndex)))
+                setCurrentTerminal(newTerm);
+        } else {
+            m_currentTerm = nullptr;
+        }
+    }
+}

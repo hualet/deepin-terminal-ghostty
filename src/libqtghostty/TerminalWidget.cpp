@@ -2,8 +2,10 @@
 
 #include "PtySession.h"
 
+#include <QContextMenuEvent>
 #include <QFontMetrics>
 #include <QKeyEvent>
+#include <QMenu>
 #include <QPainter>
 #include <QWheelEvent>
 
@@ -665,6 +667,7 @@ void TerminalWidget::focusInEvent(QFocusEvent *event) {
     if (m_cursorBlinkEnabled)
         m_blinkTimer->start();
     update();
+    Q_EMIT focusGained();
 }
 
 void TerminalWidget::focusOutEvent(QFocusEvent *event) {
@@ -726,4 +729,20 @@ void TerminalWidget::onPtyDataReceived(const QByteArray &data) {
 
 void TerminalWidget::onPtySessionClosed() {
     Q_EMIT sessionClosed();
+}
+
+void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
+    QMenu menu(this);
+    auto *hSplit = menu.addAction(tr("Horizontal Split"));
+    auto *vSplit = menu.addAction(tr("Vertical Split"));
+    menu.addSeparator();
+    auto *closeSplit = menu.addAction(tr("Close Split"));
+
+    auto *action = menu.exec(event->globalPos());
+    if (action == hSplit)
+        Q_EMIT requestHorizontalSplit();
+    else if (action == vSplit)
+        Q_EMIT requestVerticalSplit();
+    else if (action == closeSplit)
+        Q_EMIT requestCloseSplit();
 }
