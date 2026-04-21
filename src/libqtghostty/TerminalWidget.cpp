@@ -88,6 +88,13 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     m_cellWidth = fm.horizontalAdvance('M');
     m_cellHeight = fm.height();
     m_fontAscent = fm.ascent();
+
+    m_blinkTimer = new QTimer(this);
+    m_blinkTimer->setInterval(500);
+    connect(m_blinkTimer, &QTimer::timeout, this, [this]() {
+        m_cursorBlinkVisible = !m_cursorBlinkVisible;
+        update();
+    });
 }
 
 TerminalWidget::~TerminalWidget() {
@@ -129,7 +136,7 @@ bool TerminalWidget::setupTerminal() {
     GhosttyTerminalOptions opts = {
         .cols = m_cols,
         .rows = m_rows,
-        .max_scrollback = 1000,
+        .max_scrollback = static_cast<uint32_t>(m_scrollbackLines),
     };
 
     GhosttyResult err = ghostty_terminal_new(nullptr, &m_terminal, opts);
@@ -330,7 +337,28 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
 
         int curX = cx * m_cellWidth;
         int curY = cy * m_cellHeight;
-        painter.fillRect(curX, curY, m_cellWidth, m_cellHeight, QColor(curColor.r, curColor.g, curColor.b, 128));
+        bool cursorBlinking = false;
+        ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_BLINKING, &cursorBlinking);
+
+        bool drawCursor = true;
+        if (m_cursorBlinkEnabled && cursorBlinking) {
+            drawCursor = m_cursorBlinkVisible;
+        }
+
+        if (drawCursor) {
+            QColor cursorColor(curColor.r, curColor.g, curColor.b, 180);
+            switch (m_cursorShape) {
+                case 1: // Bar
+                    painter.fillRect(curX, curY, 2, m_cellHeight, cursorColor);
+                    break;
+                case 2: // Underline
+                    painter.fillRect(curX, curY + m_cellHeight - 2, m_cellWidth, 2, cursorColor);
+                    break;
+                default: // Block
+                    painter.fillRect(curX, curY, m_cellWidth, m_cellHeight, cursorColor);
+                    break;
+            }
+        }
     }
 
     GhosttyRenderStateDirty cleanState = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
@@ -595,10 +623,47 @@ bool TerminalWidget::focusNextPrevChild(bool next) {
     return false;
 }
 
+void TerminalWidget::setTerminalFont(const QFont &font) {
+    m_font = font;
+    m_font.setStyleHint(QFont::Monospace);
+    m_font.setFixedPitch(true);
+
+    QFontMetrics fm(m_font);
+    m_cellWidth = fm.horizontalAdvance('M');
+    m_cellHeight = fm.height();
+    m_fontAscent = fm.ascent();
+
+    updateGridSize();
+    update();
+}
+
+void TerminalWidget::setCursorShape(int shape) {
+    m_cursorShape = shape;
+    update();
+}
+
+void TerminalWidget::setCursorBlinkEnabled(bool blink) {
+    m_cursorBlinkEnabled = blink;
+    if (m_hasFocus) {
+        if (blink)
+            m_blinkTimer->start();
+        else
+            m_blinkTimer->stop();
+        m_cursorBlinkVisible = true;
+        update();
+    }
+}
+
+void TerminalWidget::setScrollbackLines(int lines) {
+    m_scrollbackLines = lines;
+}
+
 void TerminalWidget::focusInEvent(QFocusEvent *event) {
     QWidget::focusInEvent(event);
     m_hasFocus = true;
     sendFocusEvent(true);
+    if (m_cursorBlinkEnabled)
+        m_blinkTimer->start();
     update();
 }
 
@@ -606,6 +671,8 @@ void TerminalWidget::focusOutEvent(QFocusEvent *event) {
     QWidget::focusOutEvent(event);
     m_hasFocus = false;
     sendFocusEvent(false);
+    m_blinkTimer->stop();
+    m_cursorBlinkVisible = true;
     update();
 }
 

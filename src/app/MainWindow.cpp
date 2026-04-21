@@ -1,10 +1,13 @@
 #include "MainWindow.h"
 
+#include "AppSettings.h"
+#include "SettingsDialog.h"
 #include "TerminalWidget.h"
 
 #include <DTitlebar>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QMenu>
 #include <QStackedWidget>
 
 MainWindow::MainWindow(QWidget *parent)
@@ -32,6 +35,27 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Titlebar: icon + tabs
     setupTitleBar();
+
+    // Connect global settings changes to all terminals
+    auto *settings = AppSettings::instance();
+    connect(settings, &AppSettings::terminalFontChanged, this, [this](const QFont &font) {
+        for (int i = 0; i < m_stackWidget->count(); ++i) {
+            if (auto *term = qobject_cast<TerminalWidget *>(m_stackWidget->widget(i)))
+                term->setTerminalFont(font);
+        }
+    });
+    connect(settings, &AppSettings::cursorShapeChanged, this, [this](int shape) {
+        for (int i = 0; i < m_stackWidget->count(); ++i) {
+            if (auto *term = qobject_cast<TerminalWidget *>(m_stackWidget->widget(i)))
+                term->setCursorShape(shape);
+        }
+    });
+    connect(settings, &AppSettings::cursorBlinkChanged, this, [this](bool blink) {
+        for (int i = 0; i < m_stackWidget->count(); ++i) {
+            if (auto *term = qobject_cast<TerminalWidget *>(m_stackWidget->widget(i)))
+                term->setCursorBlinkEnabled(blink);
+        }
+    });
 
     // Tab bar configuration
     m_tabBar->setTabsClosable(true);
@@ -66,10 +90,23 @@ void MainWindow::setupTitleBar() {
     tabWrapper->setLayout(layout);
 
     tb->setCustomWidget(tabWrapper);
+
+    auto *menu = new QMenu(this);
+    auto *settingsAction = menu->addAction(tr("Settings"));
+    connect(settingsAction, &QAction::triggered, this, &MainWindow::onSettingsTriggered);
+    tb->setMenu(menu);
 }
 
 void MainWindow::addTab(bool activate) {
     auto *terminal = new TerminalWidget(m_stackWidget);
+
+    // Apply current settings to the new terminal before initialization
+    auto *settings = AppSettings::instance();
+    terminal->setTerminalFont(settings->terminalFont());
+    terminal->setCursorShape(settings->cursorShape());
+    terminal->setCursorBlinkEnabled(settings->cursorBlink());
+    terminal->setScrollbackLines(settings->scrollbackLines());
+
     if (!terminal->initialize()) {
         terminal->deleteLater();
         return;
@@ -179,6 +216,15 @@ void MainWindow::closeTerminal(TerminalWidget *terminal) {
 
 TerminalWidget *MainWindow::currentTerminal() const {
     return qobject_cast<TerminalWidget *>(m_stackWidget->currentWidget());
+}
+
+void MainWindow::onSettingsTriggered() {
+    if (!m_settingsDialog) {
+        m_settingsDialog = new SettingsDialog(this);
+    }
+    m_settingsDialog->show();
+    m_settingsDialog->raise();
+    m_settingsDialog->activateWindow();
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {

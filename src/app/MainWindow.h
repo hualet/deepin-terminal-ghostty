@@ -3,6 +3,8 @@
 #include <DMainWindow>
 #include <DTabBar>
 
+class SettingsDialog;
+
 DWIDGET_USE_NAMESPACE
 
 class QStackedWidget;
@@ -24,6 +26,7 @@ private slots:
     void onTabCurrentChanged(int index);
     void onTerminalTitleChanged(const QString &title);
     void onTerminalSessionClosed();
+    void onSettingsTriggered();
 
 private:
     void setupTitleBar();
@@ -33,4 +36,5 @@ private:
 
     DTabBar *m_tabBar = nullptr;
     QStackedWidget *m_stackWidget = nullptr;
+    SettingsDialog *m_settingsDialog = nullptr;
 };

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QFont>
+#include <QTimer>
 #include <QWidget>
 
 // Qt defines 'emit' as a no-op macro; ghostty headers use 'emit' as a struct
@@ -21,6 +22,11 @@ public:
     ~TerminalWidget() override;
 
     bool initialize();
+
+    void setTerminalFont(const QFont &font);
+    void setCursorShape(int shape);
+    void setCursorBlinkEnabled(bool blink);
+    void setScrollbackLines(int lines);
 
 signals:
     void terminalTitleChanged(const QString &title);
@@ -73,6 +79,15 @@ private:
 
     // Focus tracking
     bool m_hasFocus = false;
+
+    // Cursor settings
+    int m_cursorShape = 0;
+    bool m_cursorBlinkEnabled = true;
+    bool m_cursorBlinkVisible = true;
+    QTimer *m_blinkTimer = nullptr;
+
+    // Scrollback
+    int m_scrollbackLines = 1000;
 
     // Effects callbacks
     friend void effectWritePty(GhosttyTerminal terminal, void *userdata, const uint8_t *data, size_t len);

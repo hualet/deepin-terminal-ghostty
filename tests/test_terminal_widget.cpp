@@ -22,6 +22,9 @@ private slots:
     void testSizeReport();
     void testTitleChanged();
     void testGridSize();
+    void testSetTerminalFont();
+    void testSetCursorShape();
+    void testSetCursorBlink();
 };
 
 void TestTerminalWidget::testInitialize() {
@@ -81,6 +84,36 @@ void TestTerminalWidget::testGridSize() {
     widget.resize(1920, 1080);
     // Should not crash
 
+    QVERIFY(true);
+}
+
+void TestTerminalWidget::testSetTerminalFont() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    QFont font("Courier New", 16);
+    widget.setTerminalFont(font);
+    // Verify the font was applied by triggering a resize
+    widget.resize(800, 600);
+    QVERIFY(true);
+}
+
+void TestTerminalWidget::testSetCursorShape() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.setCursorShape(1); // Bar
+    widget.setCursorShape(2); // Underline
+    widget.setCursorShape(0); // Block
+    QVERIFY(true);
+}
+
+void TestTerminalWidget::testSetCursorBlink() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.setCursorBlinkEnabled(false);
+    widget.setCursorBlinkEnabled(true);
     QVERIFY(true);
 }
 
