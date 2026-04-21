@@ -1,10 +1,10 @@
 # deepin-terminal-ghostty
 
-A minimal terminal emulator built with **C++20 / Qt6 Widgets / DTK6** and the **libghostty-vt** virtual terminal library extracted from [Ghostty](https://ghostty.org).
+A **feature-rich terminal emulator** for Linux built with **C++20 / Qt6 Widgets / DTK6** and the **libghostty-vt** virtual terminal library from [Ghostty](https://ghostty.org). It aims to deliver a high-performance terminal experience deeply integrated with the Deepin desktop environment.
 
-This is a proof-of-concept reference implementation showing how to embed `libghostty-vt` into a Qt application. It supports PTY shell sessions, VT sequence parsing, incremental render-state based drawing, keyboard encoding (including Kitty keyboard protocol), focus events, and scrollback scrolling.
+The project provides PTY shell sessions, full VT sequence parsing, incremental render-state based drawing, keyboard encoding (including Kitty keyboard protocol), DTK-native window chrome with multi-tab support, focus events, and scrollback scrolling. The rendering layer is currently CPU-based (`QPainter`) with a planned migration to GPU rendering.
 
-> **Status:** Minimal viable implementation. Functional for daily shell usage, with known limitations listed below.
+> **Status:** Active development. Core VT, PTY, multi-tab UI, and DTK theming are functional. See the Roadmap section below for upcoming features.
 
 ---
 
@@ -84,7 +84,7 @@ Individual test binaries:
 
 ## Architecture
 
-The project is split into a reusable Qt library (`libqtghostty`) and a minimal demo application.
+The project is split into a reusable Qt library (`libqtghostty`) and the terminal application (`deepin-terminal-ghostty`).
 
 ### libqtghostty
 
@@ -135,7 +135,7 @@ A `QWidget` that owns the full Ghostty VT stack:
 
 ### deepin-terminal-ghostty (`src/app/MainWindow.cpp`)
 
-A minimal demo application that links against `libqtghostty`. `MainWindow` (a `DMainWindow`) embeds a `DTabBar` into the DTK titlebar and uses a `QStackedWidget` to host multiple `TerminalWidget` instances:
+The main terminal application. `MainWindow` (a `DMainWindow`) embeds a `DTabBar` into the DTK titlebar and uses a `QStackedWidget` to host multiple `TerminalWidget` instances:
 
 - **New tab**: Click the "+" button on the tab bar.
 - **Switch tab**: Click a tab; the corresponding `TerminalWidget` is brought to the front.
@@ -143,16 +143,28 @@ A minimal demo application that links against `libqtghostty`. `MainWindow` (a `D
 - **Title sync**: Each `TerminalWidget` emits `terminalTitleChanged`; the active tab text and window title are updated accordingly.
 - **Titlebar icon**: `titlebar()->setIcon(QIcon::fromTheme("utilities-terminal"))` sets the logo in the top-left corner.
 
-## Known Limitations
+## Roadmap
 
-This is intentionally a **minimal** implementation. Notable gaps:
-
-- **Wide characters (CJK)** are drawn as single-width cells — may be truncated or overlap
-- **Mouse event forwarding** is not implemented (wheel only scrolls scrollback history)
-- **Kitty Graphics Protocol** images are not rendered
-- **Copy/paste** and **selection** are not implemented
-- **Font fallback** for missing glyphs relies on Qt's default behavior
-- **24-bit true color** cells work, but bold/italic rendering is basic (QFont weight/slant only)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Core VT emulation | ✅ Done | Via `libghostty-vt` |
+| PTY session management | ✅ Done | `forkpty`, non-blocking I/O, graceful child shutdown |
+| Incremental CPU rendering | ✅ Done | Dirty-row tracking with `QPainter` |
+| Kitty keyboard protocol | ✅ Done | Full key event encoding |
+| DTK6 native chrome | ✅ Done | `DMainWindow`, `DApplication`, light/dark theme |
+| Multi-tab support | ✅ Done | `DTabBar` + `QStackedWidget` |
+| Focus events & scrollback | ✅ Done | — |
+| Unit tests | ✅ Done | `Qt Test` + CTest |
+| **GPU rendering** | 🚧 Planned | OpenGL/Vulkan migration (see `docs/research/`) |
+| CJK wide characters | 🚧 Planned | Proper double-width cell handling |
+| Mouse event forwarding | 🚧 Planned | Full mouse reporting to terminal apps |
+| Kitty Graphics Protocol | 🚧 Planned | Inline image rendering |
+| Copy/paste & selection | 🚧 Planned | Clipboard integration and mouse selection |
+| Font fallback (fontconfig) | 🚧 Planned | Beyond Qt default behavior |
+| Bold/italic font variants | 🚧 Planned | Load matching font faces |
+| Window splits | 🚧 Planned | Horizontal/vertical panes |
+| Settings UI | 🚧 Planned | Preferences dialog |
+| Session persistence | 🚧 Planned | Restore tabs on restart |
 
 ## License
 
