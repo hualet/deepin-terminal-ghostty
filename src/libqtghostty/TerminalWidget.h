@@ -30,6 +30,11 @@ public:
     void setCursorBlinkEnabled(bool blink);
     void setScrollbackLines(int lines);
 
+    void selectAll();
+    void zoomIn();
+    void zoomOut();
+    void zoomReset();
+
     void performSearch(const QString &query);
     void clearSearch();
     void findNext();

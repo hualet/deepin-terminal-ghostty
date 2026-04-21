@@ -8,7 +8,9 @@
 #include <DTitlebar>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QKeyEvent>
 #include <QMenu>
+#include <QShortcut>
 #include <QStackedWidget>
 
 MainWindow::MainWindow(QWidget *parent)
@@ -84,6 +86,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     // First tab
     addTab(true);
+
+    setupShortcuts();
 }
 
 MainWindow::~MainWindow() = default;
@@ -244,6 +248,118 @@ void MainWindow::onSettingsTriggered() {
     m_settingsDialog->show();
     m_settingsDialog->raise();
     m_settingsDialog->activateWindow();
+}
+
+void MainWindow::setupShortcuts() {
+    auto createOnce = [this](QShortcut *&ptr, const auto &slot) {
+        if (!ptr) {
+            ptr = new QShortcut(this);
+            connect(ptr, &QShortcut::activated, this, slot);
+        }
+    };
+
+    createOnce(m_scNewTab, &MainWindow::onTabAddRequested);
+    createOnce(m_scCloseTab, [this]() {
+        int idx = m_tabBar->currentIndex();
+        if (idx >= 0)
+            onTabCloseRequested(idx);
+    });
+    createOnce(m_scCloseOtherTabs, &MainWindow::closeOtherTabs);
+    createOnce(m_scPrevTab, [this]() {
+        int idx = m_tabBar->currentIndex();
+        if (idx > 0)
+            m_tabBar->setCurrentIndex(idx - 1);
+    });
+    createOnce(m_scNextTab, [this]() {
+        int idx = m_tabBar->currentIndex();
+        if (idx >= 0 && idx < m_tabBar->count() - 1)
+            m_tabBar->setCurrentIndex(idx + 1);
+    });
+    createOnce(m_scVSplit, [this]() {
+        if (auto *pane = currentPane())
+            pane->splitCurrent(Qt::Vertical);
+    });
+    createOnce(m_scHSplit, [this]() {
+        if (auto *pane = currentPane())
+            pane->splitCurrent(Qt::Horizontal);
+    });
+    createOnce(m_scCloseWorkspace, [this]() {
+        if (auto *pane = currentPane())
+            pane->closeCurrentSplit();
+    });
+    createOnce(m_scFullscreen, [this]() {
+        if (isFullScreen())
+            showNormal();
+        else
+            showFullScreen();
+    });
+
+    // Create switch-to-tab shortcuts (1-9) once
+    for (int i = 1; i <= 9; ++i) {
+        bool exists = false;
+        for (QShortcut *sc : findChildren<QShortcut *>()) {
+            if (sc->property("tabIndex").toInt() == i) {
+                exists = true;
+                break;
+            }
+        }
+        if (!exists) {
+            auto *sc = new QShortcut(this);
+            connect(sc, &QShortcut::activated, this, [this, i]() { gotoTab(i - 1); });
+            sc->setProperty("tabIndex", i);
+        }
+    }
+
+    auto *settings = AppSettings::instance();
+    static bool connected = false;
+    if (!connected) {
+        connect(settings->dsettings(), &Dtk::Core::DSettings::valueChanged, this,
+                [this](const QString &key, const QVariant &) {
+                    if (key.startsWith("shortcuts."))
+                        setupShortcuts();
+                });
+        connected = true;
+    }
+
+    updateShortcut(m_scNewTab, "new_tab");
+    updateShortcut(m_scCloseTab, "close_tab");
+    updateShortcut(m_scCloseOtherTabs, "close_other_tabs");
+    updateShortcut(m_scPrevTab, "previous_tab");
+    updateShortcut(m_scNextTab, "next_tab");
+    updateShortcut(m_scVSplit, "vertical_split");
+    updateShortcut(m_scHSplit, "horionzal_split");
+    updateShortcut(m_scCloseWorkspace, "close_workspace");
+    updateShortcut(m_scFullscreen, "switch_fullscreen");
+
+    for (int i = 1; i <= 9; ++i) {
+        for (QShortcut *sc : findChildren<QShortcut *>()) {
+            if (sc->property("tabIndex").toInt() == i) {
+                updateShortcut(sc, QString("switch_label_win_%1").arg(i));
+                break;
+            }
+        }
+    }
+}
+
+void MainWindow::updateShortcut(QShortcut *shortcut, const QString &name) {
+    if (!shortcut)
+        return;
+    shortcut->setKey(AppSettings::instance()->shortcut(name));
+}
+
+void MainWindow::closeOtherTabs() {
+    int current = m_tabBar->currentIndex();
+    if (current < 0)
+        return;
+    for (int i = m_tabBar->count() - 1; i >= 0; --i) {
+        if (i != current)
+            onTabCloseRequested(i);
+    }
+}
+
+void MainWindow::gotoTab(int index) {
+    if (index >= 0 && index < m_tabBar->count())
+        m_tabBar->setCurrentIndex(index);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {

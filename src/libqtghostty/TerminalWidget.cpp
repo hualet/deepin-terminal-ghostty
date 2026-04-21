@@ -1006,3 +1006,28 @@ void TerminalWidget::pasteFromClipboard() {
     if (!text.isEmpty())
         m_ptySession->write(text.toUtf8());
 }
+
+void TerminalWidget::selectAll() {
+    if (!m_terminal)
+        return;
+    size_t totalRows = 0;
+    ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_TOTAL_ROWS, &totalRows);
+    m_selection.active = true;
+    m_selection.startRow = 0;
+    m_selection.startCol = 0;
+    m_selection.endRow = static_cast<int>(totalRows) - 1;
+    m_selection.endCol = m_cols - 1;
+    update();
+}
+
+void TerminalWidget::zoomIn() {
+    QFont f = m_font;
+    f.setPointSize(qMin(f.pointSize() + 1, 72));
+    setTerminalFont(f);
+}
+
+void TerminalWidget::zoomOut() {
+    QFont f = m_font;
+    f.setPointSize(qMax(f.pointSize() - 1, 5));
+    setTerminalFont(f);
+}

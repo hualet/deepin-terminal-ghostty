@@ -204,6 +204,22 @@ bool TermPane::eventFilter(QObject *watched, QEvent *event) {
         term->pasteFromClipboard();
         return true;
     }
+    if (pressed == settings->shortcut("select_all")) {
+        term->selectAll();
+        return true;
+    }
+    if (pressed == settings->shortcut("zoom_in")) {
+        term->zoomIn();
+        return true;
+    }
+    if (pressed == settings->shortcut("zoom_out")) {
+        term->zoomOut();
+        return true;
+    }
+    if (pressed == settings->shortcut("default_size")) {
+        term->setTerminalFont(settings->terminalFont());
+        return true;
+    }
 
     return false;
 }
