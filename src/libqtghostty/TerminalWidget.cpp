@@ -508,6 +508,56 @@ uint32_t TerminalWidget::unshiftedCodepointForKey(int key) const
     }
 }
 
+namespace {
+
+// Standard C0 control character produced by Ctrl + printable key.
+// Returns 0 when the combination does not map to a well-known control char.
+char ctrlCharForKey(int key, Qt::KeyboardModifiers mods)
+{
+    if (!(mods & Qt::ControlModifier))
+        return 0;
+
+    if (key >= Qt::Key_A && key <= Qt::Key_Z)
+        return static_cast<char>(key - Qt::Key_A + 1); // Ctrl+A = 0x01 … Ctrl+Z = 0x1A
+
+    switch (key) {
+    case Qt::Key_2:
+    case Qt::Key_At:
+        return 0x00; // Ctrl+@ = NUL
+    case Qt::Key_3:
+    case Qt::Key_BracketLeft:
+        return 0x1B; // Ctrl+[ = ESC
+    case Qt::Key_4:
+    case Qt::Key_Backslash:
+        return 0x1C; // Ctrl+\ = FS
+    case Qt::Key_5:
+    case Qt::Key_BracketRight:
+        return 0x1D; // Ctrl+] = GS
+    case Qt::Key_6:
+        return 0x1E; // Ctrl+^ = RS
+    case Qt::Key_7:
+    case Qt::Key_Minus:
+    case Qt::Key_Underscore:
+        return 0x1F; // Ctrl+_ = US
+    case Qt::Key_8:
+        return 0x7F; // Ctrl+? = DEL
+    case Qt::Key_Space:
+        return 0x00; // Ctrl+Space = NUL
+    default:
+        return 0;
+    }
+}
+
+bool isC0ControlChar(const QByteArray &text)
+{
+    if (text.size() != 1)
+        return false;
+    unsigned char c = static_cast<unsigned char>(text.at(0));
+    return c <= 0x1F || c == 0x7F;
+}
+
+} // anonymous namespace
+
 void TerminalWidget::keyPressEvent(QKeyEvent *event)
 {
     if (!m_terminal || !m_keyEncoder || !m_keyEvent || !m_ptySession) {
@@ -540,13 +590,25 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event)
     uint32_t ucp = unshiftedCodepointForKey(event->key());
     ghostty_key_event_set_unshifted_codepoint(m_keyEvent, ucp);
 
+    // consumed_mods: modifiers that the platform text input already accounted
+    // for when producing the UTF-8 text. For printable keys, shift/ctrl/alt
+    // are consumed because they change the resulting character.
     GhosttyMods consumed = 0;
-    if (ucp != 0 && (mods & GHOSTTY_MODS_SHIFT))
-        consumed |= GHOSTTY_MODS_SHIFT;
+    if (ucp != 0) {
+        if (mods & GHOSTTY_MODS_SHIFT)
+            consumed |= GHOSTTY_MODS_SHIFT;
+        if (mods & GHOSTTY_MODS_CTRL)
+            consumed |= GHOSTTY_MODS_CTRL;
+        if (mods & GHOSTTY_MODS_ALT)
+            consumed |= GHOSTTY_MODS_ALT;
+    }
     ghostty_key_event_set_consumed_mods(m_keyEvent, consumed);
 
     QByteArray textUtf8 = event->text().toUtf8();
-    if (!textUtf8.isEmpty()) {
+    // Do not pass C0 control characters as utf8 text; let the encoder
+    // derive them from the logical key + mods (Ghostty docs explicitly
+    // warn against passing U+0000–U+001F or U+007F here).
+    if (!textUtf8.isEmpty() && !isC0ControlChar(textUtf8)) {
         ghostty_key_event_set_utf8(m_keyEvent, textUtf8.constData(),
                                    static_cast<size_t>(textUtf8.size()));
     } else {
@@ -559,8 +621,20 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event)
                                                     buf, sizeof(buf), &written);
     if (err == GHOSTTY_SUCCESS && written > 0) {
         m_ptySession->write(QByteArray(buf, static_cast<int>(written)));
-    } else if (!textUtf8.isEmpty() && (err != GHOSTTY_SUCCESS || written == 0)) {
+    } else if (!textUtf8.isEmpty() && !isC0ControlChar(textUtf8) &&
+               (err != GHOSTTY_SUCCESS || written == 0)) {
         m_ptySession->write(textUtf8);
+    } else {
+        // Fallback: for standard Ctrl+letter/symbol combos, send the
+        // corresponding C0 control character directly when the encoder
+        // does not produce output.
+        char c0 = ctrlCharForKey(event->key(), event->modifiers());
+        if (c0 != 0) {
+            m_ptySession->write(QByteArray(1, c0));
+        } else if (gkey == GHOSTTY_KEY_UNIDENTIFIED) {
+            QWidget::keyPressEvent(event);
+            return;
+        }
     }
 }
 

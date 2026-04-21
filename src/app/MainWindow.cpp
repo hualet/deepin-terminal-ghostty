@@ -11,6 +11,22 @@ MainWindow::MainWindow(QWidget *parent)
     , m_tabBar(new DTabBar(this))
     , m_stackWidget(new QStackedWidget(this))
 {
+    // Prevent DTK or Qt default actions from intercepting standard
+    // terminal keybindings (Ctrl+C, Ctrl+V, Ctrl+A, etc.).
+    for (QAction *action : findChildren<QAction *>()) {
+        QKeySequence seq = action->shortcut();
+        if (seq.isEmpty())
+            continue;
+        int key = seq[0].key();
+        Qt::KeyboardModifiers mods = seq[0].keyboardModifiers();
+        if ((mods & Qt::ControlModifier) &&
+            (key == Qt::Key_C || key == Qt::Key_V ||
+             key == Qt::Key_A || key == Qt::Key_X ||
+             key == Qt::Key_Z)) {
+            action->setShortcut(QKeySequence());
+        }
+    }
+
     // Window basics
     resize(960, 640);
     setWindowTitle("deepin-terminal-ghostty");
