@@ -7,3 +7,9 @@
   - [ ] 字体
 - [ ] 屏幕拆分
 - [ ] 查找
+- [ ] shell standard keybindings
+- [ ] kitty image protocol
+- [ ] 面向多 Agent 优化
+- [ ] SE
+  - [ ] 添加单元测试
+  - [ ] 添加自动化构建和打包
