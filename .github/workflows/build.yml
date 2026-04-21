@@ -32,16 +32,12 @@ jobs:
             libdtk6gui-dev \
             libdtk6widget-dev
 
-      - name: Clone Ghostty headers
-        run: |
-          git clone --depth 1 https://github.com/ghostty-org/ghostty.git /tmp/ghostty
-
       - name: Verify clang-format
         run: |
           clang-format --dry-run --Werror $(find src tests -name '*.cpp' -o -name '*.h')
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DGHOSTTY_INCLUDE_DIR=/tmp/ghostty/include
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
 
       - name: Build
         run: cmake --build build --parallel "$(nproc)"

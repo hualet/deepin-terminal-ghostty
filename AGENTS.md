@@ -51,11 +51,7 @@ sudo apt install cmake qt6-base-dev build-essential binutils \
   libdtk6widget-dev libdtk6core-dev libdtk6gui-dev
 ```
 
-Ghostty headers are required and are auto-discovered from common sibling paths. Override with:
-
-```bash
-cmake -B build -DGHOSTTY_INCLUDE_DIR=/path/to/ghostty/include
-```
+Ghostty headers are bundled in `lib/include/`.
 
 Build:
 
@@ -78,11 +74,9 @@ Build dependencies:
 sudo apt install build-essential debhelper cmake
 ```
 
-The build requires Ghostty headers. If they are not in a standard system path,
-set the environment variable before building:
+Build:
 
 ```bash
-export GHOSTTY_INCLUDE_DIR=/path/to/ghostty/include
 dpkg-buildpackage -us -uc -b
 ```
 

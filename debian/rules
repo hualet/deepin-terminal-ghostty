@@ -5,9 +5,5 @@ export DH_VERBOSE = 1
 %:
 	dh $@
 
-override_dh_auto_configure:
-	dh_auto_configure -- \
-		-DGHOSTTY_INCLUDE_DIR=$(if $(GHOSTTY_INCLUDE_DIR),$(GHOSTTY_INCLUDE_DIR),/usr/include/ghostty)
-
 override_dh_dwz:
 	dh_dwz --exclude=libghostty-vt.so.0

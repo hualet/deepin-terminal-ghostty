@@ -47,6 +47,7 @@ elseif(DEFINED ENV{GHOSTTY_INCLUDE_DIR} AND NOT "$ENV{GHOSTTY_INCLUDE_DIR}" STRE
   endif()
 else()
   foreach(_ghostty_candidate IN ITEMS
+    "${CMAKE_CURRENT_SOURCE_DIR}/lib/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../g/ghostty/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/../ghostty/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/ghostty/include"

@@ -42,13 +42,9 @@ jobs:
             libdtk6gui-dev \
             libdtk6widget-dev
 
-      - name: Clone Ghostty headers
-        run: |
-          git clone --depth 1 https://github.com/ghostty-org/ghostty.git /tmp/ghostty
-
       - name: Build Debian package
         run: |
-          GHOSTTY_INCLUDE_DIR=/tmp/ghostty/include dpkg-buildpackage -us -uc -b
+          dpkg-buildpackage -us -uc -b
           mkdir -p output
           find .. -maxdepth 1 -type f \
             -name 'deepin-terminal-ghostty_*.deb' \
