@@ -31,8 +31,10 @@ bool loadApplicationTranslation(QTranslator &translator) {
 
 int main(int argc, char *argv[]) {
     DApplication app(argc, argv);
+    app.setApplicationName(QStringLiteral("deepin-terminal-ghostty"));
     app.setProductName("deepin-terminal-ghostty");
     app.setApplicationDisplayName("Deepin Terminal Ghostty");
+    app.loadTranslator();
 
     QTranslator appTranslator;
     if (loadApplicationTranslation(appTranslator))

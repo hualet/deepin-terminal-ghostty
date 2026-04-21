@@ -24,6 +24,12 @@ set(GHOSTTY_STAGED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/ghostty-include")
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets LinguistTools)
 find_package(Dtk6 COMPONENTS Widget Core Gui REQUIRED)
+find_package(Dtk6Tools REQUIRED)
+
+DTK_CREATE_I18N_FROM_JSON(APP_SETTINGS_I18N_SOURCES
+  src/app/settings/default-config.json
+  settings_translation.cpp
+)
 
 set(APP_TRANSLATABLE_SOURCES
   src/app/main.cpp
@@ -31,6 +37,7 @@ set(APP_TRANSLATABLE_SOURCES
   src/app/AppSettings.cpp
   src/app/SettingsDialog.cpp
   src/libqtghostty/TerminalWidget.cpp
+  ${APP_SETTINGS_I18N_SOURCES}
 )
 
 set(APP_TRANSLATION_TS_FILES
