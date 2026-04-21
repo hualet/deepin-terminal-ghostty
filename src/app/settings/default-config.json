@@ -47,6 +47,36 @@
                     ]
                 }
             ]
+        },
+        {
+            "key": "shortcuts",
+            "name": "Shortcuts",
+            "groups": [
+                {
+                    "key": "terminal",
+                    "name": "Terminal",
+                    "options": [
+                        {
+                            "key": "copy",
+                            "name": "Copy",
+                            "type": "shortcut",
+                            "default": "Ctrl+Shift+C"
+                        },
+                        {
+                            "key": "paste",
+                            "name": "Paste",
+                            "type": "shortcut",
+                            "default": "Ctrl+Shift+V"
+                        },
+                        {
+                            "key": "find",
+                            "name": "Find",
+                            "type": "shortcut",
+                            "default": "Ctrl+Shift+F"
+                        }
+                    ]
+                }
+            ]
         }
     ]
 }

@@ -562,21 +562,6 @@ bool isC0ControlChar(const QByteArray &text) {
 } // anonymous namespace
 
 void TerminalWidget::keyPressEvent(QKeyEvent *event) {
-    if (event->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier) && event->key() == Qt::Key_F) {
-        Q_EMIT requestSearch();
-        return;
-    }
-
-    if (event->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier) && event->key() == Qt::Key_C) {
-        copyToClipboard();
-        return;
-    }
-
-    if (event->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier) && event->key() == Qt::Key_V) {
-        pasteFromClipboard();
-        return;
-    }
-
     if (!m_terminal || !m_keyEncoder || !m_keyEvent || !m_ptySession) {
         QWidget::keyPressEvent(event);
         return;

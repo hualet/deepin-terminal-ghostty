@@ -126,3 +126,11 @@ int AppSettings::scrollbackLines() const {
 void AppSettings::setScrollbackLines(int lines) {
     m_dsettings->setOption("basic.interface.scrollbackLines", lines);
 }
+
+QKeySequence AppSettings::shortcut(const QString &name) const {
+    return QKeySequence(m_dsettings->value(QString("shortcuts.terminal.%1").arg(name)).toString());
+}
+
+void AppSettings::setShortcut(const QString &name, const QKeySequence &seq) {
+    m_dsettings->setOption(QString("shortcuts.terminal.%1").arg(name), seq.toString());
+}

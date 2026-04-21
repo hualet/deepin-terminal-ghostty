@@ -5,6 +5,7 @@
 #include "TerminalWidget.h"
 
 #include <QDebug>
+#include <QKeyEvent>
 #include <QResizeEvent>
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -40,6 +41,7 @@ TerminalWidget *TermPane::createTerminal() {
     term->setCursorBlinkEnabled(settings->cursorBlink());
     term->setScrollbackLines(settings->scrollbackLines());
 
+    term->installEventFilter(this);
     setupTerminalConnections(term);
     return term;
 }
@@ -176,6 +178,34 @@ void TermPane::resizeEvent(QResizeEvent *event) {
     QWidget::resizeEvent(event);
     if (m_searchBar && m_searchBar->isVisible())
         m_searchBar->move(width() - m_searchBar->width(), 0);
+}
+
+bool TermPane::eventFilter(QObject *watched, QEvent *event) {
+    if (event->type() != QEvent::KeyPress)
+        return false;
+
+    auto *keyEvent = static_cast<QKeyEvent *>(event);
+    auto *term = qobject_cast<TerminalWidget *>(watched);
+    if (!term)
+        return false;
+
+    QKeySequence pressed(keyEvent->keyCombination());
+    auto *settings = AppSettings::instance();
+
+    if (pressed == settings->shortcut("find")) {
+        showSearchBar();
+        return true;
+    }
+    if (pressed == settings->shortcut("copy")) {
+        term->copyToClipboard();
+        return true;
+    }
+    if (pressed == settings->shortcut("paste")) {
+        term->pasteFromClipboard();
+        return true;
+    }
+
+    return false;
 }
 
 void TermPane::showSearchBar() {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QFont>
+#include <QKeySequence>
 #include <QObject>
 
 namespace Dtk::Core {
@@ -28,6 +29,9 @@ public:
 
     int scrollbackLines() const;
     void setScrollbackLines(int lines);
+
+    QKeySequence shortcut(const QString &name) const;
+    void setShortcut(const QString &name, const QKeySequence &seq);
 
 signals:
     void terminalFontChanged(const QFont &font);
