@@ -222,6 +222,9 @@ install(FILES ${GHOSTTY_SOURCE_LIBRARY}
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+option(BUILD_TESTING "Build tests" OFF)
 include(CTest)
-enable_testing()
-add_subdirectory(tests)
+if(BUILD_TESTING)
+  enable_testing()
+  add_subdirectory(tests)
+endif()

@@ -87,7 +87,7 @@ Built `.deb` files will appear in the parent directory.
 Run all tests:
 
 ```bash
-cmake -B build
+cmake -B build -DBUILD_TESTING=ON
 cmake --build build
 cd build && ctest --output-on-failure
 ```

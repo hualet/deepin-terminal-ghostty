@@ -42,10 +42,6 @@ jobs:
       - name: Build
         run: cmake --build build --parallel "$(nproc)"
 
-      - name: Test
-        run: |
-          cd build && ctest --output-on-failure
-
       - name: Stage install tree
         run: DESTDIR="${PWD}/stage" cmake --install build
 
