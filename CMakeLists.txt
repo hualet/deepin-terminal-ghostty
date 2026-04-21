@@ -190,3 +190,10 @@ add_custom_command(TARGET deepin-terminal-ghostty POST_BUILD
           "$<TARGET_FILE_DIR:deepin-terminal-ghostty>/"
   VERBATIM
 )
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+include(CTest)
+enable_testing()
+add_subdirectory(tests)

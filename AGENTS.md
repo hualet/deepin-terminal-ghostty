@@ -32,6 +32,10 @@ The project is intentionally small and focused: it opens a Qt window, spawns the
 │       ├── main.cpp        # DApplication entry point
 │       ├── MainWindow.h    # DMainWindow with DTabBar + QStackedWidget
 │       └── MainWindow.cpp  # Multi-tab terminal window implementation
+├── tests/
+│   ├── CMakeLists.txt      # Test configuration
+│   ├── test_pty_session.cpp    # PtySession unit tests
+│   └── test_terminal_widget.cpp # TerminalWidget unit tests
 └── docs/
     └── superpowers/        # Design specs and implementation plans (agent workspace)
 ```
@@ -151,9 +155,31 @@ The demo application. `MainWindow` (a `DMainWindow`) embeds a `DTabBar` into the
 
 ## Testing Strategy
 
-**Current state:** The repository has no automated test harness. Verification is manual.
+The project uses **Qt Test** (`Qt6::Test`) for automated unit tests. Tests are located in `tests/` and registered with CTest.
 
-**Manual verification targets:**
+### Running Tests
+
+```bash
+cmake -B build
+cmake --build build
+cd build && ctest --output-on-failure
+```
+
+Or run individual test binaries directly:
+
+```bash
+./build/tests/test_pty_session
+./build/tests/test_terminal_widget
+```
+
+### Test Coverage
+
+| Test File | Target | Key Scenarios |
+|-----------|--------|--------------|
+| `test_pty_session.cpp` | `PtySession` | Start shell, write/read I/O, resize, session close signal |
+| `test_terminal_widget.cpp` | `TerminalWidget` | Initialize, size report, OSC title sequence, grid sizing |
+
+### Manual verification targets
 
 - Configure and build with CMake successfully.
 - Launch the demo: `./build/deepin-terminal-ghostty`.

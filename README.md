@@ -42,6 +42,21 @@ To run:
 ./build/deepin-terminal-ghostty
 ```
 
+## Tests
+
+```bash
+cmake -B build
+cmake --build build
+cd build && ctest --output-on-failure
+```
+
+Individual test binaries:
+
+```bash
+./build/tests/test_pty_session
+./build/tests/test_terminal_widget
+```
+
 ## Project Structure
 
 ```
@@ -57,6 +72,10 @@ To run:
 │       ├── main.cpp        # Application entry point
 │       ├── MainWindow.h    # DMainWindow with DTabBar + QStackedWidget
 │       └── MainWindow.cpp  # Multi-tab terminal window implementation
+├── tests/
+│   ├── CMakeLists.txt      # Test configuration
+│   ├── test_pty_session.cpp    # PtySession unit tests
+│   └── test_terminal_widget.cpp # TerminalWidget unit tests
 └── docs/
     └── superpowers/        # Design plans and specs (agent workspace)
 ```
