@@ -165,6 +165,7 @@ set_target_properties(qtghostty PROPERTIES
 
 add_executable(deepin-terminal-ghostty
   src/app/main.cpp
+  src/app/MainWindow.cpp
 )
 
 target_link_libraries(deepin-terminal-ghostty PRIVATE

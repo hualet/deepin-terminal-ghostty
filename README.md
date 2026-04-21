@@ -54,7 +54,9 @@ To run:
 │   │   ├── PtySession.h/.cpp   # PTY lifecycle: forkpty, non-blocking I/O, child reaping
 │   │   └── TerminalWidget.h/.cpp # Ghostty VT integration, QPainter rendering, input encoding
 │   └── app/
-│       └── main.cpp        # Application entry point
+│       ├── main.cpp        # Application entry point
+│       ├── MainWindow.h    # DMainWindow with DTabBar + QStackedWidget
+│       └── MainWindow.cpp  # Multi-tab terminal window implementation
 └── docs/
     └── superpowers/        # Design plans and specs (agent workspace)
 ```
@@ -110,9 +112,15 @@ A `QWidget` that owns the full Ghostty VT stack:
 - `title_changed` — emits `terminalTitleChanged()` signal to update the window title
 - `color_scheme` — returns false (no OS scheme query implemented yet)
 
-### deepin-terminal-ghostty (`src/app/main.cpp`)
+### deepin-terminal-ghostty (`src/app/MainWindow.cpp`)
 
-A minimal demo application that links against `libqtghostty`. It uses `DApplication` and `DMainWindow` for Deepin-style window chrome, embeds a `TerminalWidget`, and wires the `terminalTitleChanged` signal to the window title.
+A minimal demo application that links against `libqtghostty`. `MainWindow` (a `DMainWindow`) embeds a `DTabBar` into the DTK titlebar and uses a `QStackedWidget` to host multiple `TerminalWidget` instances:
+
+- **New tab**: Click the "+" button on the tab bar.
+- **Switch tab**: Click a tab; the corresponding `TerminalWidget` is brought to the front.
+- **Close tab**: Click the "×" on a tab.
+- **Title sync**: Each `TerminalWidget` emits `terminalTitleChanged`; the active tab text and window title are updated accordingly.
+- **Titlebar icon**: `titlebar()->setIcon(QIcon::fromTheme("utilities-terminal"))` sets the logo in the top-left corner.
 
 ## Known Limitations
 
