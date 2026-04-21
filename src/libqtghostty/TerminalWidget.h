@@ -1,7 +1,7 @@
 #pragma once
 
-#include <QWidget>
 #include <QFont>
+#include <QWidget>
 
 // Qt defines 'emit' as a no-op macro; ghostty headers use 'emit' as a struct
 // member name in formatter.h, so we must undefine it before inclusion.
@@ -75,14 +75,10 @@ private:
     bool m_hasFocus = false;
 
     // Effects callbacks
-    friend void effectWritePty(GhosttyTerminal terminal, void *userdata,
-                               const uint8_t *data, size_t len);
-    friend bool effectSize(GhosttyTerminal terminal, void *userdata,
-                           GhosttySizeReportSize *out_size);
-    friend bool effectDeviceAttributes(GhosttyTerminal terminal, void *userdata,
-                                       GhosttyDeviceAttributes *out_attrs);
+    friend void effectWritePty(GhosttyTerminal terminal, void *userdata, const uint8_t *data, size_t len);
+    friend bool effectSize(GhosttyTerminal terminal, void *userdata, GhosttySizeReportSize *out_size);
+    friend bool effectDeviceAttributes(GhosttyTerminal terminal, void *userdata, GhosttyDeviceAttributes *out_attrs);
     friend GhosttyString effectXtversion(GhosttyTerminal terminal, void *userdata);
     friend void effectTitleChanged(GhosttyTerminal terminal, void *userdata);
-    friend bool effectColorScheme(GhosttyTerminal terminal, void *userdata,
-                                  GhosttyColorScheme *out_scheme);
+    friend bool effectColorScheme(GhosttyTerminal terminal, void *userdata, GhosttyColorScheme *out_scheme);
 };

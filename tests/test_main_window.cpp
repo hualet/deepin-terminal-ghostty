@@ -1,13 +1,12 @@
-#include <QSignalSpy>
-#include <QStackedWidget>
-#include <QTest>
-
-#include <DApplication>
-#include <DTabBar>
-
 #include "MainWindow.h"
 #include "PtySession.h"
 #include "TerminalWidget.h"
+
+#include <DApplication>
+#include <DTabBar>
+#include <QSignalSpy>
+#include <QStackedWidget>
+#include <QTest>
 
 DWIDGET_USE_NAMESPACE
 
@@ -21,21 +20,18 @@ private slots:
 
 namespace {
 
-TerminalWidget *currentTerminal(MainWindow &window)
-{
+TerminalWidget *currentTerminal(MainWindow &window) {
     auto *stack = window.findChild<QStackedWidget *>();
     if (!stack)
         return nullptr;
     return qobject_cast<TerminalWidget *>(stack->currentWidget());
 }
 
-DTabBar *tabBar(MainWindow &window)
-{
+DTabBar *tabBar(MainWindow &window) {
     return window.findChild<DTabBar *>();
 }
 
-bool waitForTabCount(DTabBar *tabs, int expectedCount, int timeoutMs = 5000)
-{
+bool waitForTabCount(DTabBar *tabs, int expectedCount, int timeoutMs = 5000) {
     if (!tabs)
         return false;
 
@@ -50,8 +46,7 @@ bool waitForTabCount(DTabBar *tabs, int expectedCount, int timeoutMs = 5000)
     return tabs->count() == expectedCount;
 }
 
-PtySession *ptySession(TerminalWidget *terminal)
-{
+PtySession *ptySession(TerminalWidget *terminal) {
     if (!terminal)
         return nullptr;
     return terminal->findChild<PtySession *>();
@@ -59,8 +54,7 @@ PtySession *ptySession(TerminalWidget *terminal)
 
 } // namespace
 
-void TestMainWindow::testSingleTabCtrlDClosesWindow()
-{
+void TestMainWindow::testSingleTabCtrlDClosesWindow() {
     MainWindow window;
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
@@ -78,8 +72,7 @@ void TestMainWindow::testSingleTabCtrlDClosesWindow()
     QTRY_VERIFY_WITH_TIMEOUT(!window.isVisible(), 5000);
 }
 
-void TestMainWindow::testClosedSessionRemovesOnlyCurrentTab()
-{
+void TestMainWindow::testClosedSessionRemovesOnlyCurrentTab() {
     MainWindow window;
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
@@ -106,8 +99,7 @@ void TestMainWindow::testClosedSessionRemovesOnlyCurrentTab()
     QVERIFY(window.isVisible());
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     DApplication app(argc, argv);
     TestMainWindow tc;
     QTEST_SET_MAIN_SOURCE_PATH

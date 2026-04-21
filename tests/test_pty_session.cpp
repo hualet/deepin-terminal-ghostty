@@ -1,9 +1,9 @@
-#include <QTest>
-#include <QSignalSpy>
+#include "PtySession.h"
+
 #include <QCoreApplication>
 #include <QDebug>
-
-#include "PtySession.h"
+#include <QSignalSpy>
+#include <QTest>
 
 class TestPtySession : public QObject {
     Q_OBJECT
@@ -18,14 +18,12 @@ private slots:
     void testSessionClose();
 };
 
-void TestPtySession::testStartShell()
-{
+void TestPtySession::testStartShell() {
     PtySession session;
     QVERIFY(session.start(80, 24));
 }
 
-void TestPtySession::testWriteAndRead()
-{
+void TestPtySession::testWriteAndRead() {
     PtySession session;
     QVERIFY(session.start(80, 24));
 
@@ -54,8 +52,7 @@ void TestPtySession::testWriteAndRead()
     QVERIFY2(found, "Expected output to contain 'qtghostty_test_hello'");
 }
 
-void TestPtySession::testResize()
-{
+void TestPtySession::testResize() {
     PtySession session;
     QVERIFY(session.start(80, 24));
 
@@ -69,8 +66,7 @@ void TestPtySession::testResize()
     QVERIFY(spy.wait(2000));
 }
 
-void TestPtySession::testSessionClose()
-{
+void TestPtySession::testSessionClose() {
     PtySession session;
     QVERIFY(session.start(80, 24));
 

@@ -1,16 +1,14 @@
 #include "MainWindow.h"
+
 #include "TerminalWidget.h"
 
 #include <DTitlebar>
-#include <QStackedWidget>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QStackedWidget>
 
 MainWindow::MainWindow(QWidget *parent)
-    : DMainWindow(parent)
-    , m_tabBar(new DTabBar(this))
-    , m_stackWidget(new QStackedWidget(this))
-{
+    : DMainWindow(parent), m_tabBar(new DTabBar(this)), m_stackWidget(new QStackedWidget(this)) {
     // Prevent DTK or Qt default actions from intercepting standard
     // terminal keybindings (Ctrl+A–Z). In a terminal every Ctrl+letter
     // combo must be sent to the PTY as a C0 control character.
@@ -20,9 +18,7 @@ MainWindow::MainWindow(QWidget *parent)
             continue;
         int key = seq[0].key();
         Qt::KeyboardModifiers mods = seq[0].keyboardModifiers();
-        if ((mods & Qt::ControlModifier) &&
-            !(mods & Qt::ShiftModifier) &&
-            key >= Qt::Key_A && key <= Qt::Key_Z) {
+        if ((mods & Qt::ControlModifier) && !(mods & Qt::ShiftModifier) && key >= Qt::Key_A && key <= Qt::Key_Z) {
             action->setShortcut(QKeySequence());
         }
     }
@@ -53,8 +49,7 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow() = default;
 
-void MainWindow::setupTitleBar()
-{
+void MainWindow::setupTitleBar() {
     DTitlebar *tb = titlebar();
     if (!tb)
         return;
@@ -73,18 +68,15 @@ void MainWindow::setupTitleBar()
     tb->setCustomWidget(tabWrapper);
 }
 
-void MainWindow::addTab(bool activate)
-{
+void MainWindow::addTab(bool activate) {
     auto *terminal = new TerminalWidget(m_stackWidget);
     if (!terminal->initialize()) {
         terminal->deleteLater();
         return;
     }
 
-    connect(terminal, &TerminalWidget::terminalTitleChanged,
-            this, &MainWindow::onTerminalTitleChanged);
-    connect(terminal, &TerminalWidget::sessionClosed,
-            this, &MainWindow::onTerminalSessionClosed);
+    connect(terminal, &TerminalWidget::terminalTitleChanged, this, &MainWindow::onTerminalTitleChanged);
+    connect(terminal, &TerminalWidget::sessionClosed, this, &MainWindow::onTerminalSessionClosed);
 
     int stackIndex = m_stackWidget->addWidget(terminal);
 
@@ -98,13 +90,11 @@ void MainWindow::addTab(bool activate)
     }
 }
 
-void MainWindow::onTabAddRequested()
-{
+void MainWindow::onTabAddRequested() {
     addTab(true);
 }
 
-void MainWindow::onTabCloseRequested(int index)
-{
+void MainWindow::onTabCloseRequested(int index) {
     int stackIndex = m_tabBar->tabData(index).toInt();
     QWidget *page = m_stackWidget->widget(stackIndex);
     if (!page)
@@ -130,8 +120,7 @@ void MainWindow::onTabCloseRequested(int index)
     }
 }
 
-void MainWindow::onTabCurrentChanged(int index)
-{
+void MainWindow::onTabCurrentChanged(int index) {
     if (index < 0 || index >= m_tabBar->count())
         return;
 
@@ -145,8 +134,7 @@ void MainWindow::onTabCurrentChanged(int index)
     }
 }
 
-void MainWindow::onTerminalTitleChanged(const QString &title)
-{
+void MainWindow::onTerminalTitleChanged(const QString &title) {
     auto *term = qobject_cast<TerminalWidget *>(sender());
     if (!term)
         return;
@@ -165,8 +153,7 @@ void MainWindow::onTerminalTitleChanged(const QString &title)
     }
 }
 
-void MainWindow::onTerminalSessionClosed()
-{
+void MainWindow::onTerminalSessionClosed() {
     auto *terminal = qobject_cast<TerminalWidget *>(sender());
     if (!terminal)
         return;
@@ -174,8 +161,7 @@ void MainWindow::onTerminalSessionClosed()
     closeTerminal(terminal);
 }
 
-void MainWindow::closeTerminal(TerminalWidget *terminal)
-{
+void MainWindow::closeTerminal(TerminalWidget *terminal) {
     if (!terminal)
         return;
 
@@ -191,13 +177,11 @@ void MainWindow::closeTerminal(TerminalWidget *terminal)
     }
 }
 
-TerminalWidget *MainWindow::currentTerminal() const
-{
+TerminalWidget *MainWindow::currentTerminal() const {
     return qobject_cast<TerminalWidget *>(m_stackWidget->currentWidget());
 }
 
-void MainWindow::closeEvent(QCloseEvent *event)
-{
+void MainWindow::closeEvent(QCloseEvent *event) {
     // Clean up all pages so PtySession destructors run gracefully
     while (m_stackWidget->count() > 0) {
         QWidget *w = m_stackWidget->widget(0);

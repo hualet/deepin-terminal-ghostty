@@ -139,6 +139,24 @@ When changing PTY, input, tab, or window-close behavior, prefer running the most
   - use `GHOSTTY_INIT_SIZED` where required
 - Keep the `#undef emit` workaround before including Ghostty headers where needed.
 
+## Code Formatting
+
+All C++ sources (`*.cpp`, `*.h`) must be formatted with the project's `.clang-format` configuration.
+
+Before committing, run:
+
+```bash
+clang-format -i $(find src tests -name '*.cpp' -o -name '*.h')
+```
+
+Or verify without editing:
+
+```bash
+clang-format --dry-run --Werror $(find src tests -name '*.cpp' -o -name '*.h')
+```
+
+CI will reject changes that do not match the enforced style.
+
 ## Working Rules For Agents
 
 - Explore current code before editing. Do not assume intent from names alone.
@@ -151,6 +169,7 @@ When changing PTY, input, tab, or window-close behavior, prefer running the most
 
 - Do not create a commit unless the user asks for one.
 - Before committing, check `git status --short` and avoid including unrelated changes.
+- Ensure all changed C++ files pass `clang-format` validation before committing (see **Code Formatting** above).
 - Commit messages must follow Conventional Commits:
   `https://www.conventionalcommits.org/en/v1.0.0/`
 - Use standard prefixes such as:

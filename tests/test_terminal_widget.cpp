@@ -1,15 +1,15 @@
-#include <QTest>
-#include <QSignalSpy>
 #include <QApplication>
+#include <QSignalSpy>
+#include <QTest>
 
 // Undefine Qt's emit macro before Ghostty headers (same workaround as TerminalWidget.h)
 #ifdef emit
 #undef emit
 #endif
 
-#include <ghostty/vt.h>
-
 #include "TerminalWidget.h"
+
+#include <ghostty/vt.h>
 
 class TestTerminalWidget : public QObject {
     Q_OBJECT
@@ -24,14 +24,12 @@ private slots:
     void testGridSize();
 };
 
-void TestTerminalWidget::testInitialize()
-{
+void TestTerminalWidget::testInitialize() {
     TerminalWidget widget;
     QVERIFY(widget.initialize());
 }
 
-void TestTerminalWidget::testSizeReport()
-{
+void TestTerminalWidget::testSizeReport() {
     TerminalWidget widget;
     QVERIFY(widget.initialize());
 
@@ -44,8 +42,7 @@ void TestTerminalWidget::testSizeReport()
     QVERIFY(true);
 }
 
-void TestTerminalWidget::testTitleChanged()
-{
+void TestTerminalWidget::testTitleChanged() {
     TerminalWidget widget;
     QVERIFY(widget.initialize());
 
@@ -61,9 +58,8 @@ void TestTerminalWidget::testTitleChanged()
     // the public interface by accessing PtySession through the widget
     // Actually, onPtyDataReceived is a private slot, but we can use
     // QMetaObject::invokeMethod to call it for testing
-    bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived",
-                                              Qt::DirectConnection,
-                                              Q_ARG(QByteArray, titleSequence));
+    bool invoked =
+        QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, titleSequence));
     QVERIFY(invoked);
 
     // Process events so the title change propagates
@@ -74,8 +70,7 @@ void TestTerminalWidget::testTitleChanged()
     QCOMPARE(spy.at(0).at(0).toString(), QString("MyTestTitle"));
 }
 
-void TestTerminalWidget::testGridSize()
-{
+void TestTerminalWidget::testGridSize() {
     TerminalWidget widget;
     QVERIFY(widget.initialize());
 
@@ -90,8 +85,7 @@ void TestTerminalWidget::testGridSize()
 }
 
 // We need QApplication for QWidget tests
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     TestTerminalWidget tc;
     QTEST_SET_MAIN_SOURCE_PATH

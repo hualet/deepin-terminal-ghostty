@@ -1,0 +1,78 @@
+---
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 120
+
+# Braces
+BreakBeforeBraces: Attach
+
+# Pointers and references
+PointerAlignment: Right
+ReferenceAlignment: Right
+
+# Namespaces
+NamespaceIndentation: None
+CompactNamespaces: false
+
+# Classes
+AccessModifierOffset: -4
+BreakConstructorInitializers: BeforeColon
+ConstructorInitializerIndentWidth: 4
+PackConstructorInitializers: NextLine
+
+# Control statements
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Inline
+IndentCaseLabels: true
+
+# Includes
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^".*"$'
+    Priority: 1
+  - Regex: '^<Q.*'
+    Priority: 2
+  - Regex: '^<D.*'
+    Priority: 2
+  - Regex: '^<ghostty/.*'
+    Priority: 3
+  - Regex: '^<.*\.h>'
+    Priority: 4
+  - Regex: '^<.*>'
+    Priority: 5
+
+# Alignment
+AlignTrailingComments: true
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignOperands: true
+AlignAfterOpenBracket: Align
+
+# Breaks
+BreakBeforeBinaryOperators: NonAssignment
+BreakBeforeTernaryOperators: true
+BreakStringLiterals: true
+BreakInheritanceList: BeforeColon
+
+# Other
+Cpp11BracedListStyle: true
+SpaceBeforeParens: ControlStatements
+SpaceAfterCStyleCast: false
+SpaceAfterTemplateKeyword: true
+SpaceBeforeAssignmentOperators: true
+SpacesInAngles: false
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+FixNamespaceComments: true
+SortUsingDeclarations: true
+---
+Language: Cpp
