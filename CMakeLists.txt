@@ -167,6 +167,8 @@ add_dependencies(qtghostty ghostty-vt-stage ghostty-headers-stage)
 
 set_target_properties(qtghostty PROPERTIES
   OUTPUT_NAME qtghostty
+  VERSION ${PROJECT_VERSION}
+  SOVERSION 0
 )
 
 add_executable(deepin-terminal-ghostty
@@ -220,6 +222,12 @@ install(TARGETS qtghostty
 install(FILES ${GHOSTTY_SOURCE_LIBRARY}
   DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RENAME ${GHOSTTY_SONAME}
+)
+
+install(FILES
+  src/libqtghostty/PtySession.h
+  src/libqtghostty/TerminalWidget.h
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/qtghostty
 )
 
 # ---------------------------------------------------------------------------
