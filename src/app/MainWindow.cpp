@@ -76,6 +76,7 @@ void MainWindow::addTab(bool activate)
 
     if (activate) {
         m_tabBar->setCurrentIndex(tabIndex);
+        terminal->setFocus();
     }
 }
 
@@ -120,8 +121,10 @@ void MainWindow::onTabCurrentChanged(int index)
     m_stackWidget->setCurrentIndex(stackIndex);
 
     TerminalWidget *term = currentTerminal();
-    if (term)
+    if (term) {
         setWindowTitle(term->property("currentTitle").toString());
+        term->setFocus();
+    }
 }
 
 void MainWindow::onTerminalTitleChanged(const QString &title)
