@@ -638,6 +638,15 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event)
     }
 }
 
+bool TerminalWidget::focusNextPrevChild(bool next)
+{
+    (void)next;
+    // Prevent Tab / Shift+Tab from moving focus out of the terminal.
+    // The Tab key is sent to the PTY as a normal keypress for shell
+    // completion, so we must keep focus here.
+    return false;
+}
+
 void TerminalWidget::focusInEvent(QFocusEvent *event)
 {
     QWidget::focusInEvent(event);

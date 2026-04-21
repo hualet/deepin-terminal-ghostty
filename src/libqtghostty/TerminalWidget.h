@@ -32,6 +32,7 @@ protected:
     void focusInEvent(QFocusEvent *event) override;
     void focusOutEvent(QFocusEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
+    bool focusNextPrevChild(bool next) override;
 
 private slots:
     void onPtyDataReceived(const QByteArray &data);
