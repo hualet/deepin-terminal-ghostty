@@ -116,4 +116,4 @@ This is intentionally a **minimal** implementation. Notable gaps:
 
 ## License
 
-TBD — this repository is a personal experiment.
+LGPL-3.0-or-later
