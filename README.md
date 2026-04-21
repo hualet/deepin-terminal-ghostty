@@ -1,2 +1,119 @@
 # deepin-terminal-ghostty
-Deepin Terminal reborn with libghostty.
+
+A minimal terminal emulator built with **C++20 / Qt6 Widgets** and the **libghostty-vt** virtual terminal library extracted from [Ghostty](https://ghostty.org).
+
+This is a proof-of-concept reference implementation showing how to embed `libghostty-vt` into a Qt application. It supports PTY shell sessions, VT sequence parsing, incremental render-state based drawing, keyboard encoding (including Kitty keyboard protocol), focus events, and scrollback scrolling.
+
+> **Status:** Minimal viable implementation. Functional for daily shell usage, with known limitations listed below.
+
+---
+
+## Prerequisites
+
+- Linux (PTY layer uses `forkpty`)
+- CMake >= 3.16
+- Qt6 Widgets development packages
+- Ghostty C headers (`ghostty/vt/*.h`) — the build system auto-detects them from common locations
+- `readelf` (for auto-detecting `libghostty-vt` SONAME)
+
+On Debian/Ubuntu:
+
+```bash
+sudo apt install cmake qt6-base-dev build-essential binutils
+```
+
+## Build
+
+```bash
+cmake -B build
+cmake --build build
+```
+
+The build system will:
+
+1. Auto-locate Ghostty headers from sibling paths (`../../g/ghostty/include`, `../ghostty/include`, etc.) or from `GHOSTTY_INCLUDE_DIR`.
+2. Stage headers into the build directory for clean include paths.
+3. Detect the SONAME of `lib/libghostty-vt.so` and stage it alongside the executable with correct runtime linking.
+
+To run:
+
+```bash
+./build/deepin-terminal-ghostty
+```
+
+## Project Structure
+
+```
+.
+├── CMakeLists.txt          # Build configuration with Ghostty auto-discovery
+├── lib/
+│   └── libghostty-vt.so    # libghostty-vt runtime library
+├── src/
+│   ├── main.cpp            # Application entry point
+│   ├── PtySession.h/.cpp   # PTY lifecycle: forkpty, non-blocking I/O, child reaping
+│   └── TerminalWidget.h/.cpp # Ghostty VT integration, QPainter rendering, input encoding
+└── docs/
+    └── superpowers/        # Design plans and specs (agent workspace)
+```
+
+## Architecture
+
+### PtySession
+
+Wraps `forkpty()` into a Qt-friendly `QObject`:
+
+- Spawns the user's shell (`$SHELL` → passwd entry → `/bin/sh`)
+- Reads the PTY master fd via `QSocketNotifier` (non-blocking)
+- Writes to the PTY with backpressure-safe buffering
+- Handles graceful + forced child shutdown (`SIGHUP` → `SIGKILL`)
+- Emits `dataReceived(QByteArray)` and `sessionClosed()` signals
+
+### TerminalWidget
+
+A `QWidget` that owns the full Ghostty VT stack:
+
+| Ghostty Handle | Purpose |
+|---------------|---------|
+| `GhosttyTerminal` | Core VT state machine — parses escape sequences, maintains screen/cursor/styles |
+| `GhosttyRenderState` | Snapshot of the terminal screen optimized for rendering |
+| `GhosttyRenderStateRowIterator` + `RowCells` | Iterates dirty rows and cells to draw |
+| `GhosttyKeyEncoder` + `KeyEvent` | Encodes Qt key events into VT escape sequences |
+
+**Rendering pipeline** (`paintEvent`):
+
+1. `ghostty_render_state_update()` — snapshot terminal state, consume dirty flags
+2. `ghostty_render_state_colors_get()` — resolve default fg/bg and palette
+3. Iterate rows → iterate cells → draw background rectangles + foreground text
+4. Draw a semi-transparent block cursor when focused
+5. Reset dirty flags for the next frame
+
+**Input pipeline** (`keyPressEvent`):
+
+1. Map `Qt::Key` → `GhosttyKey`
+2. Build `GhosttyKeyEvent` with modifiers, unshifted codepoint, and UTF-8 text
+3. `ghostty_key_encoder_setopt_from_terminal()` — sync encoder to terminal modes
+4. Encode → write bytes to PTY
+
+**Effects callbacks** (registered on the terminal):
+
+- `write_pty` — forwards query responses back to the PTY
+- `size` — reports current cell dimensions for XTWINOPS queries
+- `device_attributes` — reports VT220 conformance so apps like vim/htop can probe capabilities
+- `xtversion` — reports `"deepin-terminal-ghostty"`
+- `title_changed` — emits `terminalTitleChanged()` signal to update the window title
+- `color_scheme` — returns false (no OS scheme query implemented yet)
+
+## Known Limitations
+
+This is intentionally a **minimal** implementation. Notable gaps:
+
+- **Wide characters (CJK)** are drawn as single-width cells — may be truncated or overlap
+- **Mouse event forwarding** is not implemented (wheel only scrolls scrollback history)
+- **Kitty Graphics Protocol** images are not rendered
+- **Copy/paste** and **selection** are not implemented
+- **Font fallback** for missing glyphs relies on Qt's default behavior
+- **24-bit true color** cells work, but bold/italic rendering is basic (QFont weight/slant only)
+
+## License
+
+TBD — this repository is a personal experiment.
