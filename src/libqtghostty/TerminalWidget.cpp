@@ -115,6 +115,7 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     m_cellWidth = fm.horizontalAdvance('M');
     m_cellHeight = fm.height();
     m_fontAscent = fm.ascent();
+    updateCachedFonts();
 
     m_blinkTimer = new QTimer(this);
     m_blinkTimer->setInterval(500);
@@ -182,6 +183,18 @@ int TerminalWidget::terminalColumns() const {
 
 int TerminalWidget::terminalRows() const {
     return m_rows;
+}
+
+void TerminalWidget::updateCachedFonts() {
+    m_fontBold = m_font;
+    m_fontBold.setBold(true);
+
+    m_fontItalic = m_font;
+    m_fontItalic.setItalic(true);
+
+    m_fontBoldItalic = m_font;
+    m_fontBoldItalic.setBold(true);
+    m_fontBoldItalic.setItalic(true);
 }
 
 #ifdef QTGHOSTTY_TESTING
@@ -403,7 +416,7 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
         ++m_debugLastFrameRenderedRowCount;
 #endif
 
-        renderRow(backPainter, y);
+        renderRow(backPainter, y, colors);
 
         bool clean = false;
         ghostty_render_state_row_set(m_rowIter, GHOSTTY_RENDER_STATE_ROW_OPTION_DIRTY, &clean);
@@ -415,22 +428,60 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     painter.drawImage(QPoint(0, 0), m_backBuffer);
 }
 
-void TerminalWidget::renderRow(QPainter &painter, int y) {
+void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStateColors &colors) {
     if (ghostty_render_state_row_get(m_rowIter, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &m_rowCells) != GHOSTTY_SUCCESS)
         return;
 
-    GhosttyRenderStateColors colors = GHOSTTY_INIT_SIZED(GhosttyRenderStateColors);
-    if (ghostty_render_state_colors_get(m_renderState, &colors) != GHOSTTY_SUCCESS)
-        return;
+    const QColor defaultBackground(colors.background.r, colors.background.g, colors.background.b);
+    const QColor defaultForeground(colors.foreground.r, colors.foreground.g, colors.foreground.b);
+    painter.fillRect(0, y, width(), m_cellHeight, defaultBackground);
 
-    painter.fillRect(0, y, width(), m_cellHeight,
-                     QColor(colors.background.r, colors.background.g, colors.background.b));
+    constexpr GhosttyRenderStateRowCellsData kCellDataKeys[] = {
+        GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW,
+        GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE,
+        GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN,
+    };
+
+    QString runText;
+    const QFont *runFont = nullptr;
+    QColor runForeground;
+    int runStartX = 0;
+    int runCellCount = 0;
+    auto flushTextRun = [&]() {
+        if (runCellCount == 0 || runText.isEmpty() || !runFont)
+            return;
+
+        painter.setFont(*runFont);
+        painter.setPen(runForeground);
+        painter.setLayoutDirection(Qt::LeftToRight);
+        painter.drawText(runStartX, y + m_fontAscent, runText);
+
+        runText.clear();
+        runFont = nullptr;
+        runCellCount = 0;
+    };
 
     int x = 0;
-    int col = 0;
     while (ghostty_render_state_row_cells_next(m_rowCells)) {
         GhosttyCell rawCell = 0;
-        ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW, &rawCell);
+        GhosttyStyle style = GHOSTTY_INIT_SIZED(GhosttyStyle);
+        uint32_t graphemeLen = 0;
+        void *cellDataValues[] = {&rawCell, &style, &graphemeLen};
+        size_t written = 0;
+        const GhosttyResult multiResult = ghostty_render_state_row_cells_get_multi(
+            m_rowCells, std::size(kCellDataKeys), kCellDataKeys, cellDataValues, &written);
+        if (multiResult != GHOSTTY_SUCCESS || written != std::size(kCellDataKeys))
+            continue;
+
+        GhosttyColorRgb bgColor = colors.background;
+        const bool hasBg =
+            ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, &bgColor)
+            == GHOSTTY_SUCCESS;
+
+        GhosttyColorRgb fgColor = colors.foreground;
+        const bool hasFg =
+            ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, &fgColor)
+            == GHOSTTY_SUCCESS;
 
         GhosttyCellWide cellWide = GHOSTTY_CELL_WIDE_NARROW;
         ghostty_cell_get(rawCell, GHOSTTY_CELL_DATA_WIDE, &cellWide);
@@ -438,65 +489,81 @@ void TerminalWidget::renderRow(QPainter &painter, int y) {
         const bool isWideTail = cellWide == GHOSTTY_CELL_WIDE_SPACER_TAIL || cellWide == GHOSTTY_CELL_WIDE_SPACER_HEAD;
         const int cellRenderWidth = isWideHead ? m_cellWidth * 2 : m_cellWidth;
 
-        uint32_t graphemeLen = 0;
-        ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN, &graphemeLen);
-
-        GhosttyColorRgb bgColor = colors.background;
-        bool hasBg =
-            (ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, &bgColor)
-             == GHOSTTY_SUCCESS);
-
-        GhosttyColorRgb fgColor = colors.foreground;
-        ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, &fgColor);
-
-        GhosttyStyle style = GHOSTTY_INIT_SIZED(GhosttyStyle);
-        ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, &style);
-
         if (style.inverse) {
             std::swap(fgColor, bgColor);
-            hasBg = true;
-        }
-
-        if (hasBg && !isWideTail) {
+            if (!isWideTail)
+                painter.fillRect(x, y, cellRenderWidth, m_cellHeight, QColor(bgColor.r, bgColor.g, bgColor.b));
+        } else if (hasBg && !isWideTail) {
             painter.fillRect(x, y, cellRenderWidth, m_cellHeight, QColor(bgColor.r, bgColor.g, bgColor.b));
         }
 
+        const QFont *cachedFont = &m_font;
+        if (style.bold && style.italic)
+            cachedFont = &m_fontBoldItalic;
+        else if (style.bold)
+            cachedFont = &m_fontBold;
+        else if (style.italic)
+            cachedFont = &m_fontItalic;
+        const QColor cellForeground = hasFg ? QColor(fgColor.r, fgColor.g, fgColor.b) : defaultForeground;
+
+        if (!isWideHead && !isWideTail) {
+            if (runCellCount == 0 || runFont != cachedFont || runForeground != cellForeground) {
+                flushTextRun();
+                runText.reserve(static_cast<int>(m_cols) + 1);
+                runText.append(QChar(0x202D));
+                runFont = cachedFont;
+                runForeground = cellForeground;
+                runStartX = x;
+            }
+
+            if (graphemeLen > 0) {
+                uint32_t codepoints[16];
+                const uint32_t len = graphemeLen < 16 ? graphemeLen : 16;
+                ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF,
+                                                   codepoints);
+                for (uint32_t i = 0; i < len; ++i)
+                    appendCodepoint(runText, codepoints[i]);
+            } else {
+                runText.append(QChar(u' '));
+            }
+
+            ++runCellCount;
+            x += m_cellWidth;
+            continue;
+        }
+
+        flushTextRun();
+
         if (graphemeLen > 0 && !isWideTail) {
             uint32_t codepoints[16];
-            uint32_t len = graphemeLen < 16 ? graphemeLen : 16;
+            const uint32_t len = graphemeLen < 16 ? graphemeLen : 16;
             ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF,
                                                codepoints);
 
             QString text;
+            text.reserve(static_cast<int>(len));
             for (uint32_t i = 0; i < len; ++i)
                 appendCodepoint(text, codepoints[i]);
 
-            QFont cellFont = m_font;
-            if (style.bold)
-                cellFont.setBold(true);
-            if (style.italic)
-                cellFont.setItalic(true);
-            if (isWideHead)
-                cellFont.setFixedPitch(false);
+            QFont cellFont = *cachedFont;
+            cellFont.setFixedPitch(false);
 
-            if (isWideHead) {
-                QFontMetrics wideMetrics(cellFont);
-                const int glyphWidth = wideMetrics.horizontalAdvance(text);
-                if (glyphWidth > 0 && glyphWidth < cellRenderWidth)
-                    cellFont.setStretch(qMax(100, (cellRenderWidth * 100) / glyphWidth));
-            }
+            QFontMetrics wideMetrics(cellFont);
+            const int glyphWidth = wideMetrics.horizontalAdvance(text);
+            if (glyphWidth > 0 && glyphWidth < cellRenderWidth)
+                cellFont.setStretch(qMax(100, (cellRenderWidth * 100) / glyphWidth));
 
             painter.setFont(cellFont);
-            painter.setPen(QColor(fgColor.r, fgColor.g, fgColor.b));
+            painter.setPen(cellForeground);
             painter.setLayoutDirection(Qt::LeftToRight);
-            painter.drawText(QRectF(x, y, cellRenderWidth, m_cellHeight), Qt::AlignBottom,
-                             QString(QChar(0x202D)) + text);
+            painter.drawText(x, y + m_fontAscent, text);
             painter.setFont(m_font);
         }
 
-        ++col;
         x += m_cellWidth;
     }
+
+    flushTextRun();
 }
 
 void TerminalWidget::renderOverlays(QPainter &painter) const {
@@ -898,6 +965,7 @@ void TerminalWidget::setTerminalFont(const QFont &font) {
     m_cellWidth = fm.horizontalAdvance('M');
     m_cellHeight = fm.height();
     m_fontAscent = fm.ascent();
+    updateCachedFonts();
 
     updateGridSize();
     update();

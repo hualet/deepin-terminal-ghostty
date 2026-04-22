@@ -82,10 +82,11 @@ private:
     bool syncRenderState() const;
     void ensureBackBuffer();
     void applyPendingResize();
+    void updateCachedFonts();
     void updateGridSize();
     void renderTerminal(QPainter &painter);
     void renderOverlays(QPainter &painter) const;
-    void renderRow(QPainter &painter, int y);
+    void renderRow(QPainter &painter, int y, const GhosttyRenderStateColors &colors);
     void renderPreeditText(QPainter &painter);
     void sendFocusEvent(bool gained);
     QRect inputMethodCursorRect() const;
@@ -127,6 +128,9 @@ private:
 
     // Font metrics
     QFont m_font;
+    QFont m_fontBold;
+    QFont m_fontItalic;
+    QFont m_fontBoldItalic;
     int m_cellWidth = 0;
     int m_cellHeight = 0;
     int m_fontAscent = 0;

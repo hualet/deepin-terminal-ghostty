@@ -37,6 +37,7 @@ private slots:
     void testRendersSupplementaryPlaneCharacters();
     void testRendersPreeditTextAcrossMultipleCells();
     void testRendersWideCharactersAcrossTwoCells();
+    void testRendersAnsiForegroundColors();
     void testCoalescesBurstRepaintsWithoutLosingFinalFrame();
     void testIncrementalUpdatesRenderDirtyRowsOnly();
     void testCoalescesRapidResizeOperations();
@@ -114,6 +115,28 @@ int countChangedPixels(const QImage &before, const QImage &after, const QRect &r
     }
 
     return count;
+}
+
+QColor dominantChangedColor(const QImage &before, const QImage &after, const QRect &rect) {
+    QColor bestColor;
+    int bestDistance = -1;
+    const QRect bounded = rect.intersected(before.rect());
+    for (int y = bounded.top(); y <= bounded.bottom(); ++y) {
+        for (int x = bounded.left(); x <= bounded.right(); ++x) {
+            if (before.pixel(x, y) == after.pixel(x, y))
+                continue;
+
+            const QColor color = QColor::fromRgba(after.pixel(x, y));
+            const int distance = qAbs(color.red() - color.green()) + qAbs(color.red() - color.blue())
+                                 + qAbs(color.green() - color.blue());
+            if (distance > bestDistance) {
+                bestDistance = distance;
+                bestColor = color;
+            }
+        }
+    }
+
+    return bestColor;
 }
 
 } // namespace
@@ -355,6 +378,31 @@ void TestTerminalWidget::testRendersWideCharactersAcrossTwoCells() {
     QVERIFY2(diff.width() > cursorRect.width(), "wide character should render wider than a single terminal cell");
     QVERIFY2(secondCellChanges > cursorRect.width() * 3,
              "wide character should visibly paint a meaningful portion of the second terminal cell");
+}
+
+void TestTerminalWidget::testRendersAnsiForegroundColors() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const QImage before = renderWidgetImage(widget);
+    const bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                                   Q_ARG(QByteArray, QByteArray("\x1b[31mR\x1b[0m\n")));
+    QVERIFY(invoked);
+    QApplication::processEvents();
+
+    const QImage after = renderWidgetImage(widget);
+    const QRect diff = changedBounds(before, after);
+    QVERIFY2(diff.isValid(), "ANSI foreground colors should affect the rendered output");
+
+    const QColor dominantColor = dominantChangedColor(before, after, diff);
+    QVERIFY2(dominantColor.isValid(), "rendered ANSI text should produce visible colored pixels");
+    QVERIFY2(dominantColor.red() > dominantColor.green() + 20 && dominantColor.red() > dominantColor.blue() + 20,
+             "ANSI red foreground should render as a red-dominant color instead of grayscale");
 }
 
 void TestTerminalWidget::testCoalescesBurstRepaintsWithoutLosingFinalFrame() {
