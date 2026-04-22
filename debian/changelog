@@ -1,3 +1,14 @@
+deepin-terminal-ghostty (0.3.0-1) unstable; urgency=medium
+
+  * Fix multiple crash scenarios around terminal repaint and resize handling.
+  * Improve CJK and supplementary-plane text rendering, including wide-character layout.
+  * Add input-method support so Chinese IME composition works correctly in the terminal.
+  * Rework terminal repaint scheduling and dirty-row caching to reduce UI stalls.
+  * Replace the bundled libghostty-vt with a ReleaseFast build and batch PTY delivery
+    to significantly improve heavy-output and TUI responsiveness.
+
+ -- Deepin Packages <packages@deepin.org>  Thu, 23 Apr 2026 01:25:00 +0800
+
 deepin-terminal-ghostty (0.2.0-1) unstable; urgency=medium
 
   * Add DTK logging integration and project logging guidelines.
