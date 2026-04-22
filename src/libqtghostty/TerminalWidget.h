@@ -2,6 +2,7 @@
 
 #include <QElapsedTimer>
 #include <QFont>
+#include <QImage>
 #include <QInputMethodEvent>
 #include <QTimer>
 #include <QWidget>
@@ -43,6 +44,13 @@ public:
     void findPrevious();
     bool hasSearchMatches() const;
 
+#ifdef QTGHOSTTY_TESTING
+    int debugLastFrameRenderedRowCount() const;
+    int debugLastFrameDirtyRowCount() const;
+    bool debugLastFrameWasFullRedraw() const;
+    int debugResizeApplyCount() const;
+#endif
+
 signals:
     void terminalTitleChanged(const QString &title);
     void sessionClosed();
@@ -72,8 +80,12 @@ private:
     bool setupRenderState();
     bool setupEncoders();
     bool syncRenderState() const;
+    void ensureBackBuffer();
+    void applyPendingResize();
     void updateGridSize();
     void renderTerminal(QPainter &painter);
+    void renderOverlays(QPainter &painter) const;
+    void renderRow(QPainter &painter, int y);
     void renderPreeditText(QPainter &painter);
     void sendFocusEvent(bool gained);
     QRect inputMethodCursorRect() const;
@@ -107,7 +119,11 @@ private:
     PtySession *m_ptySession = nullptr;
     QByteArray m_pendingPtyData;
     QTimer *m_renderTimer = nullptr;
+    QTimer *m_resizeTimer = nullptr;
     QElapsedTimer m_lastRenderTime;
+    QImage m_backBuffer;
+    uint16_t m_pendingResizeCols = 80;
+    uint16_t m_pendingResizeRows = 24;
 
     // Font metrics
     QFont m_font;
@@ -152,6 +168,13 @@ private:
         bool active = false;
     };
     Selection m_selection;
+
+#ifdef QTGHOSTTY_TESTING
+    int m_debugLastFrameRenderedRowCount = 0;
+    int m_debugLastFrameDirtyRowCount = 0;
+    bool m_debugLastFrameWasFullRedraw = false;
+    int m_debugResizeApplyCount = 0;
+#endif
 
     friend class TermPane;
 

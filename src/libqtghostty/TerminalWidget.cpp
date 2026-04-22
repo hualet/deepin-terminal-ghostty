@@ -18,6 +18,7 @@
 namespace {
 
 constexpr int kBurstRenderIntervalMs = 8;
+constexpr int kResizeCoalesceIntervalMs = 8;
 
 void appendCodepoint(QString &text, uint32_t codepoint) {
     if (codepoint <= 0xFFFF) {
@@ -125,6 +126,10 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     m_renderTimer = new QTimer(this);
     m_renderTimer->setSingleShot(true);
     connect(m_renderTimer, &QTimer::timeout, this, &TerminalWidget::onRenderTimerTimeout);
+
+    m_resizeTimer = new QTimer(this);
+    m_resizeTimer->setSingleShot(true);
+    connect(m_resizeTimer, &QTimer::timeout, this, [this]() { applyPendingResize(); });
 }
 
 TerminalWidget::~TerminalWidget() {
@@ -178,6 +183,24 @@ int TerminalWidget::terminalColumns() const {
 int TerminalWidget::terminalRows() const {
     return m_rows;
 }
+
+#ifdef QTGHOSTTY_TESTING
+int TerminalWidget::debugLastFrameRenderedRowCount() const {
+    return m_debugLastFrameRenderedRowCount;
+}
+
+int TerminalWidget::debugLastFrameDirtyRowCount() const {
+    return m_debugLastFrameDirtyRowCount;
+}
+
+bool TerminalWidget::debugLastFrameWasFullRedraw() const {
+    return m_debugLastFrameWasFullRedraw;
+}
+
+int TerminalWidget::debugResizeApplyCount() const {
+    return m_debugResizeApplyCount;
+}
+#endif
 
 bool TerminalWidget::setupTerminal() {
     GhosttyTerminalOptions opts = {
@@ -270,16 +293,13 @@ void TerminalWidget::updateGridSize() {
         rows = 1;
 
     if (cols != m_cols || rows != m_rows) {
-        m_cols = cols;
-        m_rows = rows;
-
-        if (m_terminal) {
-            ghostty_terminal_resize(m_terminal, m_cols, m_rows, static_cast<uint32_t>(m_cellWidth),
-                                    static_cast<uint32_t>(m_cellHeight));
-            m_renderStateDirty = true;
-        }
-        if (m_ptySession) {
-            m_ptySession->resize(m_cols, m_rows, m_cellWidth, m_cellHeight);
+        m_pendingResizeCols = cols;
+        m_pendingResizeRows = rows;
+        if (!m_terminal && !m_ptySession) {
+            m_cols = cols;
+            m_rows = rows;
+        } else if (m_resizeTimer) {
+            m_resizeTimer->start(kResizeCoalesceIntervalMs);
         }
     }
 }
@@ -293,6 +313,7 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     painter.setFont(m_font);
 
     renderTerminal(painter);
+    renderOverlays(painter);
     renderPreeditText(painter);
 }
 
@@ -308,6 +329,23 @@ bool TerminalWidget::syncRenderState() const {
 
     m_renderStateDirty = false;
     return true;
+}
+
+void TerminalWidget::ensureBackBuffer() {
+    const qreal devicePixelRatio = devicePixelRatioF();
+    const QSize pixelSize(qMax(1, qRound(width() * devicePixelRatio)), qMax(1, qRound(height() * devicePixelRatio)));
+    if (pixelSize.isEmpty()) {
+        m_backBuffer = QImage();
+        return;
+    }
+
+    if (m_backBuffer.size() == pixelSize && qFuzzyCompare(m_backBuffer.devicePixelRatio(), devicePixelRatio)) {
+        return;
+    }
+
+    m_backBuffer = QImage(pixelSize, QImage::Format_ARGB32_Premultiplied);
+    m_backBuffer.setDevicePixelRatio(devicePixelRatio);
+    m_backBuffer.fill(Qt::transparent);
 }
 
 void TerminalWidget::renderTerminal(QPainter &painter) {
@@ -326,120 +364,179 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     if (err != GHOSTTY_SUCCESS)
         return;
 
-    // Get viewport scroll offset for search highlight mapping
-    size_t scrollOffset = 0;
-    if (m_terminal && !m_searchMatches.isEmpty()) {
-        GhosttyTerminalScrollbar scrollbar = {};
-        if (ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &scrollbar) == GHOSTTY_SUCCESS)
-            scrollOffset = scrollbar.offset;
+    ensureBackBuffer();
+    if (m_backBuffer.isNull())
+        return;
+
+    GhosttyRenderStateDirty dirtyState = GHOSTTY_RENDER_STATE_DIRTY_FULL;
+    ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_DIRTY, &dirtyState);
+
+    const bool fullRedraw = dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FULL;
+    if (!fullRedraw && dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FALSE) {
+        painter.drawImage(QPoint(0, 0), m_backBuffer);
+        return;
     }
+
+    QPainter backPainter(&m_backBuffer);
+    backPainter.setFont(m_font);
+    if (fullRedraw) {
+        backPainter.fillRect(rect(), QColor(colors.background.r, colors.background.g, colors.background.b));
+    }
+
+#ifdef QTGHOSTTY_TESTING
+    m_debugLastFrameRenderedRowCount = 0;
+    m_debugLastFrameDirtyRowCount = 0;
+    m_debugLastFrameWasFullRedraw = fullRedraw;
+#endif
 
     int y = 0;
     while (ghostty_render_state_row_iterator_next(m_rowIter)) {
-        err = ghostty_render_state_row_get(m_rowIter, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &m_rowCells);
-        if (err != GHOSTTY_SUCCESS)
+        bool rowDirty = true;
+        ghostty_render_state_row_get(m_rowIter, GHOSTTY_RENDER_STATE_ROW_DATA_DIRTY, &rowDirty);
+        if (!fullRedraw && !rowDirty) {
+            y += m_cellHeight;
             continue;
-
-        int viewportRow = y / m_cellHeight;
-        int screenRow = static_cast<int>(viewportRow + scrollOffset);
-
-        int x = 0;
-        int col = 0;
-        while (ghostty_render_state_row_cells_next(m_rowCells)) {
-            GhosttyCell rawCell = 0;
-            ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW, &rawCell);
-
-            GhosttyCellWide cellWide = GHOSTTY_CELL_WIDE_NARROW;
-            ghostty_cell_get(rawCell, GHOSTTY_CELL_DATA_WIDE, &cellWide);
-            const bool isWideHead = cellWide == GHOSTTY_CELL_WIDE_WIDE;
-            const bool isWideTail =
-                cellWide == GHOSTTY_CELL_WIDE_SPACER_TAIL || cellWide == GHOSTTY_CELL_WIDE_SPACER_HEAD;
-            const int cellRenderWidth = isWideHead ? m_cellWidth * 2 : m_cellWidth;
-
-            uint32_t graphemeLen = 0;
-            ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN,
-                                               &graphemeLen);
-
-            GhosttyColorRgb bgColor = colors.background;
-            bool hasBg =
-                (ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, &bgColor)
-                 == GHOSTTY_SUCCESS);
-
-            GhosttyColorRgb fgColor = colors.foreground;
-            ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, &fgColor);
-
-            GhosttyStyle style = GHOSTTY_INIT_SIZED(GhosttyStyle);
-            ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, &style);
-
-            if (style.inverse) {
-                std::swap(fgColor, bgColor);
-                hasBg = true;
-            }
-
-            if (hasBg && !isWideTail) {
-                painter.fillRect(x, y, cellRenderWidth, m_cellHeight, QColor(bgColor.r, bgColor.g, bgColor.b));
-            }
-
-            // Search highlight
-            if (!m_searchMatches.isEmpty() && !isWideTail) {
-                for (int i = 0; i < m_searchMatches.size(); ++i) {
-                    const auto &match = m_searchMatches[i];
-                    if (match.row == screenRow && col >= match.startCol && col < match.endCol) {
-                        QColor hl = (i == m_currentSearchIndex) ? QColor(255, 165, 0, 180) : QColor(255, 255, 0, 120);
-                        painter.fillRect(x, y, cellRenderWidth, m_cellHeight, hl);
-                        break;
-                    }
-                }
-            }
-
-            // Selection highlight
-            if (cellInSelection(screenRow, col) && !isWideTail) {
-                painter.fillRect(x, y, cellRenderWidth, m_cellHeight, QColor(0, 120, 215, 180));
-            }
-
-            if (graphemeLen > 0 && !isWideTail) {
-                uint32_t codepoints[16];
-                uint32_t len = graphemeLen < 16 ? graphemeLen : 16;
-                ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF,
-                                                   codepoints);
-
-                QString text;
-                for (uint32_t i = 0; i < len; ++i)
-                    appendCodepoint(text, codepoints[i]);
-
-                QFont cellFont = m_font;
-                if (style.bold)
-                    cellFont.setBold(true);
-                if (style.italic)
-                    cellFont.setItalic(true);
-                if (isWideHead)
-                    cellFont.setFixedPitch(false);
-
-                if (isWideHead) {
-                    QFontMetrics wideMetrics(cellFont);
-                    const int glyphWidth = wideMetrics.horizontalAdvance(text);
-                    if (glyphWidth > 0 && glyphWidth < cellRenderWidth) {
-                        cellFont.setStretch(qMax(100, (cellRenderWidth * 100) / glyphWidth));
-                    }
-                }
-                painter.setFont(cellFont);
-
-                painter.setPen(QColor(fgColor.r, fgColor.g, fgColor.b));
-                painter.setLayoutDirection(Qt::LeftToRight);
-                painter.drawText(QRectF(x, y, cellRenderWidth, m_cellHeight), Qt::AlignBottom,
-                                 QString(QChar(0x202D)) + text);
-                painter.setFont(m_font);
-            }
-
-            col++;
-            x += m_cellWidth;
         }
+#ifdef QTGHOSTTY_TESTING
+        if (rowDirty)
+            ++m_debugLastFrameDirtyRowCount;
+        ++m_debugLastFrameRenderedRowCount;
+#endif
+
+        renderRow(backPainter, y);
 
         bool clean = false;
         ghostty_render_state_row_set(m_rowIter, GHOSTTY_RENDER_STATE_ROW_OPTION_DIRTY, &clean);
 
         y += m_cellHeight;
     }
+    GhosttyRenderStateDirty cleanState = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
+    ghostty_render_state_set(m_renderState, GHOSTTY_RENDER_STATE_OPTION_DIRTY, &cleanState);
+    painter.drawImage(QPoint(0, 0), m_backBuffer);
+}
+
+void TerminalWidget::renderRow(QPainter &painter, int y) {
+    if (ghostty_render_state_row_get(m_rowIter, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &m_rowCells) != GHOSTTY_SUCCESS)
+        return;
+
+    GhosttyRenderStateColors colors = GHOSTTY_INIT_SIZED(GhosttyRenderStateColors);
+    if (ghostty_render_state_colors_get(m_renderState, &colors) != GHOSTTY_SUCCESS)
+        return;
+
+    painter.fillRect(0, y, width(), m_cellHeight,
+                     QColor(colors.background.r, colors.background.g, colors.background.b));
+
+    int x = 0;
+    int col = 0;
+    while (ghostty_render_state_row_cells_next(m_rowCells)) {
+        GhosttyCell rawCell = 0;
+        ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW, &rawCell);
+
+        GhosttyCellWide cellWide = GHOSTTY_CELL_WIDE_NARROW;
+        ghostty_cell_get(rawCell, GHOSTTY_CELL_DATA_WIDE, &cellWide);
+        const bool isWideHead = cellWide == GHOSTTY_CELL_WIDE_WIDE;
+        const bool isWideTail = cellWide == GHOSTTY_CELL_WIDE_SPACER_TAIL || cellWide == GHOSTTY_CELL_WIDE_SPACER_HEAD;
+        const int cellRenderWidth = isWideHead ? m_cellWidth * 2 : m_cellWidth;
+
+        uint32_t graphemeLen = 0;
+        ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN, &graphemeLen);
+
+        GhosttyColorRgb bgColor = colors.background;
+        bool hasBg =
+            (ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, &bgColor)
+             == GHOSTTY_SUCCESS);
+
+        GhosttyColorRgb fgColor = colors.foreground;
+        ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, &fgColor);
+
+        GhosttyStyle style = GHOSTTY_INIT_SIZED(GhosttyStyle);
+        ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, &style);
+
+        if (style.inverse) {
+            std::swap(fgColor, bgColor);
+            hasBg = true;
+        }
+
+        if (hasBg && !isWideTail) {
+            painter.fillRect(x, y, cellRenderWidth, m_cellHeight, QColor(bgColor.r, bgColor.g, bgColor.b));
+        }
+
+        if (graphemeLen > 0 && !isWideTail) {
+            uint32_t codepoints[16];
+            uint32_t len = graphemeLen < 16 ? graphemeLen : 16;
+            ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF,
+                                               codepoints);
+
+            QString text;
+            for (uint32_t i = 0; i < len; ++i)
+                appendCodepoint(text, codepoints[i]);
+
+            QFont cellFont = m_font;
+            if (style.bold)
+                cellFont.setBold(true);
+            if (style.italic)
+                cellFont.setItalic(true);
+            if (isWideHead)
+                cellFont.setFixedPitch(false);
+
+            if (isWideHead) {
+                QFontMetrics wideMetrics(cellFont);
+                const int glyphWidth = wideMetrics.horizontalAdvance(text);
+                if (glyphWidth > 0 && glyphWidth < cellRenderWidth)
+                    cellFont.setStretch(qMax(100, (cellRenderWidth * 100) / glyphWidth));
+            }
+
+            painter.setFont(cellFont);
+            painter.setPen(QColor(fgColor.r, fgColor.g, fgColor.b));
+            painter.setLayoutDirection(Qt::LeftToRight);
+            painter.drawText(QRectF(x, y, cellRenderWidth, m_cellHeight), Qt::AlignBottom,
+                             QString(QChar(0x202D)) + text);
+            painter.setFont(m_font);
+        }
+
+        ++col;
+        x += m_cellWidth;
+    }
+}
+
+void TerminalWidget::renderOverlays(QPainter &painter) const {
+    if (!m_terminal || !m_renderState)
+        return;
+
+    size_t scrollOffset = 0;
+    if (!m_searchMatches.isEmpty() || m_selection.active) {
+        GhosttyTerminalScrollbar scrollbar = {};
+        if (ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &scrollbar) == GHOSTTY_SUCCESS)
+            scrollOffset = scrollbar.offset;
+    }
+
+    if (!m_searchMatches.isEmpty() || m_selection.active) {
+        for (int viewportRow = 0; viewportRow < static_cast<int>(m_rows); ++viewportRow) {
+            const int y = viewportRow * m_cellHeight;
+            const int screenRow = static_cast<int>(viewportRow + scrollOffset);
+            for (int col = 0; col < static_cast<int>(m_cols); ++col) {
+                const int x = col * m_cellWidth;
+                if (!m_searchMatches.isEmpty()) {
+                    for (int i = 0; i < m_searchMatches.size(); ++i) {
+                        const auto &match = m_searchMatches[i];
+                        if (match.row == screenRow && col >= match.startCol && col < match.endCol) {
+                            const QColor highlight =
+                                (i == m_currentSearchIndex) ? QColor(255, 165, 0, 180) : QColor(255, 255, 0, 120);
+                            painter.fillRect(x, y, m_cellWidth, m_cellHeight, highlight);
+                            break;
+                        }
+                    }
+                }
+
+                if (cellInSelection(screenRow, col))
+                    painter.fillRect(x, y, m_cellWidth, m_cellHeight, QColor(0, 120, 215, 180));
+            }
+        }
+    }
+
+    GhosttyRenderStateColors colors = GHOSTTY_INIT_SIZED(GhosttyRenderStateColors);
+    if (ghostty_render_state_colors_get(m_renderState, &colors) != GHOSTTY_SUCCESS)
+        return;
 
     bool cursorVisible = false;
     ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_VISIBLE, &cursorVisible);
@@ -461,28 +558,24 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
         ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_BLINKING, &cursorBlinking);
 
         bool drawCursor = true;
-        if (m_cursorBlinkEnabled && cursorBlinking) {
+        if (m_cursorBlinkEnabled && cursorBlinking)
             drawCursor = m_cursorBlinkVisible;
-        }
 
         if (drawCursor) {
             QColor cursorColor(curColor.r, curColor.g, curColor.b, 180);
             switch (m_cursorShape) {
-                case 1: // Bar
+                case 1:
                     painter.fillRect(curX, curY, 2, m_cellHeight, cursorColor);
                     break;
-                case 2: // Underline
+                case 2:
                     painter.fillRect(curX, curY + m_cellHeight - 2, m_cellWidth, 2, cursorColor);
                     break;
-                default: // Block
+                default:
                     painter.fillRect(curX, curY, m_cellWidth, m_cellHeight, cursorColor);
                     break;
             }
         }
     }
-
-    GhosttyRenderStateDirty cleanState = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
-    ghostty_render_state_set(m_renderState, GHOSTTY_RENDER_STATE_OPTION_DIRTY, &cleanState);
 }
 
 void TerminalWidget::resizeEvent(QResizeEvent *event) {
@@ -956,6 +1049,29 @@ void TerminalWidget::scheduleTerminalRepaint() {
         const int remaining = qMax(0, kBurstRenderIntervalMs - static_cast<int>(m_lastRenderTime.elapsed()));
         m_renderTimer->start(remaining);
     }
+}
+
+void TerminalWidget::applyPendingResize() {
+    if (m_pendingResizeCols == m_cols && m_pendingResizeRows == m_rows)
+        return;
+
+    m_cols = m_pendingResizeCols;
+    m_rows = m_pendingResizeRows;
+
+    if (m_terminal) {
+        ghostty_terminal_resize(m_terminal, m_cols, m_rows, static_cast<uint32_t>(m_cellWidth),
+                                static_cast<uint32_t>(m_cellHeight));
+        m_renderStateDirty = true;
+    }
+
+    if (m_ptySession)
+        m_ptySession->resize(m_cols, m_rows, m_cellWidth, m_cellHeight);
+
+#ifdef QTGHOSTTY_TESTING
+    ++m_debugResizeApplyCount;
+#endif
+
+    update();
 }
 
 void TerminalWidget::flushPendingPtyData() {

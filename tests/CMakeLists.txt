@@ -63,6 +63,8 @@ target_link_libraries(test_terminal_widget PRIVATE
   util
 )
 
+target_compile_definitions(test_terminal_widget PRIVATE QTGHOSTTY_TESTING)
+
 add_dependencies(test_terminal_widget ghostty-vt-stage ghostty-headers-stage)
 
 # Stage libghostty-vt.so next to the test binary so it resolves at runtime

@@ -38,6 +38,8 @@ private slots:
     void testRendersPreeditTextAcrossMultipleCells();
     void testRendersWideCharactersAcrossTwoCells();
     void testCoalescesBurstRepaintsWithoutLosingFinalFrame();
+    void testIncrementalUpdatesRenderDirtyRowsOnly();
+    void testCoalescesRapidResizeOperations();
 };
 
 namespace {
@@ -391,6 +393,58 @@ void TestTerminalWidget::testCoalescesBurstRepaintsWithoutLosingFinalFrame() {
                                  return widget.hasSearchMatches();
                              })(),
                              50);
+}
+
+void TestTerminalWidget::testIncrementalUpdatesRenderDirtyRowsOnly() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    widget.repaint();
+    QApplication::processEvents();
+
+    const int viewportRows = widget.terminalRows();
+    QVERIFY(viewportRows > 2);
+
+    const bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                                   Q_ARG(QByteArray, QByteArray("incremental-line\n")));
+    QVERIFY(invoked);
+
+    QTRY_VERIFY_WITH_TIMEOUT(widget.paintCount() > 0, 100);
+    widget.repaint();
+    QApplication::processEvents();
+
+    QVERIFY2(!widget.debugLastFrameWasFullRedraw(), "single-line PTY updates should not force a full redraw");
+    QVERIFY2(widget.debugLastFrameDirtyRowCount() > 0, "single-line PTY updates should mark some rows dirty");
+    QVERIFY2(widget.debugLastFrameDirtyRowCount() < viewportRows,
+             "single-line PTY updates should dirty fewer rows than the whole viewport");
+    QCOMPARE(widget.debugLastFrameRenderedRowCount(), widget.debugLastFrameDirtyRowCount());
+}
+
+void TestTerminalWidget::testCoalescesRapidResizeOperations() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int initialApplyCount = widget.debugResizeApplyCount();
+
+    for (int i = 0; i < 6; ++i) {
+        widget.resize(960 + (i * 8), 640 + (i * 4));
+        QApplication::processEvents();
+        QTest::qWait(1);
+    }
+
+    QTRY_VERIFY_WITH_TIMEOUT(widget.debugResizeApplyCount() > initialApplyCount, 100);
+    QVERIFY2(widget.debugResizeApplyCount() - initialApplyCount < 6,
+             "rapid resize events should be coalesced into fewer terminal resizes");
 }
 
 // We need QApplication for QWidget tests
