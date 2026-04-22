@@ -1,6 +1,7 @@
 #include "TerminalWidget.h"
 
 #include "PtySession.h"
+#include "logging/Logging.h"
 
 #include <QClipboard>
 #include <QFontMetrics>
@@ -118,20 +119,29 @@ TerminalWidget::~TerminalWidget() {
 bool TerminalWidget::initialize() {
     updateGridSize();
 
-    if (!setupTerminal())
+    if (!setupTerminal()) {
+        qCCritical(terminalLog) << "Failed to initialize Ghostty terminal";
         return false;
-    if (!setupRenderState())
+    }
+    if (!setupRenderState()) {
+        qCCritical(terminalLog) << "Failed to initialize Ghostty render state";
         return false;
-    if (!setupEncoders())
+    }
+    if (!setupEncoders()) {
+        qCCritical(terminalLog) << "Failed to initialize Ghostty key encoder state";
         return false;
+    }
 
     m_ptySession = new PtySession(this);
     connect(m_ptySession, &PtySession::dataReceived, this, &TerminalWidget::onPtyDataReceived);
     connect(m_ptySession, &PtySession::sessionClosed, this, &TerminalWidget::onPtySessionClosed);
 
-    if (!m_ptySession->start(m_cols, m_rows))
+    if (!m_ptySession->start(m_cols, m_rows)) {
+        qCCritical(terminalLog) << "Failed to start PTY session for terminal widget";
         return false;
+    }
 
+    qCInfo(terminalLog) << "Terminal widget initialized with size" << m_cols << "x" << m_rows;
     return true;
 }
 

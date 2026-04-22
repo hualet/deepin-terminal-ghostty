@@ -170,6 +170,14 @@ When changing PTY, input, tab, or window-close behavior, prefer running the most
   - use `GHOSTTY_INIT_SIZED` where required
 - Keep the `#undef emit` workaround before including Ghostty headers where needed.
 
+## Logging
+
+- Use project logging categories from `src/logging/Logging.h` instead of raw `qDebug()` or `qWarning()` in normal application code.
+- Keep category names under the `org.deepin_terminal_ghostty.*` namespace.
+- Use `qCInfo` for lifecycle milestones, `qCWarning` for recoverable failures or fallbacks, and `qCCritical` for unrecoverable initialization failures.
+- Avoid logging in paint paths, per-byte PTY data paths, and other high-frequency loops unless handling an error.
+- Failure logs should include enough context to identify the failing operation.
+
 ## Code Formatting
 
 All C++ sources (`*.cpp`, `*.h`) must be formatted with the project's `.clang-format` configuration.

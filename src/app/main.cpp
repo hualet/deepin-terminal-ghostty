@@ -1,10 +1,14 @@
+#include "logging/Logging.h"
+
 #include <DApplication>
+#include <DLog>
 #include <DWidgetUtil>
 #include <QLocale>
 #include <QStringList>
 #include <QTranslator>
 
 DWIDGET_USE_NAMESPACE
+DCORE_USE_NAMESPACE
 
 #include "MainWindow.h"
 
@@ -30,6 +34,13 @@ bool loadApplicationTranslation(QTranslator &translator) {
 } // namespace
 
 int main(int argc, char *argv[]) {
+    DLogManager::registerJournalAppender();
+#ifdef QT_DEBUG
+    DLogManager::registerConsoleAppender();
+#endif
+
+    qCInfo(appLog) << "Application startup";
+
     DApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("deepin-terminal-ghostty"));
     app.setProductName("deepin-terminal-ghostty");
@@ -37,11 +48,16 @@ int main(int argc, char *argv[]) {
     app.loadTranslator();
 
     QTranslator appTranslator;
-    if (loadApplicationTranslation(appTranslator))
+    if (loadApplicationTranslation(appTranslator)) {
         app.installTranslator(&appTranslator);
+        qCInfo(appLog) << "Loaded application translation for locale" << QLocale::system().name();
+    } else {
+        qCWarning(appLog) << "Failed to load application translation for locale" << QLocale::system().name();
+    }
 
     MainWindow window;
     window.show();
+    qCInfo(appLog) << "Main window shown";
 
     Dtk::Widget::moveToCenter(&window);
 

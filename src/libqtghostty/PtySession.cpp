@@ -1,5 +1,7 @@
 #include "PtySession.h"
 
+#include "logging/Logging.h"
+
 #include <QDebug>
 #include <QSocketNotifier>
 #include <QTimer>
@@ -32,14 +34,17 @@ constexpr const char kTermEnv[] = "TERM=xterm-256color";
 std::string resolveShellPath() {
     const QByteArray shellEnv = qgetenv("SHELL");
     if (!shellEnv.isEmpty()) {
+        qCDebug(ptyLog) << "Resolved shell from SHELL environment" << shellEnv;
         return shellEnv.constData();
     }
 
     struct passwd *userInfo = ::getpwuid(::getuid());
     if (userInfo != nullptr && userInfo->pw_shell != nullptr && userInfo->pw_shell[0] != '\0') {
+        qCInfo(ptyLog) << "Resolved shell from passwd entry" << userInfo->pw_shell;
         return userInfo->pw_shell;
     }
 
+    qCWarning(ptyLog) << "Falling back to /bin/sh because no user shell was available";
     return "/bin/sh";
 }
 
@@ -102,6 +107,7 @@ PtySession::~PtySession() {
 
 bool PtySession::start(int cols, int rows) {
     if (m_masterFd >= 0 || m_childPid > 0) {
+        qCWarning(ptyLog) << "Refusing to start PTY session because one is already active";
         return false;
     }
 
@@ -111,6 +117,7 @@ bool PtySession::start(int cols, int rows) {
     m_childKillSent = false;
     m_childShutdownElapsedMs = 0;
     m_writeBufferOffset = 0;
+    qCInfo(ptyLog) << "Starting PTY session with size" << cols << "x" << rows;
     return spawn(cols, rows);
 }
 
@@ -122,14 +129,14 @@ void PtySession::write(const QByteArray &data) {
     const int pendingBytes = pendingWriteBytes(m_writeBuffer, m_writeBufferOffset);
     const int capacityLeft = kMaxPendingWriteBytes - pendingBytes;
     if (capacityLeft <= 0) {
-        qWarning() << "Dropping PTY write data because the pending buffer is full";
+        qCWarning(ptyLog) << "Dropping PTY write data because the pending buffer is full";
         return;
     }
 
     const int requestedBytes = static_cast<int>(data.size());
     const int bytesToAppend = qMin(capacityLeft, requestedBytes);
     if (bytesToAppend < requestedBytes) {
-        qWarning() << "Dropping PTY write data because the pending buffer exceeded 1 MiB";
+        qCWarning(ptyLog) << "Dropping PTY write data because the pending buffer exceeded 1 MiB";
     }
 
     m_writeBuffer.append(data.constData(), bytesToAppend);
@@ -274,6 +281,7 @@ bool PtySession::spawn(int cols, int rows) {
 
     const pid_t childPid = ::forkpty(&masterFd, nullptr, nullptr, &ws);
     if (childPid < 0) {
+        qCWarning(ptyLog) << "forkpty failed with errno" << errno;
         return false;
     }
 
@@ -297,11 +305,13 @@ bool PtySession::spawn(int cols, int rows) {
     m_childShutdownElapsedMs = 0;
 
     if (!setMasterNonBlocking()) {
+        qCWarning(ptyLog) << "Failed to enable non-blocking mode on PTY master";
         cleanupSynchronously(true);
         return false;
     }
 
     if (!setMasterCloseOnExec()) {
+        qCWarning(ptyLog) << "Failed to mark PTY master close-on-exec";
         cleanupSynchronously(true);
         return false;
     }
@@ -312,6 +322,7 @@ bool PtySession::spawn(int cols, int rows) {
     startChildPollTimer();
 
     applyWindowSize(m_masterFd, cols, rows, 0, 0);
+    qCInfo(ptyLog) << "PTY session started for child pid" << m_childPid;
     return true;
 #endif
 }
@@ -396,6 +407,7 @@ bool PtySession::emitSessionClosedOnce() {
 
     QPointer<PtySession> guard(this);
     m_sessionClosedEmitted = true;
+    qCInfo(ptyLog) << "PTY session closed";
     emit sessionClosed();
     return static_cast<bool>(guard);
 }
@@ -449,6 +461,7 @@ bool PtySession::flushWriteBuffer() {
             return false;
         }
 
+        qCWarning(ptyLog) << "Write to PTY master failed with errno" << errno;
         m_writeBuffer.clear();
         m_writeBufferOffset = 0;
         if (!closeMaster()) {
@@ -524,7 +537,7 @@ void PtySession::shutdownChildBlocking(bool signalChild) {
         }
 
         if (!signalable) {
-            qWarning() << "Skipping forced PTY shutdown because the process group is not signalable";
+            qCWarning(ptyLog) << "Skipping forced PTY shutdown because the process group is not signalable";
             m_childPid = -1;
             m_childShutdownRequested = false;
             m_childHupSent = false;
@@ -539,7 +552,7 @@ void PtySession::shutdownChildBlocking(bool signalChild) {
     if (isSignalablePid(m_childPid)) {
         signalProcessGroup(m_childPid, SIGKILL);
     } else {
-        qWarning() << "Skipping SIGKILL for PTY shutdown because the process group is not signalable";
+        qCWarning(ptyLog) << "Skipping SIGKILL for PTY shutdown because the process group is not signalable";
         m_childPid = -1;
         m_childShutdownRequested = false;
         m_childHupSent = false;
@@ -580,7 +593,7 @@ void PtySession::shutdownChildBlocking(bool signalChild) {
         ::usleep(static_cast<useconds_t>(kChildPollIntervalMs * 1000));
     }
 
-    qWarning() << "Timed out waiting for PTY child shutdown";
+    qCWarning(ptyLog) << "Timed out waiting for PTY child shutdown";
     m_childPid = -1;
     m_childShutdownRequested = false;
     m_childHupSent = false;

@@ -5,6 +5,7 @@
 #include "TermPane.h"
 #include "TerminalWidget.h"
 #include "VerticalTabSidebar.h"
+#include "logging/Logging.h"
 
 #include <DTitlebar>
 #include <QDialog>
@@ -185,6 +186,7 @@ void MainWindow::setupTitleBar() {
 }
 
 void MainWindow::addTab(bool activate) {
+    qCInfo(appLog) << "Creating terminal tab" << m_nextTabId;
     auto *pane = new TermPane(m_stackWidget);
 
     connect(pane, &TermPane::terminalTitleChanged, this, &MainWindow::onTerminalTitleChanged);
@@ -235,6 +237,8 @@ void MainWindow::onTabCloseRequested(int index) {
     if (!page)
         return;
 
+    qCInfo(appLog) << "Closing terminal tab at index" << index;
+
     auto *pane = qobject_cast<TermPane *>(page);
     for (int i = 0; i < m_tabs.size(); ++i) {
         if (m_tabs.at(i).pane == pane) {
@@ -250,6 +254,7 @@ void MainWindow::onTabCloseRequested(int index) {
 
     // If no tabs left, close the window
     if (m_tabBar->count() == 0) {
+        qCInfo(appLog) << "Last tab closed, closing main window";
         close();
         return;
     }
@@ -297,6 +302,7 @@ void MainWindow::onTerminalSessionClosed() {
     if (!pane)
         return;
 
+    qCInfo(appLog) << "Terminal session closed, removing pane";
     closePane(pane);
 }
 

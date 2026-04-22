@@ -4,6 +4,7 @@
 #include "TermPane.h"
 #include "TerminalWidget.h"
 #include "VerticalTabSidebar.h"
+#include "logging/Logging.h"
 
 #include <DApplication>
 #include <DSettings>
@@ -51,6 +52,7 @@ private slots:
     void testHorizontalTitlebarTabsSurviveModeSwitch();
     void testVerticalSidebarTabClickSwitchesCurrentTab();
     void testVerticalSidebarIncludesDecorativeHierarchyElements();
+    void testLoggingCategoriesExposeExpectedNames();
 };
 
 namespace {
@@ -138,6 +140,12 @@ void TestMainWindow::testSingleTabCtrlDClosesWindow() {
     session->write("exit\n");
 
     QTRY_VERIFY_WITH_TIMEOUT(!window.isVisible(), 5000);
+}
+
+void TestMainWindow::testLoggingCategoriesExposeExpectedNames() {
+    QCOMPARE(QString::fromUtf8(appLog().categoryName()), QStringLiteral("org.deepin_terminal_ghostty.app"));
+    QCOMPARE(QString::fromUtf8(ptyLog().categoryName()), QStringLiteral("org.deepin_terminal_ghostty.pty"));
+    QCOMPARE(QString::fromUtf8(terminalLog().categoryName()), QStringLiteral("org.deepin_terminal_ghostty.terminal"));
 }
 
 void TestMainWindow::testClosedSessionRemovesOnlyCurrentTab() {

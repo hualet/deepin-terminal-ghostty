@@ -181,11 +181,13 @@ set_target_properties(ghostty-vt PROPERTIES
 )
 
 add_library(qtghostty SHARED
+  src/logging/Logging.cpp
   src/libqtghostty/PtySession.cpp
   src/libqtghostty/TerminalWidget.cpp
 )
 
 target_include_directories(qtghostty PUBLIC
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/libqtghostty>"
   "$<INSTALL_INTERFACE:include>"
   "${GHOSTTY_STAGED_INCLUDE_DIR}"
