@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QElapsedTimer>
 #include <QImage>
 #include <QInputMethodEvent>
 #include <QInputMethodQueryEvent>
@@ -36,9 +37,28 @@ private slots:
     void testRendersSupplementaryPlaneCharacters();
     void testRendersPreeditTextAcrossMultipleCells();
     void testRendersWideCharactersAcrossTwoCells();
+    void testCoalescesBurstRepaintsWithoutLosingFinalFrame();
 };
 
 namespace {
+
+class CountingTerminalWidget : public TerminalWidget {
+    Q_OBJECT
+
+public:
+    using TerminalWidget::TerminalWidget;
+
+    int paintCount() const { return m_paintCount; }
+
+protected:
+    void paintEvent(QPaintEvent *event) override {
+        ++m_paintCount;
+        TerminalWidget::paintEvent(event);
+    }
+
+private:
+    int m_paintCount = 0;
+};
 
 QByteArray collectedPtyOutput(const QSignalSpy &spy) {
     QByteArray output;
@@ -333,6 +353,44 @@ void TestTerminalWidget::testRendersWideCharactersAcrossTwoCells() {
     QVERIFY2(diff.width() > cursorRect.width(), "wide character should render wider than a single terminal cell");
     QVERIFY2(secondCellChanges > cursorRect.width() * 3,
              "wide character should visibly paint a meaningful portion of the second terminal cell");
+}
+
+void TestTerminalWidget::testCoalescesBurstRepaintsWithoutLosingFinalFrame() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    widget.setCursorBlinkEnabled(false);
+    QApplication::processEvents();
+
+    const int initialPaintCount = widget.paintCount();
+
+    QElapsedTimer timer;
+    timer.start();
+
+    for (int i = 0; i < 12; ++i) {
+        const QByteArray line = QByteArray("line-") + QByteArray::number(i) + "\n";
+        const bool invoked =
+            QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, line));
+        QVERIFY(invoked);
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 1);
+        if (timer.elapsed() < 8)
+            QTest::qWait(1);
+    }
+
+    QTRY_VERIFY_WITH_TIMEOUT(widget.paintCount() > initialPaintCount, 200);
+
+    const int paintsForBurst = widget.paintCount() - initialPaintCount;
+    QVERIFY2(paintsForBurst < 12, "burst PTY input should be coalesced into fewer paints than data chunks");
+
+    const QString lastLine = QStringLiteral("line-11");
+    QTRY_VERIFY_WITH_TIMEOUT(([&widget, &lastLine]() {
+                                 widget.performSearch(lastLine);
+                                 return widget.hasSearchMatches();
+                             })(),
+                             50);
 }
 
 // We need QApplication for QWidget tests

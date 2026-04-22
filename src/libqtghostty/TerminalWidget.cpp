@@ -17,6 +17,8 @@
 
 namespace {
 
+constexpr int kBurstRenderIntervalMs = 8;
+
 void appendCodepoint(QString &text, uint32_t codepoint) {
     if (codepoint <= 0xFFFF) {
         text.append(QChar(static_cast<ushort>(codepoint)));
@@ -119,6 +121,10 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
         m_cursorBlinkVisible = !m_cursorBlinkVisible;
         update();
     });
+
+    m_renderTimer = new QTimer(this);
+    m_renderTimer->setSingleShot(true);
+    connect(m_renderTimer, &QTimer::timeout, this, &TerminalWidget::onRenderTimerTimeout);
 }
 
 TerminalWidget::~TerminalWidget() {
@@ -270,6 +276,7 @@ void TerminalWidget::updateGridSize() {
         if (m_terminal) {
             ghostty_terminal_resize(m_terminal, m_cols, m_rows, static_cast<uint32_t>(m_cellWidth),
                                     static_cast<uint32_t>(m_cellHeight));
+            m_renderStateDirty = true;
         }
         if (m_ptySession) {
             m_ptySession->resize(m_cols, m_rows, m_cellWidth, m_cellHeight);
@@ -289,11 +296,25 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     renderPreeditText(painter);
 }
 
-void TerminalWidget::renderTerminal(QPainter &painter) {
+bool TerminalWidget::syncRenderState() const {
+    if (!m_renderStateDirty) {
+        return true;
+    }
+
     GhosttyResult err = ghostty_render_state_update(m_renderState, m_terminal);
-    if (err != GHOSTTY_SUCCESS)
+    if (err != GHOSTTY_SUCCESS) {
+        return false;
+    }
+
+    m_renderStateDirty = false;
+    return true;
+}
+
+void TerminalWidget::renderTerminal(QPainter &painter) {
+    if (!syncRenderState())
         return;
 
+    GhosttyResult err = GHOSTTY_SUCCESS;
     GhosttyRenderStateColors colors = GHOSTTY_INIT_SIZED(GhosttyRenderStateColors);
     err = ghostty_render_state_colors_get(m_renderState, &colors);
     if (err != GHOSTTY_SUCCESS)
@@ -867,20 +888,23 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
             .value = {.delta = static_cast<intptr_t>(rows)},
         };
         ghostty_terminal_scroll_viewport(m_terminal, sv);
+        m_renderStateDirty = true;
         update();
     }
 }
 
 void TerminalWidget::onPtyDataReceived(const QByteArray &data) {
-    if (!m_terminal)
+    if (!m_terminal || data.isEmpty())
         return;
-    ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(data.constData()),
-                              static_cast<size_t>(data.size()));
-    update();
-    notifyInputMethodCursorChange();
+
+    m_pendingPtyData.append(data);
+    scheduleTerminalRepaint();
 }
 
 void TerminalWidget::onPtySessionClosed() {
+    flushPendingPtyData();
+    if (m_renderTimer)
+        m_renderTimer->stop();
     Q_EMIT sessionClosed();
 }
 
@@ -890,7 +914,7 @@ QRect TerminalWidget::inputMethodCursorRect() const {
         return cursorRect;
     }
 
-    if (ghostty_render_state_update(m_renderState, m_terminal) != GHOSTTY_SUCCESS) {
+    if (!syncRenderState()) {
         return cursorRect;
     }
 
@@ -914,6 +938,46 @@ void TerminalWidget::notifyInputMethodCursorChange() {
         inputMethod->update(Qt::ImEnabled | Qt::ImCursorRectangle | Qt::ImAnchorRectangle
                             | Qt::ImInputItemClipRectangle);
     }
+}
+
+void TerminalWidget::scheduleTerminalRepaint() {
+    if (!m_terminal || m_pendingPtyData.isEmpty()) {
+        return;
+    }
+
+    if (!m_lastRenderTime.isValid() || m_lastRenderTime.elapsed() >= kBurstRenderIntervalMs) {
+        flushPendingPtyData();
+        update();
+        m_lastRenderTime.restart();
+        return;
+    }
+
+    if (!m_renderTimer->isActive()) {
+        const int remaining = qMax(0, kBurstRenderIntervalMs - static_cast<int>(m_lastRenderTime.elapsed()));
+        m_renderTimer->start(remaining);
+    }
+}
+
+void TerminalWidget::flushPendingPtyData() {
+    if (!m_terminal || m_pendingPtyData.isEmpty()) {
+        return;
+    }
+
+    ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(m_pendingPtyData.constData()),
+                              static_cast<size_t>(m_pendingPtyData.size()));
+    m_pendingPtyData.clear();
+    m_renderStateDirty = true;
+    notifyInputMethodCursorChange();
+}
+
+void TerminalWidget::onRenderTimerTimeout() {
+    if (m_pendingPtyData.isEmpty()) {
+        return;
+    }
+
+    flushPendingPtyData();
+    update();
+    m_lastRenderTime.restart();
 }
 
 void TerminalWidget::renderPreeditText(QPainter &painter) {

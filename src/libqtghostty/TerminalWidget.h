@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QElapsedTimer>
 #include <QFont>
 #include <QInputMethodEvent>
 #include <QTimer>
@@ -64,17 +65,21 @@ protected:
 private slots:
     void onPtyDataReceived(const QByteArray &data);
     void onPtySessionClosed();
+    void onRenderTimerTimeout();
 
 private:
     bool setupTerminal();
     bool setupRenderState();
     bool setupEncoders();
+    bool syncRenderState() const;
     void updateGridSize();
     void renderTerminal(QPainter &painter);
     void renderPreeditText(QPainter &painter);
     void sendFocusEvent(bool gained);
     QRect inputMethodCursorRect() const;
     void notifyInputMethodCursorChange();
+    void scheduleTerminalRepaint();
+    void flushPendingPtyData();
 
     void updateSearchHighlight();
     QString textForScreenRow(int row) const;
@@ -96,9 +101,13 @@ private:
     GhosttyRenderStateRowCells m_rowCells = nullptr;
     GhosttyKeyEncoder m_keyEncoder = nullptr;
     GhosttyKeyEvent m_keyEvent = nullptr;
+    mutable bool m_renderStateDirty = true;
 
     // PTY
     PtySession *m_ptySession = nullptr;
+    QByteArray m_pendingPtyData;
+    QTimer *m_renderTimer = nullptr;
+    QElapsedTimer m_lastRenderTime;
 
     // Font metrics
     QFont m_font;
