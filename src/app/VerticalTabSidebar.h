@@ -29,8 +29,12 @@ signals:
     void tabExpansionToggled(int tabId);
     void paneActivated(int tabId, const QUuid &paneId);
 
+protected:
+    void resizeEvent(QResizeEvent *event) override;
+
 private:
     void rebuild();
+    void updateButtonElisions();
 
     QList<TabItem> m_items;
     QVBoxLayout *m_layout = nullptr;

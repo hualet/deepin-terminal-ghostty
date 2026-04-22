@@ -452,7 +452,9 @@ void MainWindow::rebuildCentralLayout() {
             m_mainSplitter->addWidget(m_stackWidget);
         m_mainSplitter->setStretchFactor(0, 0);
         m_mainSplitter->setStretchFactor(1, 1);
-        if (m_mainSplitter->sizes().isEmpty())
+        m_verticalSidebar->setMinimumWidth(150);
+        bool sidebarJustAdded = (m_mainSplitter->indexOf(m_verticalSidebar) < 0);
+        if (sidebarJustAdded)
             m_mainSplitter->setSizes({240, 720});
         layout->addWidget(m_mainSplitter);
     } else {
