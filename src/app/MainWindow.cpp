@@ -4,6 +4,7 @@
 #include "SettingsDialog.h"
 #include "TermPane.h"
 #include "TerminalWidget.h"
+#include "VerticalTabSidebar.h"
 
 #include <DTitlebar>
 #include <QDialog>
@@ -14,12 +15,18 @@
 #include <QKeyEvent>
 #include <QMenu>
 #include <QShortcut>
+#include <QSplitter>
 #include <QStackedWidget>
 #include <QTableWidget>
 #include <QVBoxLayout>
 
 MainWindow::MainWindow(QWidget *parent)
-    : DMainWindow(parent), m_tabBar(new DTabBar(this)), m_stackWidget(new QStackedWidget(this)) {
+    : DMainWindow(parent),
+      m_tabBar(new DTabBar(this)),
+      m_stackWidget(new QStackedWidget(this)),
+      m_contentHost(new QWidget(this)) {
+    m_verticalTabsEnabled = AppSettings::instance()->verticalTabsEnabled();
+
     // Prevent DTK or Qt default actions from intercepting standard
     // terminal keybindings (Ctrl+A–Z). In a terminal every Ctrl+letter
     // combo must be sent to the PTY as a C0 control character.
@@ -38,8 +45,9 @@ MainWindow::MainWindow(QWidget *parent)
     resize(960, 640);
     setWindowTitle("deepin-terminal-ghostty");
 
-    // Central widget — stacked pages, one per tab
-    setCentralWidget(m_stackWidget);
+    // Central widget host keeps layout switching local to MainWindow.
+    setCentralWidget(m_contentHost);
+    rebuildCentralLayout();
 
     // Titlebar: icon + tabs
     setupTitleBar();
@@ -78,6 +86,11 @@ MainWindow::MainWindow(QWidget *parent)
             }
         }
     });
+    connect(settings, &AppSettings::verticalTabsEnabledChanged, this, [this](bool enabled) {
+        if (m_verticalTabsAction && m_verticalTabsAction->isChecked() != enabled)
+            m_verticalTabsAction->setChecked(enabled);
+        setVerticalTabsEnabled(enabled);
+    });
 
     // Tab bar configuration
     m_tabBar->setTabsClosable(true);
@@ -107,18 +120,33 @@ void MainWindow::setupTitleBar() {
     tb->setAutoHideOnFullscreen(true);
 
     // Embed the tab bar into the DTK titlebar via a custom widget
-    QWidget *tabWrapper = new QWidget(this);
-    QHBoxLayout *layout = new QHBoxLayout(tabWrapper);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->addWidget(m_tabBar, 0, Qt::AlignVCenter);
-    tabWrapper->setLayout(layout);
+    m_tabTitlebarWidget = new QWidget(this);
+    auto *tabLayout = new QHBoxLayout(m_tabTitlebarWidget);
+    tabLayout->setContentsMargins(0, 0, 0, 0);
+    tabLayout->addWidget(m_tabBar, 0, Qt::AlignVCenter);
 
-    tb->setCustomWidget(tabWrapper);
+    m_compactTitlebarWidget = new QWidget(this);
+    m_compactTitlebarWidget->setObjectName(QStringLiteral("compactTitlebarWidget"));
+    m_compactTitlebarWidget->setFixedHeight(36);
+    auto *compactLayout = new QHBoxLayout(m_compactTitlebarWidget);
+    compactLayout->setContentsMargins(12, 6, 12, 6);
+    compactLayout->addStretch(1);
 
     auto *menu = new QMenu(this);
     auto *settingsAction = menu->addAction(tr("Settings"));
     connect(settingsAction, &QAction::triggered, this, &MainWindow::onSettingsTriggered);
+
+    m_verticalTabsAction = menu->addAction(tr("Vertical Tabs"));
+    m_verticalTabsAction->setObjectName(QStringLiteral("verticalTabsAction"));
+    m_verticalTabsAction->setCheckable(true);
+    m_verticalTabsAction->setChecked(m_verticalTabsEnabled);
+    connect(m_verticalTabsAction, &QAction::toggled, this, [this](bool checked) {
+        AppSettings::instance()->setVerticalTabsEnabled(checked);
+        setVerticalTabsEnabled(checked);
+    });
+
     tb->setMenu(menu);
+    updateTitlebarPresentation();
 }
 
 void MainWindow::addTab(bool activate) {
@@ -127,13 +155,33 @@ void MainWindow::addTab(bool activate) {
     connect(pane, &TermPane::terminalTitleChanged, this, &MainWindow::onTerminalTitleChanged);
     connect(pane, &TermPane::sessionClosed, this, &MainWindow::onTerminalSessionClosed);
     connect(pane, &TermPane::currentTerminalChanged, this, &MainWindow::onPaneTerminalChanged);
+    connect(pane, &TermPane::paneStructureChanged, this, [this, pane]() {
+        if (auto *record = tabRecordForPane(pane))
+            refreshTabRecord(*record);
+        syncTabWidgetsFromRecords();
+    });
+    connect(pane, &TermPane::activePaneChanged, this, [this, pane](const QUuid &) {
+        if (auto *record = tabRecordForPane(pane))
+            refreshTabRecord(*record);
+        syncTabWidgetsFromRecords();
+    });
+    connect(pane, &TermPane::paneTitleChanged, this, [this, pane](const QUuid &, const QString &) {
+        if (auto *record = tabRecordForPane(pane))
+            refreshTabRecord(*record);
+        syncTabWidgetsFromRecords();
+    });
     connect(pane, &TermPane::requestSettings, this, &MainWindow::onSettingsTriggered);
 
     int stackIndex = m_stackWidget->addWidget(pane);
+    m_tabs.append(TabRecord{m_nextTabId++, pane, tr("Terminal"), true});
 
     // DTabBar::addTab returns the visual tab index; we keep it in sync with stack index
-    int tabIndex = m_tabBar->addTab("Terminal");
+    int tabIndex = m_tabBar->addTab(tr("Terminal"));
     m_tabBar->setTabData(tabIndex, stackIndex);
+
+    if (auto *record = tabRecordForPane(pane))
+        refreshTabRecord(*record);
+    syncTabWidgetsFromRecords();
 
     if (activate) {
         m_tabBar->setCurrentIndex(tabIndex);
@@ -151,6 +199,14 @@ void MainWindow::onTabCloseRequested(int index) {
     QWidget *page = m_stackWidget->widget(stackIndex);
     if (!page)
         return;
+
+    auto *pane = qobject_cast<TermPane *>(page);
+    for (int i = 0; i < m_tabs.size(); ++i) {
+        if (m_tabs.at(i).pane == pane) {
+            m_tabs.removeAt(i);
+            break;
+        }
+    }
 
     m_stackWidget->removeWidget(page);
     page->deleteLater();
@@ -170,6 +226,8 @@ void MainWindow::onTabCloseRequested(int index) {
             m_tabBar->setTabData(i, oldStackIndex - 1);
         }
     }
+
+    syncTabWidgetsFromRecords();
 }
 
 void MainWindow::onTabCurrentChanged(int index) {
@@ -185,6 +243,8 @@ void MainWindow::onTabCurrentChanged(int index) {
             term->setFocus();
         }
     }
+
+    syncTabWidgetsFromRecords();
 }
 
 void MainWindow::onTerminalTitleChanged(const QString &title) {
@@ -192,15 +252,9 @@ void MainWindow::onTerminalTitleChanged(const QString &title) {
     if (!pane)
         return;
 
-    int stackIndex = m_stackWidget->indexOf(pane);
-    for (int i = 0; i < m_tabBar->count(); ++i) {
-        if (m_tabBar->tabData(i).toInt() == stackIndex) {
-            m_tabBar->setTabText(i, title);
-            if (m_tabBar->currentIndex() == i)
-                setWindowTitle(title);
-            break;
-        }
-    }
+    if (auto *record = tabRecordForPane(pane))
+        record->title = title.isEmpty() ? tr("Terminal") : title;
+    syncTabWidgetsFromRecords();
 }
 
 void MainWindow::onTerminalSessionClosed() {
@@ -217,7 +271,9 @@ void MainWindow::onPaneTerminalChanged(TerminalWidget *term) {
     auto *pane = qobject_cast<TermPane *>(sender());
     if (!pane || pane != currentPane())
         return;
-    setWindowTitle(term->property("currentTitle").toString());
+    if (auto *record = tabRecordForPane(pane))
+        refreshTabRecord(*record);
+    syncTabWidgetsFromRecords();
     term->setFocus();
 }
 
@@ -247,6 +303,82 @@ TerminalWidget *MainWindow::currentTerminal() const {
     return nullptr;
 }
 
+int MainWindow::indexOfTabId(int tabId) const {
+    for (int i = 0; i < m_tabs.size(); ++i) {
+        if (m_tabs.at(i).id == tabId)
+            return i;
+    }
+    return -1;
+}
+
+MainWindow::TabRecord *MainWindow::tabRecordForPane(TermPane *pane) {
+    if (!pane)
+        return nullptr;
+
+    for (auto &record : m_tabs) {
+        if (record.pane == pane)
+            return &record;
+    }
+    return nullptr;
+}
+
+void MainWindow::refreshTabRecord(TabRecord &record) {
+    if (!record.pane) {
+        record.title = tr("Terminal");
+        return;
+    }
+
+    const auto infos = record.pane->paneInfos();
+    for (const auto &info : infos) {
+        if (info.isActive) {
+            record.title = info.title.isEmpty() ? tr("Terminal") : info.title;
+            return;
+        }
+    }
+
+    record.title = tr("Terminal");
+}
+
+void MainWindow::refreshTabRecords() {
+    for (auto &record : m_tabs)
+        refreshTabRecord(record);
+}
+
+void MainWindow::syncTabWidgetsFromRecords() {
+    for (int i = 0; i < m_tabs.size() && i < m_tabBar->count(); ++i)
+        m_tabBar->setTabText(i, m_tabs.at(i).title);
+
+    const int currentIndex = m_tabBar->currentIndex();
+    if (currentIndex >= 0 && currentIndex < m_tabs.size())
+        setWindowTitle(m_tabs.at(currentIndex).title);
+    else
+        setWindowTitle(QStringLiteral("deepin-terminal-ghostty"));
+
+    refreshSidebar();
+}
+
+void MainWindow::refreshSidebar() {
+    if (!m_verticalSidebar)
+        return;
+
+    QList<VerticalTabSidebar::TabItem> items;
+    items.reserve(m_tabs.size());
+    for (int i = 0; i < m_tabs.size(); ++i) {
+        const auto &record = m_tabs.at(i);
+        VerticalTabSidebar::TabItem item;
+        item.id = record.id;
+        item.title = record.title.isEmpty() ? tr("Terminal") : record.title;
+        item.isCurrent = (i == m_tabBar->currentIndex());
+        item.expanded = record.expanded;
+        if (record.pane)
+            item.panes = record.pane->paneInfos();
+        items.append(item);
+    }
+
+    m_verticalSidebar->setItems(items);
+    m_verticalSidebar->setVisible(m_verticalTabsEnabled);
+}
+
 void MainWindow::onSettingsTriggered() {
     if (!m_settingsDialog) {
         m_settingsDialog = new SettingsDialog(this);
@@ -254,6 +386,99 @@ void MainWindow::onSettingsTriggered() {
     m_settingsDialog->show();
     m_settingsDialog->raise();
     m_settingsDialog->activateWindow();
+}
+
+void MainWindow::setVerticalTabsEnabled(bool enabled) {
+    if (m_verticalTabsEnabled == enabled)
+        return;
+
+    m_verticalTabsEnabled = enabled;
+    if (m_verticalTabsAction && m_verticalTabsAction->isChecked() != enabled)
+        m_verticalTabsAction->setChecked(enabled);
+    updateTitlebarPresentation();
+    rebuildCentralLayout();
+}
+
+void MainWindow::rebuildCentralLayout() {
+    if (!m_contentHost)
+        return;
+
+    auto *layout = qobject_cast<QHBoxLayout *>(m_contentHost->layout());
+    if (!layout) {
+        layout = new QHBoxLayout(m_contentHost);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(0);
+    }
+
+    while (QLayoutItem *item = layout->takeAt(0)) {
+        delete item;
+    }
+
+    if (m_verticalTabsEnabled) {
+        if (!m_verticalSidebar) {
+            m_verticalSidebar = new VerticalTabSidebar(this);
+            connect(m_verticalSidebar, &VerticalTabSidebar::tabActivated, this,
+                    [this](int tabId) { gotoTab(indexOfTabId(tabId)); });
+            connect(m_verticalSidebar, &VerticalTabSidebar::tabExpansionToggled, this, [this](int tabId) {
+                const int index = indexOfTabId(tabId);
+                if (index < 0 || index >= m_tabs.size())
+                    return;
+                m_tabs[index].expanded = !m_tabs[index].expanded;
+                refreshSidebar();
+            });
+            connect(m_verticalSidebar, &VerticalTabSidebar::paneActivated, this,
+                    [this](int tabId, const QUuid &paneId) {
+                        const int index = indexOfTabId(tabId);
+                        if (index < 0 || index >= m_tabs.size())
+                            return;
+                        gotoTab(index);
+                        if (m_tabs[index].pane)
+                            m_tabs[index].pane->focusPane(paneId);
+                    });
+        }
+        if (!m_mainSplitter) {
+            m_mainSplitter = new QSplitter(Qt::Horizontal, this);
+            m_mainSplitter->setChildrenCollapsible(false);
+            m_mainSplitter->setHandleWidth(1);
+            m_mainSplitter->setObjectName(QStringLiteral("verticalTabsSplitter"));
+        }
+        if (m_verticalSidebar->parentWidget() != m_mainSplitter)
+            m_verticalSidebar->setParent(m_mainSplitter);
+        if (m_stackWidget->parentWidget() != m_mainSplitter)
+            m_stackWidget->setParent(m_mainSplitter);
+        if (m_mainSplitter->indexOf(m_verticalSidebar) < 0)
+            m_mainSplitter->insertWidget(0, m_verticalSidebar);
+        if (m_mainSplitter->indexOf(m_stackWidget) < 0)
+            m_mainSplitter->addWidget(m_stackWidget);
+        m_mainSplitter->setStretchFactor(0, 0);
+        m_mainSplitter->setStretchFactor(1, 1);
+        if (m_mainSplitter->sizes().isEmpty())
+            m_mainSplitter->setSizes({240, 720});
+        layout->addWidget(m_mainSplitter);
+    } else {
+        layout->addWidget(m_stackWidget);
+        if (m_verticalSidebar)
+            m_verticalSidebar->hide();
+    }
+
+    refreshTabRecords();
+    refreshSidebar();
+}
+
+void MainWindow::updateTitlebarPresentation() {
+    DTitlebar *tb = titlebar();
+    if (!tb)
+        return;
+
+    if (m_verticalTabsEnabled) {
+        m_tabBar->hide();
+        if (m_compactTitlebarWidget)
+            tb->setCustomWidget(m_compactTitlebarWidget);
+    } else {
+        m_tabBar->show();
+        if (m_tabTitlebarWidget)
+            tb->setCustomWidget(m_tabTitlebarWidget);
+    }
 }
 
 void MainWindow::setupShortcuts() {

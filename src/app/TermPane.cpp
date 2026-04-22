@@ -13,6 +13,7 @@
 #include <QMenu>
 #include <QResizeEvent>
 #include <QSplitter>
+#include <QUuid>
 #include <QVBoxLayout>
 
 namespace {
@@ -39,6 +40,52 @@ bool matchesShortcut(const QKeyEvent *event, const QKeySequence &shortcut) {
     return false;
 }
 
+QUuid ensurePaneId(TerminalWidget *term) {
+    const QVariant existing = term->property("paneId");
+    if (existing.isValid())
+        return existing.toUuid();
+
+    const QUuid id = QUuid::createUuid();
+    term->setProperty("paneId", id);
+    return id;
+}
+
+QString paneTitle(TerminalWidget *term) {
+    return term->property("currentTitle").toString();
+}
+
+TerminalWidget *firstTerminalWidget(QWidget *widget) {
+    if (!widget)
+        return nullptr;
+
+    if (auto *term = qobject_cast<TerminalWidget *>(widget))
+        return term;
+
+    if (auto *splitter = qobject_cast<QSplitter *>(widget)) {
+        for (int i = 0; i < splitter->count(); ++i) {
+            if (auto *term = firstTerminalWidget(splitter->widget(i)))
+                return term;
+        }
+    }
+
+    return nullptr;
+}
+
+void collectTerminalWidgetsInVisualOrder(QWidget *widget, QList<TerminalWidget *> &terminals) {
+    if (!widget)
+        return;
+
+    if (auto *term = qobject_cast<TerminalWidget *>(widget)) {
+        terminals.append(term);
+        return;
+    }
+
+    if (auto *splitter = qobject_cast<QSplitter *>(widget)) {
+        for (int i = 0; i < splitter->count(); ++i)
+            collectTerminalWidgetsInVisualOrder(splitter->widget(i), terminals);
+    }
+}
+
 } // namespace
 
 TermPane::TermPane(QWidget *parent) : QWidget(parent) {
@@ -58,12 +105,47 @@ TermPane::TermPane(QWidget *parent) : QWidget(parent) {
     connect(m_searchBar, &PageSearchBar::closeSearchBar, this, &TermPane::hideSearchBar);
 }
 
+QList<TermPane::PaneInfo> TermPane::paneInfos() const {
+    QList<PaneInfo> infos;
+    QList<TerminalWidget *> terminals;
+    collectTerminalWidgetsInVisualOrder(m_rootWidget, terminals);
+    infos.reserve(terminals.size());
+    for (TerminalWidget *term : terminals) {
+        PaneInfo info;
+        info.id = term->property("paneId").toUuid();
+        info.title = paneTitle(term);
+        info.isActive = (term == m_currentTerm);
+        infos.append(info);
+    }
+    return infos;
+}
+
+QUuid TermPane::activePaneId() const {
+    if (!m_currentTerm)
+        return {};
+    return m_currentTerm->property("paneId").toUuid();
+}
+
+bool TermPane::focusPane(const QUuid &paneId) {
+    QList<TerminalWidget *> terminals;
+    collectTerminalWidgetsInVisualOrder(m_rootWidget, terminals);
+    for (TerminalWidget *term : terminals) {
+        if (term->property("paneId").toUuid() != paneId)
+            continue;
+        setCurrentTerminal(term);
+        term->setFocus();
+        return true;
+    }
+    return false;
+}
+
 TerminalWidget *TermPane::currentTerminal() const {
     return m_currentTerm;
 }
 
 TerminalWidget *TermPane::createTerminal() {
     auto *term = new TerminalWidget(this);
+    ensurePaneId(term);
     term->initialize();
 
     auto *settings = AppSettings::instance();
@@ -83,6 +165,7 @@ void TermPane::setupTerminalConnections(TerminalWidget *term) {
         if (displayTitle.isEmpty())
             displayTitle = title;
         term->setProperty("currentTitle", displayTitle);
+        Q_EMIT paneTitleChanged(ensurePaneId(term), displayTitle);
         if (m_currentTerm == term)
             Q_EMIT terminalTitleChanged(displayTitle);
     });
@@ -95,6 +178,7 @@ void TermPane::setCurrentTerminal(TerminalWidget *term) {
         return;
     m_currentTerm = term;
     Q_EMIT currentTerminalChanged(term);
+    Q_EMIT activePaneChanged(activePaneId());
 }
 
 void TermPane::splitCurrent(Qt::Orientation orientation) {
@@ -145,6 +229,8 @@ void TermPane::splitCurrent(Qt::Orientation orientation) {
         m_rootWidget = newSplitter;
         setCurrentTerminal(newTerm);
     }
+
+    Q_EMIT paneStructureChanged();
 }
 
 void TermPane::closeCurrentSplit() {
@@ -160,17 +246,39 @@ void TermPane::removeTerminal(TerminalWidget *term) {
         // This is the only terminal in the pane
         if (m_currentTerm == term)
             m_currentTerm = nullptr;
+        if (m_rootWidget == term)
+            m_rootWidget = nullptr;
+        m_layout->removeWidget(term);
         term->deleteLater();
         Q_EMIT sessionClosed();
+        if (!m_currentTerm)
+            Q_EMIT activePaneChanged({});
+        Q_EMIT paneStructureChanged();
         return;
     }
 
     int index = splitter->indexOf(term);
+    TerminalWidget *replacementTerm = nullptr;
+    if (m_currentTerm == term) {
+        QList<QWidget *> remainingWidgets;
+        for (int i = 0; i < splitter->count(); ++i) {
+            QWidget *child = splitter->widget(i);
+            if (child != term)
+                remainingWidgets.append(child);
+        }
+
+        if (!remainingWidgets.isEmpty()) {
+            const int replacementIndex = qMin(index, remainingWidgets.size() - 1);
+            replacementTerm = firstTerminalWidget(remainingWidgets.at(replacementIndex));
+        }
+    }
+
     term->setParent(nullptr);
     term->deleteLater();
 
     // If the splitter now has only one widget left, promote it
     if (splitter->count() == 1) {
+        const int promotedSize = splitter->sizes().value(0, 1);
         QWidget *remaining = splitter->widget(0);
         remaining->setParent(nullptr);
         auto *parentSplitter = qobject_cast<QSplitter *>(splitter->parentWidget());
@@ -179,7 +287,7 @@ void TermPane::removeTerminal(TerminalWidget *term) {
             QList<int> sizes = parentSplitter->sizes();
             parentSplitter->insertWidget(parentIndex, remaining);
             sizes.removeAt(parentIndex);
-            sizes.insert(parentIndex, splitter->sizes().first());
+            sizes.insert(parentIndex, promotedSize);
             parentSplitter->setSizes(sizes);
             splitter->setParent(nullptr);
             splitter->deleteLater();
@@ -194,14 +302,15 @@ void TermPane::removeTerminal(TerminalWidget *term) {
 
     // Update current terminal if the removed one was current
     if (m_currentTerm == term) {
-        if (splitter->count() > 0) {
-            int newIndex = qMin(index, splitter->count() - 1);
-            if (auto *newTerm = qobject_cast<TerminalWidget *>(splitter->widget(newIndex)))
-                setCurrentTerminal(newTerm);
+        if (replacementTerm) {
+            setCurrentTerminal(replacementTerm);
         } else {
             m_currentTerm = nullptr;
+            Q_EMIT activePaneChanged({});
         }
     }
+
+    Q_EMIT paneStructureChanged();
 }
 
 void TermPane::resizeEvent(QResizeEvent *event) {
@@ -428,5 +537,7 @@ void TermPane::setCustomTitle(const QString &title) {
     if (!m_currentTerm)
         return;
     m_currentTerm->setProperty("customTitle", title);
+    m_currentTerm->setProperty("currentTitle", title);
+    Q_EMIT paneTitleChanged(ensurePaneId(m_currentTerm), title);
     Q_EMIT terminalTitleChanged(title);
 }

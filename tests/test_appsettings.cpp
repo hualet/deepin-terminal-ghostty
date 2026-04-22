@@ -1,18 +1,39 @@
 #include "AppSettings.h"
 
+#include <QCoreApplication>
+#include <QFile>
 #include <QFont>
 #include <QGuiApplication>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTest>
 
+namespace {
+
+QString settingsStorePath() {
+    return QString("%1/%2/%3.conf")
+        .arg(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation), "deepin", "deepin-terminal-ghostty");
+}
+
+void clearVerticalTabsSetting() {
+    QFile::remove(settingsStorePath());
+}
+
+} // namespace
+
 class TestAppSettings : public QObject {
     Q_OBJECT
 
 private slots:
-    void initTestCase() { QStandardPaths::setTestModeEnabled(true); }
+    void initTestCase() {
+        QStandardPaths::setTestModeEnabled(true);
+        clearVerticalTabsSetting();
+    }
 
-    void cleanup() { AppSettings::releaseInstance(); }
+    void cleanup() {
+        AppSettings::releaseInstance();
+        clearVerticalTabsSetting();
+    }
 
     void testFont() {
         auto *s = AppSettings::instance();
@@ -44,6 +65,20 @@ private slots:
         QCOMPARE(s->scrollbackLines(), 5000);
     }
 
+    void testVerticalTabsEnabled() {
+        auto *s = AppSettings::instance();
+        QCOMPARE(s->verticalTabsEnabled(), false);
+
+        s->setVerticalTabsEnabled(true);
+        QCoreApplication::processEvents();
+        QCOMPARE(s->verticalTabsEnabled(), true);
+
+        AppSettings::releaseInstance();
+        QCoreApplication::processEvents();
+        s = AppSettings::instance();
+        QCOMPARE(s->verticalTabsEnabled(), true);
+    }
+
     void testShortcutsAcrossGroups() {
         auto *s = AppSettings::instance();
         QCOMPARE(s->shortcut("copy"), QKeySequence(QStringLiteral("Ctrl+Shift+C")));
@@ -57,21 +92,27 @@ private slots:
         QSignalSpy shapeSpy(s, &AppSettings::cursorShapeChanged);
         QSignalSpy blinkSpy(s, &AppSettings::cursorBlinkChanged);
         QSignalSpy scrollSpy(s, &AppSettings::scrollbackLinesChanged);
+        QSignalSpy verticalTabsSpy(s, &AppSettings::verticalTabsEnabledChanged);
 
         QVERIFY(fontSpy.isValid());
         QVERIFY(shapeSpy.isValid());
         QVERIFY(blinkSpy.isValid());
         QVERIFY(scrollSpy.isValid());
+        QVERIFY(verticalTabsSpy.isValid());
 
+        s->setVerticalTabsEnabled(false);
+        verticalTabsSpy.clear();
         s->setTerminalFont(QFont("DejaVu Sans Mono", 12));
         s->setCursorShape(1);
         s->setCursorBlink(false);
         s->setScrollbackLines(2000);
+        s->setVerticalTabsEnabled(true);
 
         QCOMPARE(fontSpy.count(), 1);
         QCOMPARE(shapeSpy.count(), 1);
         QCOMPARE(blinkSpy.count(), 1);
         QCOMPARE(scrollSpy.count(), 1);
+        QCOMPARE(verticalTabsSpy.count(), 1);
     }
 };
 

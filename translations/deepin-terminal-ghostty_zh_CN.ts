@@ -27,6 +27,16 @@
         <translation>设置</translation>
     </message>
     <message>
+        <location filename="../src/app/MainWindow.cpp" line="145"/>
+        <source>Vertical Tabs</source>
+        <translation>垂直标签页</translation>
+    </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="173"/>
+        <source>Terminal</source>
+        <translation>终端</translation>
+    </message>
+    <message>
         <location filename="../src/app/MainWindow.cpp" line="415"/>
         <location filename="../src/app/MainWindow.cpp" line="464"/>
         <source>Rename title</source>
@@ -194,6 +204,14 @@
     </message>
 </context>
 <context>
+    <name>VerticalTabSidebar</name>
+    <message>
+        <location filename="../src/app/VerticalTabSidebar.cpp" line="110"/>
+        <source>Terminal</source>
+        <translation>终端</translation>
+    </message>
+</context>
+<context>
     <name>QObject</name>
     <message>
         <location filename="../src/app/settings/settings_translation.cpp" line="6"/>
@@ -247,6 +265,11 @@
     </message>
     <message>
         <location filename="../src/app/settings/settings_translation.cpp" line="16"/>
+        <source>Vertical Tabs</source>
+        <translation>垂直标签页</translation>
+    </message>
+    <message>
+        <location filename="../src/app/settings/settings_translation.cpp" line="17"/>
         <source>Terminal</source>
         <translation>终端</translation>
     </message>

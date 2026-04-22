@@ -13,6 +13,7 @@ void GenerateSettingTranslate() {
     auto group_shortcutsName = QObject::tr("Shortcuts");
     auto group_shortcuts_advancedName = QObject::tr("Advanced");
     auto group_shortcuts_tabName = QObject::tr("Tabs");
+    auto basic_interface_verticalTabsName = QObject::tr("Vertical Tabs");
     auto group_shortcuts_terminalName = QObject::tr("Terminal");
     auto shortcuts_advanced_custom_commandName = QObject::tr("Custom commands");
     auto shortcuts_advanced_display_shortcutsName = QObject::tr("Display shortcuts");

@@ -37,6 +37,7 @@ set(APP_TRANSLATABLE_SOURCES
   src/app/AppSettings.cpp
   src/app/SettingsDialog.cpp
   src/app/TermPane.cpp
+  src/app/VerticalTabSidebar.cpp
   src/libqtghostty/TerminalWidget.cpp
   ${APP_SETTINGS_I18N_SOURCES}
 )
@@ -213,6 +214,7 @@ add_executable(deepin-terminal-ghostty
   src/app/AppSettings.cpp
   src/app/SettingsDialog.cpp
   src/app/TermPane.cpp
+  src/app/VerticalTabSidebar.cpp
   src/app/PageSearchBar.cpp
   src/app/settings/resources.qrc
 )

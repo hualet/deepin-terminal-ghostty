@@ -1,26 +1,63 @@
+#include "AppSettings.h"
 #include "MainWindow.h"
 #include "PtySession.h"
 #include "TermPane.h"
 #include "TerminalWidget.h"
+#include "VerticalTabSidebar.h"
 
 #include <DApplication>
+#include <DSettings>
 #include <DTabBar>
+#include <QAbstractButton>
+#include <QAction>
+#include <QFile>
 #include <QSignalSpy>
 #include <QStackedWidget>
+#include <QStandardPaths>
 #include <QTest>
 
 DWIDGET_USE_NAMESPACE
+
+namespace {
+void clearVerticalTabsSetting();
+}
 
 class TestMainWindow : public QObject {
     Q_OBJECT
 
 private slots:
+    void initTestCase() {
+        QStandardPaths::setTestModeEnabled(true);
+        clearVerticalTabsSetting();
+    }
+
+    void cleanup() {
+        AppSettings::releaseInstance();
+        clearVerticalTabsSetting();
+    }
+
     void testSingleTabCtrlDClosesWindow();
     void testClosedSessionRemovesOnlyCurrentTab();
     void testAltArrowWithKeypadModifierIsConsumedByPane();
+    void testTermPaneReportsPaneSnapshotsAfterSplit();
+    void testVerticalTabsActionReflectsAndUpdatesSettings();
+    void testVerticalTabsActionTracksExternalSettingChanges();
+    void testVerticalTabsActionReflectsStartupSetting();
+    void testVerticalSidebarShowsTabsAndPanes();
+    void testActivePaneTitleUpdatesTabAndWindowTitles();
+    void testSidebarExpansionSurvivesModeSwitch();
 };
 
 namespace {
+
+QString settingsStorePath() {
+    return QString("%1/%2/%3.conf")
+        .arg(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation), "deepin", "deepin-terminal-ghostty");
+}
+
+void clearVerticalTabsSetting() {
+    QFile::remove(settingsStorePath());
+}
 
 class ExposedTermPane : public TermPane {
 public:
@@ -47,6 +84,10 @@ TermPane *currentPane(MainWindow &window) {
 
 DTabBar *tabBar(MainWindow &window) {
     return window.findChild<DTabBar *>();
+}
+
+VerticalTabSidebar *sidebar(MainWindow &window) {
+    return window.findChild<VerticalTabSidebar *>(QStringLiteral("verticalTabSidebar"));
 }
 
 bool waitForTabCount(DTabBar *tabs, int expectedCount, int timeoutMs = 5000) {
@@ -133,6 +174,241 @@ void TestMainWindow::testAltArrowWithKeypadModifierIsConsumedByPane() {
 
     QKeyEvent keyPress(QEvent::KeyPress, Qt::Key_Left, Qt::AltModifier | Qt::KeypadModifier);
     QVERIFY(pane.eventFilter(sourceTerminal, &keyPress));
+}
+
+void TestMainWindow::testTermPaneReportsPaneSnapshotsAfterSplit() {
+    ExposedTermPane pane;
+    pane.resize(1200, 800);
+    pane.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&pane));
+
+    const QUuid firstPaneId = pane.paneInfos().first().id;
+    QCOMPARE(pane.paneInfos().size(), 1);
+    QVERIFY(pane.paneInfos().first().isActive);
+    QCOMPARE(pane.activePaneId(), firstPaneId);
+
+    QSignalSpy structureSpy(&pane, &TermPane::paneStructureChanged);
+    QVERIFY(structureSpy.isValid());
+
+    pane.splitCurrent(Qt::Vertical);
+
+    QTRY_COMPARE(structureSpy.count(), 1);
+
+    const auto infos = pane.paneInfos();
+    QCOMPARE(infos.size(), 2);
+
+    int activeCount = 0;
+    QUuid activeId;
+    QUuid inactiveId;
+    for (const auto &info : infos) {
+        if (info.isActive) {
+            ++activeCount;
+            activeId = info.id;
+        } else {
+            inactiveId = info.id;
+        }
+        QVERIFY(!info.id.isNull());
+    }
+    QCOMPARE(activeCount, 1);
+    QCOMPARE(pane.activePaneId(), activeId);
+    QVERIFY(!inactiveId.isNull());
+
+    QSignalSpy titleSpy(&pane, &TermPane::paneTitleChanged);
+    QVERIFY(titleSpy.isValid());
+    pane.setCustomTitle(QStringLiteral("Pane title"));
+    QTRY_VERIFY(!titleSpy.isEmpty());
+    QCOMPARE(titleSpy.last().at(0).toUuid(), activeId);
+    QCOMPARE(titleSpy.last().at(1).toString(), QStringLiteral("Pane title"));
+
+    QSignalSpy activeSpy(&pane, &TermPane::activePaneChanged);
+    QVERIFY(activeSpy.isValid());
+    QVERIFY(pane.focusPane(inactiveId));
+    QTRY_COMPARE(activeSpy.count(), 1);
+    QCOMPARE(activeSpy.last().at(0).toUuid(), inactiveId);
+    QCOMPARE(pane.activePaneId(), inactiveId);
+
+    pane.closeCurrentSplit();
+
+    const auto remainingInfos = pane.paneInfos();
+    QCOMPARE(remainingInfos.size(), 1);
+    const QUuid remainingPaneId = remainingInfos.first().id;
+    QCOMPARE(pane.activePaneId(), remainingPaneId);
+    QVERIFY(remainingInfos.first().isActive);
+
+    QVERIFY(pane.focusPane(remainingPaneId));
+    pane.splitCurrent(Qt::Horizontal);
+
+    const auto nestedInfos = pane.paneInfos();
+    QCOMPARE(nestedInfos.size(), 2);
+    const QUuid secondNestedPaneId = nestedInfos.at(1).id;
+
+    pane.splitCurrent(Qt::Vertical);
+
+    const auto mixedInfos = pane.paneInfos();
+    QCOMPARE(mixedInfos.size(), 3);
+    QCOMPARE(mixedInfos.at(0).id, remainingPaneId);
+    QCOMPARE(mixedInfos.at(1).id, secondNestedPaneId);
+
+    const QUuid promotedClosePaneId = mixedInfos.at(1).id;
+    const QUuid expectedActiveAfterPromote = mixedInfos.at(2).id;
+    QVERIFY(pane.focusPane(promotedClosePaneId));
+    QCOMPARE(pane.activePaneId(), promotedClosePaneId);
+
+    pane.closeCurrentSplit();
+
+    const auto promotedInfos = pane.paneInfos();
+    QCOMPARE(promotedInfos.size(), 2);
+    QCOMPARE(promotedInfos.at(0).id, remainingPaneId);
+    QCOMPARE(promotedInfos.at(1).id, expectedActiveAfterPromote);
+    QCOMPARE(pane.activePaneId(), expectedActiveAfterPromote);
+
+    QVERIFY(pane.focusPane(promotedInfos.last().id));
+    pane.closeCurrentSplit();
+    QCOMPARE(pane.paneInfos().size(), 1);
+
+    pane.closeCurrentSplit();
+    QCOMPARE(pane.paneInfos().size(), 0);
+    QVERIFY(pane.activePaneId().isNull());
+}
+
+void TestMainWindow::testVerticalTabsActionReflectsAndUpdatesSettings() {
+    auto *settings = AppSettings::instance();
+    settings->setVerticalTabsEnabled(false);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *action = window.findChild<QAction *>(QStringLiteral("verticalTabsAction"));
+    QVERIFY(action);
+    QVERIFY(action->isCheckable());
+    QCOMPARE(action->isChecked(), false);
+
+    action->trigger();
+
+    QCOMPARE(action->isChecked(), true);
+    QCOMPARE(AppSettings::instance()->verticalTabsEnabled(), true);
+}
+
+void TestMainWindow::testVerticalTabsActionTracksExternalSettingChanges() {
+    auto *settings = AppSettings::instance();
+    settings->setVerticalTabsEnabled(false);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *action = window.findChild<QAction *>(QStringLiteral("verticalTabsAction"));
+    QVERIFY(action);
+    QCOMPARE(action->isChecked(), false);
+
+    settings->dsettings()->setOption("basic.interface.verticalTabs", true);
+
+    QTRY_VERIFY(action->isChecked());
+    QTRY_VERIFY(AppSettings::instance()->verticalTabsEnabled());
+}
+
+void TestMainWindow::testVerticalTabsActionReflectsStartupSetting() {
+    auto *settings = AppSettings::instance();
+    settings->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *action = window.findChild<QAction *>(QStringLiteral("verticalTabsAction"));
+    QVERIFY(action);
+    QVERIFY(action->isChecked());
+}
+
+void TestMainWindow::testVerticalSidebarShowsTabsAndPanes() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+    QVERIFY(verticalSidebar->isVisible());
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+
+    auto *pane = currentPane(window);
+    QVERIFY(pane);
+    pane->splitCurrent(Qt::Vertical);
+
+    QTRY_VERIFY(verticalSidebar->findChildren<QAbstractButton *>(QStringLiteral("verticalTabButton")).size() >= 2);
+    QTRY_VERIFY(verticalSidebar->findChildren<QAbstractButton *>(QStringLiteral("verticalPaneButton")).size() >= 2);
+}
+
+void TestMainWindow::testActivePaneTitleUpdatesTabAndWindowTitles() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *pane = currentPane(window);
+    QVERIFY(pane);
+    pane->splitCurrent(Qt::Vertical);
+
+    const auto infos = pane->paneInfos();
+    QVERIFY(infos.size() >= 2);
+    QVERIFY(pane->focusPane(infos.last().id));
+    pane->setCustomTitle(QStringLiteral("Logs"));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QTRY_COMPARE(tabs->tabText(tabs->currentIndex()), QStringLiteral("Logs"));
+    QTRY_COMPARE(window.windowTitle(), QStringLiteral("Logs"));
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+    bool hasLogsPane = false;
+    for (auto *button : verticalSidebar->findChildren<QAbstractButton *>(QStringLiteral("verticalPaneButton"))) {
+        if (button->text() == QStringLiteral("Logs") && button->property("active").toBool()) {
+            hasLogsPane = true;
+            break;
+        }
+    }
+    QVERIFY(hasLogsPane);
+}
+
+void TestMainWindow::testSidebarExpansionSurvivesModeSwitch() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+
+    auto *pane = currentPane(window);
+    QVERIFY(pane);
+    pane->splitCurrent(Qt::Vertical);
+
+    QTRY_VERIFY(verticalSidebar->findChildren<QAbstractButton *>(QStringLiteral("verticalPaneButton")).size() >= 2);
+
+    auto *expandButton = verticalSidebar->findChild<QAbstractButton *>(QStringLiteral("verticalTabExpandButton"));
+    QVERIFY(expandButton);
+    QTest::mouseClick(expandButton, Qt::LeftButton);
+    QTRY_COMPARE(verticalSidebar->findChildren<QAbstractButton *>(QStringLiteral("verticalPaneButton")).size(), 0);
+
+    auto *verticalAction = window.findChild<QAction *>(QStringLiteral("verticalTabsAction"));
+    QVERIFY(verticalAction);
+    verticalAction->setChecked(false);
+    verticalAction->setChecked(true);
+
+    verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+    QTRY_COMPARE(verticalSidebar->findChildren<QAbstractButton *>(QStringLiteral("verticalPaneButton")).size(), 0);
 }
 
 int main(int argc, char *argv[]) {

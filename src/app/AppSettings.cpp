@@ -47,10 +47,10 @@ AppSettings::AppSettings(QObject *parent) : QObject(parent) {
 }
 
 void AppSettings::init() {
-    QString configPath =
-        QString("%1/%2/%3/config.conf")
+    m_configPath =
+        QString("%1/%2/%3.conf")
             .arg(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation), "deepin", "deepin-terminal-ghostty");
-    m_backend = new Dtk::Core::QSettingBackend(configPath, this);
+    m_backend = new Dtk::Core::QSettingBackend(m_configPath, this);
 
     QFile configFile(":/settings/default-config.json");
     if (!configFile.open(QFile::ReadOnly))
@@ -98,6 +98,8 @@ void AppSettings::init() {
             emit cursorBlinkChanged(cursorBlink());
         else if (key == "basic.interface.scrollbackLines")
             emit scrollbackLinesChanged(scrollbackLines());
+        else if (key == "basic.interface.verticalTabs")
+            emit verticalTabsEnabledChanged(verticalTabsEnabled());
     });
 }
 
@@ -144,6 +146,18 @@ int AppSettings::scrollbackLines() const {
 
 void AppSettings::setScrollbackLines(int lines) {
     m_dsettings->setOption("basic.interface.scrollbackLines", lines);
+}
+
+bool AppSettings::verticalTabsEnabled() const {
+    return m_dsettings->value("basic.interface.verticalTabs").toBool();
+}
+
+void AppSettings::setVerticalTabsEnabled(bool enabled) {
+    if (verticalTabsEnabled() == enabled)
+        return;
+
+    m_dsettings->setOption("basic.interface.verticalTabs", enabled);
+    m_dsettings->sync();
 }
 
 QKeySequence AppSettings::shortcut(const QString &name) const {

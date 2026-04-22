@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QList>
+#include <QUuid>
 #include <QWidget>
 
 class PageSearchBar;
@@ -11,7 +13,17 @@ class TermPane : public QWidget {
     Q_OBJECT
 
 public:
+    struct PaneInfo {
+        QUuid id;
+        QString title;
+        bool isActive = false;
+    };
+
     explicit TermPane(QWidget *parent = nullptr);
+
+    QList<PaneInfo> paneInfos() const;
+    QUuid activePaneId() const;
+    bool focusPane(const QUuid &paneId);
 
     TerminalWidget *currentTerminal() const;
     void splitCurrent(Qt::Orientation orientation);
@@ -26,6 +38,9 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 signals:
+    void paneStructureChanged();
+    void activePaneChanged(const QUuid &paneId);
+    void paneTitleChanged(const QUuid &paneId, const QString &title);
     void terminalTitleChanged(const QString &title);
     void sessionClosed();
     void currentTerminalChanged(TerminalWidget *term);

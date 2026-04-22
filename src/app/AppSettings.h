@@ -3,6 +3,7 @@
 #include <QFont>
 #include <QKeySequence>
 #include <QObject>
+#include <QString>
 
 namespace Dtk::Core {
 class DSettings;
@@ -30,6 +31,9 @@ public:
     int scrollbackLines() const;
     void setScrollbackLines(int lines);
 
+    bool verticalTabsEnabled() const;
+    void setVerticalTabsEnabled(bool enabled);
+
     QKeySequence shortcut(const QString &name) const;
     void setShortcut(const QString &name, const QKeySequence &seq);
 
@@ -38,6 +42,7 @@ signals:
     void cursorShapeChanged(int shape);
     void cursorBlinkChanged(bool blink);
     void scrollbackLinesChanged(int lines);
+    void verticalTabsEnabledChanged(bool enabled);
 
 private:
     explicit AppSettings(QObject *parent = nullptr);
@@ -45,5 +50,6 @@ private:
 
     Dtk::Core::DSettings *m_dsettings = nullptr;
     Dtk::Core::QSettingBackend *m_backend = nullptr;
+    QString m_configPath;
     static AppSettings *s_instance;
 };

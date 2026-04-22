@@ -2,15 +2,21 @@
 
 #include <DMainWindow>
 #include <DTabBar>
+#include <QList>
+#include <QString>
 
 class QShortcut;
 class SettingsDialog;
+class QAction;
+class QSplitter;
+class QWidget;
 
 DWIDGET_USE_NAMESPACE
 
 class QStackedWidget;
 class TermPane;
 class TerminalWidget;
+class VerticalTabSidebar;
 
 class MainWindow : public DMainWindow {
     Q_OBJECT
@@ -32,11 +38,27 @@ private slots:
     void onSettingsTriggered();
 
 private:
+    struct TabRecord {
+        int id = 0;
+        TermPane *pane = nullptr;
+        QString title;
+        bool expanded = true;
+    };
+
     void setupTitleBar();
     void addTab(bool activate = true);
     void closePane(TermPane *pane);
     TermPane *currentPane() const;
     TerminalWidget *currentTerminal() const;
+    int indexOfTabId(int tabId) const;
+    TabRecord *tabRecordForPane(TermPane *pane);
+    void refreshTabRecord(TabRecord &record);
+    void refreshTabRecords();
+    void syncTabWidgetsFromRecords();
+    void refreshSidebar();
+    void setVerticalTabsEnabled(bool enabled);
+    void rebuildCentralLayout();
+    void updateTitlebarPresentation();
     void setupShortcuts();
     void updateShortcut(QShortcut *shortcut, const QString &name);
     void closeOtherTabs();
@@ -48,7 +70,16 @@ private:
 
     DTabBar *m_tabBar = nullptr;
     QStackedWidget *m_stackWidget = nullptr;
+    QWidget *m_contentHost = nullptr;
     SettingsDialog *m_settingsDialog = nullptr;
+    VerticalTabSidebar *m_verticalSidebar = nullptr;
+    QSplitter *m_mainSplitter = nullptr;
+    QAction *m_verticalTabsAction = nullptr;
+    bool m_verticalTabsEnabled = false;
+    int m_nextTabId = 1;
+    QList<TabRecord> m_tabs;
+    QWidget *m_tabTitlebarWidget = nullptr;
+    QWidget *m_compactTitlebarWidget = nullptr;
 
     QShortcut *m_scNewTab = nullptr;
     QShortcut *m_scCloseTab = nullptr;
