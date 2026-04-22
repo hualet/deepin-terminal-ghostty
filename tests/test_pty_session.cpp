@@ -16,6 +16,7 @@ private slots:
     void testWriteAndRead();
     void testResize();
     void testSessionClose();
+    void testPreservesUtf8Locale();
 };
 
 void TestPtySession::testStartShell() {
@@ -80,6 +81,31 @@ void TestPtySession::testSessionClose() {
     bool closed = closedSpy.wait(3000);
     QVERIFY2(closed, "Expected sessionClosed signal after exiting shell");
     QCOMPARE(closedSpy.count(), 1);
+}
+
+void TestPtySession::testPreservesUtf8Locale() {
+    PtySession session;
+    QVERIFY(session.start(80, 24));
+
+    QSignalSpy spy(&session, &PtySession::dataReceived);
+    QVERIFY(spy.isValid());
+
+    session.write("locale charmap\n");
+    QByteArray output;
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 2000) {
+        spy.wait(100);
+        for (const auto &args : spy)
+            output.append(args.at(0).toByteArray());
+        spy.clear();
+
+        if (output.contains("UTF-8") || output.contains("UTF8") || output.contains("ANSI_X3.4-1968"))
+            break;
+    }
+
+    QVERIFY2(output.contains("UTF-8") || output.contains("UTF8"),
+             qPrintable(QString::fromLatin1("Expected UTF-8 locale, got: %1").arg(QString::fromUtf8(output))));
 }
 
 QTEST_MAIN(TestPtySession)

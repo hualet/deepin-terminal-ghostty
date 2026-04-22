@@ -16,6 +16,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -269,10 +270,16 @@ bool PtySession::spawn(int cols, int rows) {
     std::vector<std::string> envStorage;
     std::vector<char *> envp;
 
-    envStorage.reserve(1);
+    for (char **entry = environ; entry != nullptr && *entry != nullptr; ++entry) {
+        if (std::strncmp(*entry, "TERM=", 5) == 0)
+            continue;
+        envStorage.emplace_back(*entry);
+    }
     envStorage.emplace_back(kTermEnv);
-    envp.reserve(2);
-    envp.push_back(envStorage.back().data());
+
+    envp.reserve(static_cast<size_t>(envStorage.size()) + 1);
+    for (std::string &entry : envStorage)
+        envp.push_back(entry.data());
     envp.push_back(nullptr);
 
     winsize ws{};
