@@ -1,6 +1,8 @@
 #include <QApplication>
+#include <QImage>
 #include <QInputMethodEvent>
 #include <QInputMethodQueryEvent>
+#include <QPainter>
 #include <QSignalSpy>
 #include <QTest>
 
@@ -32,6 +34,8 @@ private slots:
     void testSetCursorShape();
     void testSetCursorBlink();
     void testRendersSupplementaryPlaneCharacters();
+    void testRendersPreeditTextAcrossMultipleCells();
+    void testRendersWideCharactersAcrossTwoCells();
 };
 
 namespace {
@@ -43,6 +47,51 @@ QByteArray collectedPtyOutput(const QSignalSpy &spy) {
             output.append(arguments.at(0).toByteArray());
     }
     return output;
+}
+
+QImage renderWidgetImage(QWidget &widget) {
+    QImage image(widget.size() * widget.devicePixelRatioF(), QImage::Format_ARGB32_Premultiplied);
+    image.setDevicePixelRatio(widget.devicePixelRatioF());
+    image.fill(Qt::transparent);
+
+    QPainter painter(&image);
+    widget.render(&painter);
+    return image;
+}
+
+QRect changedBounds(const QImage &before, const QImage &after) {
+    if (before.size() != after.size()) {
+        return {};
+    }
+
+    QRect bounds;
+    for (int y = 0; y < before.height(); ++y) {
+        for (int x = 0; x < before.width(); ++x) {
+            if (before.pixel(x, y) != after.pixel(x, y)) {
+                bounds |= QRect(x, y, 1, 1);
+            }
+        }
+    }
+
+    return bounds;
+}
+
+int countChangedPixels(const QImage &before, const QImage &after, const QRect &rect) {
+    if (before.size() != after.size()) {
+        return 0;
+    }
+
+    int count = 0;
+    const QRect bounded = rect.intersected(before.rect());
+    for (int y = bounded.top(); y <= bounded.bottom(); ++y) {
+        for (int x = bounded.left(); x <= bounded.right(); ++x) {
+            if (before.pixel(x, y) != after.pixel(x, y)) {
+                ++count;
+            }
+        }
+    }
+
+    return count;
 }
 
 } // namespace
@@ -222,6 +271,68 @@ void TestTerminalWidget::testRendersSupplementaryPlaneCharacters() {
     QApplication::processEvents();
 
     QVERIFY(true);
+}
+
+void TestTerminalWidget::testRendersPreeditTextAcrossMultipleCells() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    widget.setFocus();
+    QVERIFY(widget.hasFocus());
+    widget.setCursorBlinkEnabled(false);
+    QApplication::processEvents();
+
+    QInputMethodQueryEvent queryEvent(Qt::ImCursorRectangle);
+    QApplication::sendEvent(&widget, &queryEvent);
+    const QRect cursorRect = queryEvent.value(Qt::ImCursorRectangle).toRect();
+    QVERIFY(cursorRect.isValid());
+    QVERIFY(cursorRect.width() > 0);
+
+    const QImage before = renderWidgetImage(widget);
+
+    QInputMethodEvent imeEvent(QStringLiteral("中文"), {});
+    QApplication::sendEvent(&widget, &imeEvent);
+    QApplication::processEvents();
+
+    const QImage after = renderWidgetImage(widget);
+    const QRect diff = changedBounds(before, after);
+    QVERIFY2(diff.isValid(), "preedit text should change the rendered output");
+    QVERIFY2(diff.width() > cursorRect.width(), "preedit text should render wider than a single terminal cell");
+}
+
+void TestTerminalWidget::testRendersWideCharactersAcrossTwoCells() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    QInputMethodQueryEvent queryEvent(Qt::ImCursorRectangle);
+    QApplication::sendEvent(&widget, &queryEvent);
+    const QRect cursorRect = queryEvent.value(Qt::ImCursorRectangle).toRect();
+    QVERIFY(cursorRect.isValid());
+    QVERIFY(cursorRect.width() > 0);
+
+    const QImage before = renderWidgetImage(widget);
+    const bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                                   Q_ARG(QByteArray, QStringLiteral("中\n").toUtf8()));
+    QVERIFY(invoked);
+    QApplication::processEvents();
+
+    const QImage after = renderWidgetImage(widget);
+    const QRect diff = changedBounds(before, after);
+    const QRect firstCellRect(0, 0, cursorRect.width(), cursorRect.height());
+    const QRect secondCellRect(cursorRect.width(), 0, cursorRect.width(), cursorRect.height());
+    const int secondCellChanges = countChangedPixels(before, after, secondCellRect);
+    QVERIFY2(diff.isValid(), "wide character should change the rendered output");
+    QVERIFY2(diff.width() > cursorRect.width(), "wide character should render wider than a single terminal cell");
+    QVERIFY2(secondCellChanges > cursorRect.width() * 3,
+             "wide character should visibly paint a meaningful portion of the second terminal cell");
 }
 
 // We need QApplication for QWidget tests

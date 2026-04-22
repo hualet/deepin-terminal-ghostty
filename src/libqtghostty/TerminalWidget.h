@@ -71,6 +71,7 @@ private:
     bool setupEncoders();
     void updateGridSize();
     void renderTerminal(QPainter &painter);
+    void renderPreeditText(QPainter &painter);
     void sendFocusEvent(bool gained);
     QRect inputMethodCursorRect() const;
     void notifyInputMethodCursorChange();
@@ -120,6 +121,9 @@ private:
 
     // Scrollback
     int m_scrollbackLines = 1000;
+
+    // Input method composition
+    QString m_preeditText;
 
     // Search
     struct SearchMatch {

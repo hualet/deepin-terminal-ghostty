@@ -286,6 +286,7 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     painter.setFont(m_font);
 
     renderTerminal(painter);
+    renderPreeditText(painter);
 }
 
 void TerminalWidget::renderTerminal(QPainter &painter) {
@@ -324,6 +325,16 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
         int x = 0;
         int col = 0;
         while (ghostty_render_state_row_cells_next(m_rowCells)) {
+            GhosttyCell rawCell = 0;
+            ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW, &rawCell);
+
+            GhosttyCellWide cellWide = GHOSTTY_CELL_WIDE_NARROW;
+            ghostty_cell_get(rawCell, GHOSTTY_CELL_DATA_WIDE, &cellWide);
+            const bool isWideHead = cellWide == GHOSTTY_CELL_WIDE_WIDE;
+            const bool isWideTail =
+                cellWide == GHOSTTY_CELL_WIDE_SPACER_TAIL || cellWide == GHOSTTY_CELL_WIDE_SPACER_HEAD;
+            const int cellRenderWidth = isWideHead ? m_cellWidth * 2 : m_cellWidth;
+
             uint32_t graphemeLen = 0;
             ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN,
                                                &graphemeLen);
@@ -344,28 +355,28 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
                 hasBg = true;
             }
 
-            if (hasBg) {
-                painter.fillRect(x, y, m_cellWidth, m_cellHeight, QColor(bgColor.r, bgColor.g, bgColor.b));
+            if (hasBg && !isWideTail) {
+                painter.fillRect(x, y, cellRenderWidth, m_cellHeight, QColor(bgColor.r, bgColor.g, bgColor.b));
             }
 
             // Search highlight
-            if (!m_searchMatches.isEmpty()) {
+            if (!m_searchMatches.isEmpty() && !isWideTail) {
                 for (int i = 0; i < m_searchMatches.size(); ++i) {
                     const auto &match = m_searchMatches[i];
                     if (match.row == screenRow && col >= match.startCol && col < match.endCol) {
                         QColor hl = (i == m_currentSearchIndex) ? QColor(255, 165, 0, 180) : QColor(255, 255, 0, 120);
-                        painter.fillRect(x, y, m_cellWidth, m_cellHeight, hl);
+                        painter.fillRect(x, y, cellRenderWidth, m_cellHeight, hl);
                         break;
                     }
                 }
             }
 
             // Selection highlight
-            if (cellInSelection(screenRow, col)) {
-                painter.fillRect(x, y, m_cellWidth, m_cellHeight, QColor(0, 120, 215, 180));
+            if (cellInSelection(screenRow, col) && !isWideTail) {
+                painter.fillRect(x, y, cellRenderWidth, m_cellHeight, QColor(0, 120, 215, 180));
             }
 
-            if (graphemeLen > 0) {
+            if (graphemeLen > 0 && !isWideTail) {
                 uint32_t codepoints[16];
                 uint32_t len = graphemeLen < 16 ? graphemeLen : 16;
                 ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF,
@@ -380,10 +391,22 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
                     cellFont.setBold(true);
                 if (style.italic)
                     cellFont.setItalic(true);
+                if (isWideHead)
+                    cellFont.setFixedPitch(false);
+
+                if (isWideHead) {
+                    QFontMetrics wideMetrics(cellFont);
+                    const int glyphWidth = wideMetrics.horizontalAdvance(text);
+                    if (glyphWidth > 0 && glyphWidth < cellRenderWidth) {
+                        cellFont.setStretch(qMax(100, (cellRenderWidth * 100) / glyphWidth));
+                    }
+                }
                 painter.setFont(cellFont);
 
                 painter.setPen(QColor(fgColor.r, fgColor.g, fgColor.b));
-                painter.drawText(x, y + m_fontAscent, text);
+                painter.setLayoutDirection(Qt::LeftToRight);
+                painter.drawText(QRectF(x, y, cellRenderWidth, m_cellHeight), Qt::AlignBottom,
+                                 QString(QChar(0x202D)) + text);
                 painter.setFont(m_font);
             }
 
@@ -705,9 +728,15 @@ void TerminalWidget::inputMethodEvent(QInputMethodEvent *event) {
     const QString commitString = event->commitString();
     if (!commitString.isEmpty()) {
         m_ptySession->write(commitString.toUtf8());
+        m_preeditText.clear();
+    }
+
+    if (commitString.isEmpty() || !event->preeditString().isEmpty()) {
+        m_preeditText = event->preeditString();
     }
 
     event->accept();
+    update();
     notifyInputMethodCursorChange();
 }
 
@@ -719,6 +748,20 @@ QVariant TerminalWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
             return inputMethodCursorRect();
         case Qt::ImFont:
             return m_font;
+        case Qt::ImAnchorRectangle:
+            return inputMethodCursorRect();
+        case Qt::ImInputItemClipRectangle:
+            return rect();
+        case Qt::ImCursorPosition:
+        case Qt::ImAnchorPosition:
+            return 0;
+        case Qt::ImSurroundingText:
+        case Qt::ImCurrentSelection:
+        case Qt::ImTextBeforeCursor:
+        case Qt::ImTextAfterCursor:
+            return QString();
+        case Qt::ImReadOnly:
+            return false;
         default:
             return QWidget::inputMethodQuery(query);
     }
@@ -868,8 +911,28 @@ QRect TerminalWidget::inputMethodCursorRect() const {
 
 void TerminalWidget::notifyInputMethodCursorChange() {
     if (QInputMethod *inputMethod = QGuiApplication::inputMethod()) {
-        inputMethod->update(Qt::ImEnabled | Qt::ImCursorRectangle);
+        inputMethod->update(Qt::ImEnabled | Qt::ImCursorRectangle | Qt::ImAnchorRectangle
+                            | Qt::ImInputItemClipRectangle);
     }
+}
+
+void TerminalWidget::renderPreeditText(QPainter &painter) {
+    if (m_preeditText.isEmpty()) {
+        return;
+    }
+
+    const QRect cursorRect = inputMethodCursorRect();
+    QFontMetrics fm(m_font);
+    const int baseline = cursorRect.y() + m_fontAscent;
+    const int preeditWidth = fm.horizontalAdvance(m_preeditText);
+    const QRect backgroundRect(cursorRect.x(), cursorRect.y(), qMax(preeditWidth, cursorRect.width()), m_cellHeight);
+
+    painter.fillRect(backgroundRect, palette().base());
+    painter.setPen(palette().text().color());
+    painter.setFont(m_font);
+    painter.drawText(cursorRect.x(), baseline, m_preeditText);
+    painter.drawLine(cursorRect.x(), cursorRect.y() + m_cellHeight - 1, cursorRect.x() + qMax(preeditWidth, 1),
+                     cursorRect.y() + m_cellHeight - 1);
 }
 
 // ---------------------------------------------------------------------------
