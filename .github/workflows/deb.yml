@@ -40,7 +40,8 @@ jobs:
             qt6-base-dev-tools \
             libdtk6core-dev \
             libdtk6gui-dev \
-            libdtk6widget-dev
+            libdtk6widget-dev \
+            libdtk6core-bin
 
       - name: Build Debian package
         run: |
