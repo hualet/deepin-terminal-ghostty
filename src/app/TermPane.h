@@ -4,6 +4,7 @@
 #include <QUuid>
 #include <QWidget>
 
+struct ServerConfig;
 class PageSearchBar;
 class QVBoxLayout;
 class QSplitter;
@@ -32,6 +33,7 @@ public:
     void closeOtherTerminals();
     void executeCommand(const QString &command);
     void setCustomTitle(const QString &title);
+    void connectToRemoteServer(const ServerConfig &config);
 
 protected:
     void resizeEvent(QResizeEvent *event) override;

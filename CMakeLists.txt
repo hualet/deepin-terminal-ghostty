@@ -41,6 +41,10 @@ set(APP_TRANSLATABLE_SOURCES
   src/app/SettingsDialog.cpp
   src/app/TermPane.cpp
   src/app/VerticalTabSidebar.cpp
+  src/app/remote/ServerConfigManager.cpp
+  src/app/remote/ServerConfigOptDlg.cpp
+  src/app/remote/RemoteManagementPanel.cpp
+  src/app/remote/ServerListItem.cpp
   src/libqtghostty/TerminalWidget.cpp
   ${APP_SETTINGS_I18N_SOURCES}
 )
@@ -222,6 +226,10 @@ add_executable(deepin-terminal-ghostty
   src/app/TermPane.cpp
   src/app/VerticalTabSidebar.cpp
   src/app/PageSearchBar.cpp
+  src/app/remote/ServerConfigManager.cpp
+  src/app/remote/ServerConfigOptDlg.cpp
+  src/app/remote/RemoteManagementPanel.cpp
+  src/app/remote/ServerListItem.cpp
   src/app/settings/resources.qrc
 )
 

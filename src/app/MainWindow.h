@@ -14,7 +14,9 @@ class QWidget;
 
 DWIDGET_USE_NAMESPACE
 
+struct ServerConfig;
 class QStackedWidget;
+class RemoteManagementPanel;
 class TermPane;
 class TerminalWidget;
 class VerticalTabSidebar;
@@ -27,6 +29,7 @@ public:
     ~MainWindow() override;
 
 protected:
+    void resizeEvent(QResizeEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
 
 private slots:
@@ -72,6 +75,7 @@ private:
     void onShortcutDisplayShortcuts();
     void onShortcutCustomCommand();
     void onShortcutRemoteManagement();
+    void onConnectRemoteServer(const ServerConfig &config);
 
     QPointer<DTabBar> m_tabBar;
     QStackedWidget *m_stackWidget = nullptr;
@@ -85,6 +89,7 @@ private:
     QList<TabRecord> m_tabs;
     QPointer<QWidget> m_tabTitlebarWidget;
     QPointer<QWidget> m_compactTitlebarWidget;
+    QPointer<RemoteManagementPanel> m_remotePanel;
 
     QShortcut *m_scNewTab = nullptr;
     QShortcut *m_scCloseTab = nullptr;

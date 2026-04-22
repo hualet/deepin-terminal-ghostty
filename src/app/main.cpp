@@ -13,6 +13,7 @@ DWIDGET_USE_NAMESPACE
 DCORE_USE_NAMESPACE
 
 #include "MainWindow.h"
+#include "remote/ServerConfigManager.h"
 
 namespace {
 
@@ -54,6 +55,8 @@ int main(int argc, char *argv[]) {
     } else {
         qCWarning(appLog) << "Failed to load application translation for locale" << QLocale::system().name();
     }
+
+    ServerConfigManager::instance()->initServerConfig();
 
     MainWindow window;
     window.show();

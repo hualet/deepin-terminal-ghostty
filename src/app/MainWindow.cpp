@@ -7,6 +7,10 @@
 #include "VerticalTabSidebar.h"
 #include "logging/Logging.h"
 
+#include "remote/RemoteManagementPanel.h"
+#include "remote/ServerConfig.h"
+#include "remote/ServerConfigManager.h"
+
 #include <DAboutDialog>
 #include <DApplication>
 #include <DTitlebar>
@@ -48,6 +52,11 @@ MainWindow::MainWindow(QWidget *parent)
     // Central widget host keeps layout switching local to MainWindow.
     setCentralWidget(m_contentHost);
     rebuildCentralLayout();
+
+    // Remote management panel overlays the right edge of the content host.
+    m_remotePanel = new RemoteManagementPanel(m_contentHost);
+    m_remotePanel->hide();
+    connect(m_remotePanel, &RemoteManagementPanel::connectServer, this, &MainWindow::onConnectRemoteServer);
 
     // Titlebar: icon + tabs
     setupTitleBar();
@@ -171,6 +180,11 @@ void MainWindow::setupTitleBar() {
     ensureCompactTitlebarWidget();
 
     auto *menu = new QMenu(this);
+    auto *remoteAction = menu->addAction(tr("Remote Management"));
+    connect(remoteAction, &QAction::triggered, this, &MainWindow::onShortcutRemoteManagement);
+
+    menu->addSeparator();
+
     auto *settingsAction = menu->addAction(tr("Settings"));
     connect(settingsAction, &QAction::triggered, this, &MainWindow::onSettingsTriggered);
 
@@ -456,6 +470,10 @@ void MainWindow::rebuildCentralLayout() {
     while (QLayoutItem *item = layout->takeAt(0)) {
         delete item;
     }
+
+    // Ensure remote panel stays on top of content host after layout rebuild
+    if (m_remotePanel)
+        m_remotePanel->raise();
 
     if (m_verticalTabsEnabled) {
         if (!m_verticalSidebar) {
@@ -760,15 +778,29 @@ void MainWindow::onShortcutCustomCommand() {
 }
 
 void MainWindow::onShortcutRemoteManagement() {
+    if (!m_remotePanel)
+        return;
+
+    if (m_remotePanel->isPanelVisible())
+        m_remotePanel->hidePanel();
+    else
+        m_remotePanel->showPanel();
+}
+
+void MainWindow::onConnectRemoteServer(const ServerConfig &config) {
     auto *pane = currentPane();
     if (!pane)
         return;
 
-    bool ok = false;
-    QString address = QInputDialog::getText(this, tr("Remote Management"), tr("SSH address (user@host):"),
-                                            QLineEdit::Normal, QString(), &ok);
-    if (ok && !address.isEmpty())
-        pane->executeCommand(QString("ssh %1").arg(address));
+    pane->connectToRemoteServer(config);
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event) {
+    DMainWindow::resizeEvent(event);
+    if (m_remotePanel && m_remotePanel->isPanelVisible() && m_contentHost) {
+        QRect hostRect = m_contentHost->rect();
+        m_remotePanel->setGeometry(hostRect.width() - 260, 0, 260, hostRect.height());
+    }
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {

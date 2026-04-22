@@ -88,6 +88,10 @@ add_executable(test_main_window
   ${CMAKE_SOURCE_DIR}/src/app/TermPane.cpp
   ${CMAKE_SOURCE_DIR}/src/app/VerticalTabSidebar.cpp
   ${CMAKE_SOURCE_DIR}/src/app/PageSearchBar.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/remote/ServerConfigManager.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/remote/ServerConfigOptDlg.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/remote/RemoteManagementPanel.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/remote/ServerListItem.cpp
   ${CMAKE_SOURCE_DIR}/src/app/settings/resources.qrc
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/PtySession.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalWidget.cpp

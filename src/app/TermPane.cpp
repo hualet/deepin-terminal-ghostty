@@ -4,15 +4,19 @@
 #include "PageSearchBar.h"
 #include "PtySession.h"
 #include "TerminalWidget.h"
+#include "remote/ServerConfig.h"
 
 #include <QClipboard>
 #include <QContextMenuEvent>
 #include <QDebug>
+#include <QFile>
 #include <QGuiApplication>
 #include <QKeyEvent>
 #include <QMenu>
+#include <QRandomGenerator>
 #include <QResizeEvent>
 #include <QSplitter>
+#include <QStandardPaths>
 #include <QUuid>
 #include <QVBoxLayout>
 
@@ -540,4 +544,62 @@ void TermPane::setCustomTitle(const QString &title) {
     m_currentTerm->setProperty("currentTitle", title);
     Q_EMIT paneTitleChanged(ensurePaneId(m_currentTerm), title);
     Q_EMIT terminalTitleChanged(title);
+}
+
+void TermPane::connectToRemoteServer(const ServerConfig &config) {
+    if (!m_currentTerm)
+        return;
+
+    // Read the expect script template from resources
+    QFile sourceFile(":/other/ssh_login.sh");
+    QString fileString;
+    if (sourceFile.open(QIODevice::ReadOnly)) {
+        fileString = sourceFile.readAll();
+        sourceFile.close();
+    } else {
+        qWarning() << "Failed to open ssh_login.sh resource";
+        return;
+    }
+
+    // Build arguments string
+    QString strArgs = QString(" '%1' %2 %3 '%4' '%5'")
+                          .arg(config.m_userName, config.m_address.trimmed(), config.m_port,
+                               config.m_privateKey.isEmpty() ? "NoPrivateKeyPath" : config.m_privateKey,
+                               config.m_password.toLatin1().toHex());
+
+    // Replace placeholders in script
+    if (config.m_privateKey.isEmpty()) {
+        fileString.replace("<<AUTHENTICATION>>", "no");
+    } else {
+        fileString.replace("<<AUTHENTICATION>>", "yes");
+    }
+
+    QString remoteCommand;
+    if (!config.m_path.isEmpty())
+        remoteCommand += "cd " + config.m_path + " && ";
+    if (!config.m_command.isEmpty())
+        remoteCommand += config.m_command + " && ";
+
+    fileString.replace("<<REMOTE_COMMAND>>", remoteCommand);
+
+    // Write temporary script
+    QString tmpDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    QString toFileStr =
+        tmpDir + "/deepin-terminal-ghostty-" + QString::number(QRandomGenerator::global()->bounded(100000, 999999));
+    QFile toFile(toFileStr);
+    if (!toFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        qWarning() << "Failed to create temporary expect script";
+        return;
+    }
+    toFile.write(fileString.toUtf8());
+    toFile.close();
+    toFile.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+
+    // Execute expect command
+    QString expectCmd = QString("expect -f %1 %2\n").arg(toFileStr, strArgs);
+    executeCommand(expectCmd.trimmed());
+
+    // Set custom title to reflect remote connection
+    if (!config.m_serverName.isEmpty())
+        setCustomTitle(config.m_serverName);
 }
