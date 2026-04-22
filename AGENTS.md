@@ -198,25 +198,6 @@ clang-format --dry-run --Werror $(find src tests -name '*.cpp' -o -name '*.h')
 
 CI will reject changes that do not match the enforced style.
 
-## Debugging Crashes With GDB
-
-**Build with debug symbols:**
-```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Debug && cmake --build build
-```
-
-**Auto-capture backtrace on crash:**
-```bash
-gdb -batch -ex "set pagination off" -ex "set debuginfod enabled off" \
-  -ex "run" -ex "thread apply all bt full" -ex "info registers" \
-  ./build/deepin-terminal-ghostty
-```
-
-**Interpreting the trace:**
-- Thread 1 (GUI thread) is usually what matters.
-- A crash in `QWidget::show()`, `testAttribute_helper()`, or `setSizePolicy()` with a non-null `this` usually means a **dangling pointer / use-after-free**.
-- **`DTitlebar::setCustomWidget` deletes the old widget on replacement** — a common root cause. Track titlebar-owned widgets with `QPointer`, recreate wrappers lazily when they become `nullptr`, and detach any child widget that must survive the replacement before calling `setCustomWidget()`.
-
 ## Working Rules For Agents
 
 - Explore current code before editing. Do not assume intent from names alone.
