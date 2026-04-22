@@ -21,10 +21,7 @@
 #include <QVBoxLayout>
 
 MainWindow::MainWindow(QWidget *parent)
-    : DMainWindow(parent),
-      m_tabBar(new DTabBar(this)),
-      m_stackWidget(new QStackedWidget(this)),
-      m_contentHost(new QWidget(this)) {
+    : DMainWindow(parent), m_stackWidget(new QStackedWidget(this)), m_contentHost(new QWidget(this)) {
     m_verticalTabsEnabled = AppSettings::instance()->verticalTabsEnabled();
 
     // Prevent DTK or Qt default actions from intercepting standard
@@ -93,6 +90,21 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // Tab bar configuration
+    ensureTabBar();
+
+    // First tab
+    addTab(true);
+
+    setupShortcuts();
+}
+
+MainWindow::~MainWindow() = default;
+
+DTabBar *MainWindow::ensureTabBar() {
+    if (m_tabBar)
+        return m_tabBar;
+
+    m_tabBar = new DTabBar(this);
     m_tabBar->setTabsClosable(true);
     m_tabBar->setVisibleAddButton(true);
     m_tabBar->setElideMode(Qt::ElideRight);
@@ -102,13 +114,45 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_tabBar, &DTabBar::tabCloseRequested, this, &MainWindow::onTabCloseRequested);
     connect(m_tabBar, &DTabBar::currentChanged, this, &MainWindow::onTabCurrentChanged);
 
-    // First tab
-    addTab(true);
-
-    setupShortcuts();
+    return m_tabBar;
 }
 
-MainWindow::~MainWindow() = default;
+QWidget *MainWindow::ensureTabTitlebarWidget() {
+    if (!m_tabTitlebarWidget) {
+        m_tabTitlebarWidget = new QWidget(this);
+        auto *tabLayout = new QHBoxLayout(m_tabTitlebarWidget);
+        tabLayout->setContentsMargins(0, 0, 0, 0);
+    }
+
+    auto *tabBar = ensureTabBar();
+    auto *tabLayout = qobject_cast<QHBoxLayout *>(m_tabTitlebarWidget->layout());
+    if (tabLayout && tabLayout->indexOf(tabBar) < 0)
+        tabLayout->addWidget(tabBar, 0, Qt::AlignVCenter);
+
+    return m_tabTitlebarWidget;
+}
+
+QWidget *MainWindow::ensureCompactTitlebarWidget() {
+    if (m_compactTitlebarWidget)
+        return m_compactTitlebarWidget;
+
+    m_compactTitlebarWidget = new QWidget(this);
+    m_compactTitlebarWidget->setObjectName(QStringLiteral("compactTitlebarWidget"));
+    m_compactTitlebarWidget->setFixedHeight(36);
+    auto *compactLayout = new QHBoxLayout(m_compactTitlebarWidget);
+    compactLayout->setContentsMargins(12, 6, 12, 6);
+    compactLayout->addStretch(1);
+
+    return m_compactTitlebarWidget;
+}
+
+void MainWindow::detachTabBarFromTitlebarWidget() {
+    if (!m_tabBar)
+        return;
+
+    if (m_tabBar->parentWidget() == m_tabTitlebarWidget)
+        m_tabBar->setParent(this);
+}
 
 void MainWindow::setupTitleBar() {
     DTitlebar *tb = titlebar();
@@ -119,18 +163,9 @@ void MainWindow::setupTitleBar() {
     tb->setIcon(QIcon::fromTheme("utilities-terminal"));
     tb->setAutoHideOnFullscreen(true);
 
-    // Embed the tab bar into the DTK titlebar via a custom widget
-    m_tabTitlebarWidget = new QWidget(this);
-    auto *tabLayout = new QHBoxLayout(m_tabTitlebarWidget);
-    tabLayout->setContentsMargins(0, 0, 0, 0);
-    tabLayout->addWidget(m_tabBar, 0, Qt::AlignVCenter);
-
-    m_compactTitlebarWidget = new QWidget(this);
-    m_compactTitlebarWidget->setObjectName(QStringLiteral("compactTitlebarWidget"));
-    m_compactTitlebarWidget->setFixedHeight(36);
-    auto *compactLayout = new QHBoxLayout(m_compactTitlebarWidget);
-    compactLayout->setContentsMargins(12, 6, 12, 6);
-    compactLayout->addStretch(1);
+    // Embed the tab bar into the DTK titlebar via a custom widget.
+    ensureTabTitlebarWidget();
+    ensureCompactTitlebarWidget();
 
     auto *menu = new QMenu(this);
     auto *settingsAction = menu->addAction(tr("Settings"));
@@ -473,13 +508,13 @@ void MainWindow::updateTitlebarPresentation() {
         return;
 
     if (m_verticalTabsEnabled) {
-        m_tabBar->hide();
-        if (m_compactTitlebarWidget)
-            tb->setCustomWidget(m_compactTitlebarWidget);
+        detachTabBarFromTitlebarWidget();
+        ensureTabBar()->hide();
+        tb->setCustomWidget(ensureCompactTitlebarWidget());
     } else {
-        m_tabBar->show();
-        if (m_tabTitlebarWidget)
-            tb->setCustomWidget(m_tabTitlebarWidget);
+        auto *tabBar = ensureTabBar();
+        tb->setCustomWidget(ensureTabTitlebarWidget());
+        tabBar->show();
     }
 }
 

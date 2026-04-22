@@ -3,6 +3,7 @@
 #include <DMainWindow>
 #include <DTabBar>
 #include <QList>
+#include <QPointer>
 #include <QString>
 
 class QShortcut;
@@ -45,6 +46,10 @@ private:
         bool expanded = true;
     };
 
+    DTabBar *ensureTabBar();
+    QWidget *ensureTabTitlebarWidget();
+    QWidget *ensureCompactTitlebarWidget();
+    void detachTabBarFromTitlebarWidget();
     void setupTitleBar();
     void addTab(bool activate = true);
     void closePane(TermPane *pane);
@@ -68,7 +73,7 @@ private:
     void onShortcutCustomCommand();
     void onShortcutRemoteManagement();
 
-    DTabBar *m_tabBar = nullptr;
+    QPointer<DTabBar> m_tabBar;
     QStackedWidget *m_stackWidget = nullptr;
     QWidget *m_contentHost = nullptr;
     SettingsDialog *m_settingsDialog = nullptr;
@@ -78,8 +83,8 @@ private:
     bool m_verticalTabsEnabled = false;
     int m_nextTabId = 1;
     QList<TabRecord> m_tabs;
-    QWidget *m_tabTitlebarWidget = nullptr;
-    QWidget *m_compactTitlebarWidget = nullptr;
+    QPointer<QWidget> m_tabTitlebarWidget;
+    QPointer<QWidget> m_compactTitlebarWidget;
 
     QShortcut *m_scNewTab = nullptr;
     QShortcut *m_scCloseTab = nullptr;

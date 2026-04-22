@@ -8,9 +8,11 @@
 #include <DApplication>
 #include <DSettings>
 #include <DTabBar>
+#include <DTitlebar>
 #include <QAbstractButton>
 #include <QAction>
 #include <QFile>
+#include <QPointer>
 #include <QSignalSpy>
 #include <QStackedWidget>
 #include <QStandardPaths>
@@ -46,6 +48,8 @@ private slots:
     void testVerticalSidebarShowsTabsAndPanes();
     void testActivePaneTitleUpdatesTabAndWindowTitles();
     void testSidebarExpansionSurvivesModeSwitch();
+    void testHorizontalTitlebarTabsSurviveModeSwitch();
+    void testVerticalSidebarTabClickSwitchesCurrentTab();
 };
 
 namespace {
@@ -88,6 +92,10 @@ DTabBar *tabBar(MainWindow &window) {
 
 VerticalTabSidebar *sidebar(MainWindow &window) {
     return window.findChild<VerticalTabSidebar *>(QStringLiteral("verticalTabSidebar"));
+}
+
+DTitlebar *titlebar(MainWindow &window) {
+    return window.findChild<DTitlebar *>();
 }
 
 bool waitForTabCount(DTabBar *tabs, int expectedCount, int timeoutMs = 5000) {
@@ -409,6 +417,73 @@ void TestMainWindow::testSidebarExpansionSurvivesModeSwitch() {
     verticalSidebar = sidebar(window);
     QVERIFY(verticalSidebar);
     QTRY_COMPARE(verticalSidebar->findChildren<QAbstractButton *>(QStringLiteral("verticalPaneButton")).size(), 0);
+}
+
+void TestMainWindow::testHorizontalTitlebarTabsSurviveModeSwitch() {
+    AppSettings::instance()->setVerticalTabsEnabled(false);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *verticalAction = window.findChild<QAction *>(QStringLiteral("verticalTabsAction"));
+    QVERIFY(verticalAction);
+
+    auto *tb = titlebar(window);
+    QVERIFY(tb);
+    QVERIFY(tb->customWidget());
+
+    QPointer<DTabBar> initialTabs = tb->customWidget()->findChild<DTabBar *>();
+    QVERIFY(initialTabs);
+    QCOMPARE(initialTabs->count(), 1);
+
+    verticalAction->setChecked(true);
+    QTRY_VERIFY(tb->customWidget());
+    QVERIFY(!tb->customWidget()->findChild<DTabBar *>());
+
+    QVERIFY(initialTabs);
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(initialTabs, 2));
+
+    verticalAction->setChecked(false);
+    QTRY_VERIFY(tb->customWidget());
+
+    auto *restoredTabs = tb->customWidget()->findChild<DTabBar *>();
+    QVERIFY(restoredTabs);
+    QCOMPARE(restoredTabs, initialTabs.data());
+    QCOMPARE(restoredTabs->count(), 2);
+}
+
+void TestMainWindow::testVerticalSidebarTabClickSwitchesCurrentTab() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+
+    tabs->setCurrentIndex(0);
+    auto *stack = window.findChild<QStackedWidget *>();
+    QVERIFY(stack);
+    QCOMPARE(stack->currentIndex(), 0);
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+
+    QTRY_COMPARE(verticalSidebar->findChildren<QAbstractButton *>(QStringLiteral("verticalTabButton")).size(), 2);
+    const auto buttons = verticalSidebar->findChildren<QAbstractButton *>(QStringLiteral("verticalTabButton"));
+    QVERIFY(buttons.size() >= 2);
+
+    QTest::mouseClick(buttons.at(1), Qt::LeftButton);
+
+    QTRY_COMPARE(tabs->currentIndex(), 1);
+    QTRY_COMPARE(stack->currentIndex(), 1);
 }
 
 int main(int argc, char *argv[]) {
