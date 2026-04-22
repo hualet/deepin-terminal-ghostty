@@ -50,6 +50,7 @@ private slots:
     void testSidebarExpansionSurvivesModeSwitch();
     void testHorizontalTitlebarTabsSurviveModeSwitch();
     void testVerticalSidebarTabClickSwitchesCurrentTab();
+    void testVerticalSidebarIncludesDecorativeHierarchyElements();
 };
 
 namespace {
@@ -484,6 +485,25 @@ void TestMainWindow::testVerticalSidebarTabClickSwitchesCurrentTab() {
 
     QTRY_COMPARE(tabs->currentIndex(), 1);
     QTRY_COMPARE(stack->currentIndex(), 1);
+}
+
+void TestMainWindow::testVerticalSidebarIncludesDecorativeHierarchyElements() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *pane = currentPane(window);
+    QVERIFY(pane);
+    pane->splitCurrent(Qt::Vertical);
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+
+    QTRY_VERIFY(verticalSidebar->findChild<QWidget *>(QStringLiteral("verticalTabBadge")));
+    QTRY_VERIFY(verticalSidebar->findChild<QWidget *>(QStringLiteral("verticalPaneGuide")));
+    QTRY_VERIFY(verticalSidebar->findChild<QWidget *>(QStringLiteral("verticalPaneBadge")));
 }
 
 int main(int argc, char *argv[]) {

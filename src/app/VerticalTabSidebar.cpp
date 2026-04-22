@@ -1,12 +1,15 @@
 #include "VerticalTabSidebar.h"
 
 #include <QAbstractButton>
+#include <QApplication>
 #include <QFontMetrics>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
+#include <QStyle>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -21,6 +24,39 @@ QPushButton *createButton(const QString &objectName, const QString &text, QWidge
     button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     button->setProperty("_fullText", text);
     return button;
+}
+
+QLabel *createBadge(const QString &objectName, QWidget *parent, QStyle::StandardPixmap iconType,
+                    const QString &toneProperty) {
+    auto *badge = new QLabel(parent);
+    badge->setObjectName(objectName);
+    badge->setProperty("tone", toneProperty);
+    badge->setFixedSize(24, 24);
+    badge->setAlignment(Qt::AlignCenter);
+    badge->setPixmap(qApp->style()->standardIcon(iconType).pixmap(14, 14));
+    return badge;
+}
+
+QStyle::StandardPixmap tabBadgeIcon(int index) {
+    static const QStyle::StandardPixmap icons[] = {
+        QStyle::SP_ComputerIcon,
+        QStyle::SP_DriveHDIcon,
+        QStyle::SP_FileDialogContentsView,
+        QStyle::SP_DirHomeIcon,
+    };
+
+    return icons[index % (sizeof(icons) / sizeof(icons[0]))];
+}
+
+QStyle::StandardPixmap paneBadgeIcon(int index) {
+    static const QStyle::StandardPixmap icons[] = {
+        QStyle::SP_FileIcon,
+        QStyle::SP_DialogResetButton,
+        QStyle::SP_CommandLink,
+        QStyle::SP_BrowserReload,
+    };
+
+    return icons[index % (sizeof(icons) / sizeof(icons[0]))];
 }
 
 } // namespace
@@ -40,73 +76,98 @@ VerticalTabSidebar::VerticalTabSidebar(QWidget *parent) : QWidget(parent) {
     auto *content = new QWidget(scrollArea);
     content->setObjectName(QStringLiteral("verticalTabSidebarContent"));
     m_layout = new QVBoxLayout(content);
-    m_layout->setContentsMargins(6, 8, 6, 8);
-    m_layout->setSpacing(6);
+    m_layout->setContentsMargins(8, 8, 8, 8);
+    m_layout->setSpacing(8);
     m_layout->addStretch(1);
 
     scrollArea->setWidget(content);
     outerLayout->addWidget(scrollArea);
 
     setStyleSheet(QStringLiteral(R"(
+        #verticalTabSidebar {
+            background: rgba(12, 15, 22, 0.72);
+        }
         #verticalTabSidebarScrollArea {
             border: none;
             background: transparent;
         }
+        #verticalTabSidebarContent {
+            background: transparent;
+        }
         #verticalTabSection {
-            border: 1px solid transparent;
-            border-radius: 6px;
-            background-color: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            background-color: rgba(29, 32, 40, 0.96);
         }
         #verticalTabSection:hover {
-            background-color: palette(alternate-base);
+            background-color: rgba(37, 41, 51, 0.98);
         }
         #verticalTabSection[isCurrent="true"] {
-            background-color: palette(highlight);
+            border: 1px solid rgba(83, 143, 255, 0.45);
+            background-color: rgba(30, 45, 74, 0.98);
         }
-        #verticalTabSection[isCurrent="true"] #verticalTabButton,
-        #verticalTabSection[isCurrent="true"] #verticalPaneButton,
-        #verticalTabSection[isCurrent="true"] #verticalTabExpandButton {
-            color: palette(highlighted-text);
+        #verticalTabHeader {
+            background: transparent;
+        }
+        #verticalTabSection[isCurrent="true"] #verticalTabButton {
+            color: rgb(242, 247, 255);
         }
         #verticalTabExpandButton {
             border: none;
             background: transparent;
-            padding: 0px;
+            padding: 0px 1px;
             margin: 0px;
+            color: rgba(210, 218, 232, 0.7);
         }
         #verticalTabExpandButton:hover {
-            background-color: rgba(0, 0, 0, 0.1);
-            border-radius: 3px;
+            background-color: rgba(255, 255, 255, 0.08);
+            border-radius: 6px;
         }
         #verticalTabButton {
             border: none;
             background: transparent;
-            padding: 2px 0px;
+            padding: 6px 0px;
             margin: 0px;
-            color: palette(text);
+            color: rgb(220, 225, 236);
             text-align: left;
+            font-size: 15px;
         }
         #verticalTabButton:checked {
-            font-weight: bold;
+            font-weight: 600;
+        }
+        #verticalTabBadge,
+        #verticalPaneBadge {
+            border-radius: 12px;
+            background-color: rgba(255, 255, 255, 0.08);
+            color: rgb(220, 225, 236);
+        }
+        #verticalTabSection[isCurrent="true"] #verticalTabBadge {
+            background-color: rgba(83, 143, 255, 0.18);
         }
         #verticalPaneList {
             background: transparent;
         }
+        #verticalPaneGuide {
+            min-width: 1px;
+            max-width: 1px;
+            background-color: rgba(255, 255, 255, 0.12);
+            margin-top: 2px;
+            margin-bottom: 4px;
+        }
         #verticalPaneButton {
             border: none;
             background: transparent;
-            padding: 2px 0px;
-            padding-left: 20px;
+            padding: 5px 0px;
             margin: 0px;
-            color: palette(text);
+            color: rgb(183, 191, 204);
             text-align: left;
+            font-size: 14px;
         }
-        #verticalPaneButton:hover {
-            background-color: rgba(0, 0, 0, 0.05);
-            border-radius: 4px;
+        #verticalPaneButton[active="true"] {
+            color: rgb(229, 235, 245);
         }
         #verticalPaneButton:checked {
-            font-weight: bold;
+            font-weight: 500;
         }
     )"));
 }
@@ -126,9 +187,7 @@ void VerticalTabSidebar::updateButtonElisions() {
         if (fullText.isEmpty())
             continue;
         QFontMetrics fm(btn->font());
-        int pad = 8;
-        if (btn->objectName() == QStringLiteral("verticalPaneButton"))
-            pad = 24;
+        int pad = 2;
         const int available = qMax(btn->width() - pad, 20);
         btn->setText(fm.elidedText(fullText, Qt::ElideRight, available));
     }
@@ -150,23 +209,24 @@ void VerticalTabSidebar::rebuild() {
         delete item;
     }
 
-    for (const auto &tab : m_items) {
+    for (int tabIndex = 0; tabIndex < m_items.size(); ++tabIndex) {
+        const auto &tab = m_items.at(tabIndex);
         auto *section = new QFrame(this);
         section->setObjectName(QStringLiteral("verticalTabSection"));
         section->setProperty("tabId", tab.id);
         section->setProperty("isCurrent", tab.isCurrent);
 
         auto *sectionLayout = new QVBoxLayout(section);
-        sectionLayout->setContentsMargins(8, 6, 8, 6);
-        sectionLayout->setSpacing(2);
+        sectionLayout->setContentsMargins(6, 6, 6, 6);
+        sectionLayout->setSpacing(4);
 
         auto *header = new QWidget(section);
         header->setObjectName(QStringLiteral("verticalTabHeader"));
         header->setProperty("tabId", tab.id);
 
         auto *headerLayout = new QHBoxLayout(header);
-        headerLayout->setContentsMargins(0, 0, 0, 0);
-        headerLayout->setSpacing(4);
+        headerLayout->setContentsMargins(8, 6, 8, 6);
+        headerLayout->setSpacing(6);
 
         auto *expandButton = new QToolButton(header);
         expandButton->setObjectName(QStringLiteral("verticalTabExpandButton"));
@@ -178,6 +238,8 @@ void VerticalTabSidebar::rebuild() {
         expandButton->setProperty("expanded", tab.expanded);
         connect(expandButton, &QToolButton::clicked, this, [this, tab]() { emit tabExpansionToggled(tab.id); });
 
+        auto *tabBadge = createBadge(QStringLiteral("verticalTabBadge"), header, tabBadgeIcon(tabIndex),
+                                     tab.isCurrent ? QStringLiteral("bright") : QStringLiteral("muted"));
         auto *tabButton = createButton(QStringLiteral("verticalTabButton"), tab.title, header);
         tabButton->setCheckable(true);
         tabButton->setChecked(tab.isCurrent);
@@ -186,6 +248,7 @@ void VerticalTabSidebar::rebuild() {
         connect(tabButton, &QPushButton::clicked, this, [this, tab]() { emit tabActivated(tab.id); });
 
         headerLayout->addWidget(expandButton, 0, Qt::AlignVCenter);
+        headerLayout->addWidget(tabBadge, 0, Qt::AlignVCenter);
         headerLayout->addWidget(tabButton, 1);
 
         sectionLayout->addWidget(header);
@@ -195,13 +258,31 @@ void VerticalTabSidebar::rebuild() {
             paneList->setObjectName(QStringLiteral("verticalPaneList"));
             paneList->setProperty("tabId", tab.id);
 
-            auto *paneLayout = new QVBoxLayout(paneList);
-            paneLayout->setContentsMargins(0, 2, 0, 0);
-            paneLayout->setSpacing(0);
+            auto *paneListLayout = new QHBoxLayout(paneList);
+            paneListLayout->setContentsMargins(10, 0, 4, 0);
+            paneListLayout->setSpacing(8);
 
-            for (const auto &pane : tab.panes) {
+            auto *paneGuide = new QFrame(paneList);
+            paneGuide->setObjectName(QStringLiteral("verticalPaneGuide"));
+            paneGuide->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+            paneListLayout->addWidget(paneGuide);
+
+            auto *paneColumn = new QWidget(paneList);
+            auto *paneLayout = new QVBoxLayout(paneColumn);
+            paneLayout->setContentsMargins(0, 0, 0, 0);
+            paneLayout->setSpacing(2);
+
+            for (int paneIndex = 0; paneIndex < tab.panes.size(); ++paneIndex) {
+                const auto &pane = tab.panes.at(paneIndex);
                 const QString paneTitle = pane.title.isEmpty() ? tr("Terminal") : pane.title;
-                auto *paneButton = createButton(QStringLiteral("verticalPaneButton"), paneTitle, paneList);
+                auto *paneRow = new QWidget(paneColumn);
+                auto *paneRowLayout = new QHBoxLayout(paneRow);
+                paneRowLayout->setContentsMargins(8, 2, 4, 2);
+                paneRowLayout->setSpacing(6);
+
+                auto *paneBadge = createBadge(QStringLiteral("verticalPaneBadge"), paneRow, paneBadgeIcon(paneIndex),
+                                              pane.isActive ? QStringLiteral("bright") : QStringLiteral("muted"));
+                auto *paneButton = createButton(QStringLiteral("verticalPaneButton"), paneTitle, paneRow);
                 paneButton->setCheckable(true);
                 paneButton->setChecked(pane.isActive);
                 paneButton->setProperty("tabId", tab.id);
@@ -209,9 +290,13 @@ void VerticalTabSidebar::rebuild() {
                 paneButton->setProperty("active", pane.isActive);
                 connect(paneButton, &QPushButton::clicked, this,
                         [this, tabId = tab.id, paneId = pane.id]() { emit paneActivated(tabId, paneId); });
-                paneLayout->addWidget(paneButton);
+
+                paneRowLayout->addWidget(paneBadge, 0, Qt::AlignVCenter);
+                paneRowLayout->addWidget(paneButton, 1);
+                paneLayout->addWidget(paneRow);
             }
 
+            paneListLayout->addWidget(paneColumn, 1);
             sectionLayout->addWidget(paneList);
         }
 

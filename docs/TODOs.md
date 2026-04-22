@@ -11,6 +11,7 @@
 - [x] shell standard keybindings
 - [ ] kitty image protocol
 - [ ] 面向多 Agent 优化
+  - [ ] pane 状态点: 接入 shell 集成或命令退出码通路，再区分运行中/成功/失败状态；当前 UI 已先移除状态点，避免误导
 - [ ] SE
   - [x] 添加单元测试
   - [ ] 添加日志系统
@@ -20,4 +21,3 @@
   - [ ] 兼容性: vttest + ucs-detect
   - [ ] 吞吐: vtebench + termbench
   - [ ] 交互体验: typometer
-
