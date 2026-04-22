@@ -236,5 +236,6 @@ gdb -batch -ex "set pagination off" -ex "set debuginfod enabled off" \
 
 - Ghostty source and headers: `~/projects/g/ghostty`
 - Ghostling reference implementation: `~/projects/g/ghostling`
+- Original deepin-terminal source repo: `~/projects/deepin/deepin-terminal`
 
 Use these when the local implementation needs behavior or API reference, especially for PTY, rendering, input encoding, mouse handling, and terminal capability callbacks.
