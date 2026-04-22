@@ -5,6 +5,8 @@ project(deepin-terminal-ghostty
   LANGUAGES CXX
 )
 
+add_compile_definitions(PROJECT_VERSION_STR="${PROJECT_VERSION}")
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -33,6 +35,7 @@ DTK_CREATE_I18N_FROM_JSON(APP_SETTINGS_I18N_SOURCES
 
 set(APP_TRANSLATABLE_SOURCES
   src/app/main.cpp
+  src/app/ApplicationMetadata.cpp
   src/app/MainWindow.cpp
   src/app/AppSettings.cpp
   src/app/SettingsDialog.cpp
@@ -211,6 +214,7 @@ set_target_properties(qtghostty PROPERTIES
 )
 
 add_executable(deepin-terminal-ghostty
+  src/app/ApplicationMetadata.cpp
   src/app/main.cpp
   src/app/MainWindow.cpp
   src/app/AppSettings.cpp

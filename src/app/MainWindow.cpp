@@ -7,6 +7,8 @@
 #include "VerticalTabSidebar.h"
 #include "logging/Logging.h"
 
+#include <DAboutDialog>
+#include <DApplication>
 #include <DTitlebar>
 #include <QDialog>
 #include <QHBoxLayout>
@@ -770,6 +772,14 @@ void MainWindow::onShortcutRemoteManagement() {
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
+    auto *app = qobject_cast<DApplication *>(qApp);
+    if (app) {
+        if (auto *aboutDialog = app->aboutDialog()) {
+            disconnect(aboutDialog, &QObject::destroyed, nullptr, nullptr);
+            connect(aboutDialog, &QObject::destroyed, this, [app]() { app->setAboutDialog(nullptr); });
+        }
+    }
+
     // Clean up all pages so PtySession destructors run gracefully
     while (m_stackWidget->count() > 0) {
         QWidget *w = m_stackWidget->widget(0);

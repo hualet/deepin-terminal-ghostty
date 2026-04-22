@@ -1,4 +1,5 @@
 #include "AppSettings.h"
+#include "ApplicationMetadata.h"
 #include "MainWindow.h"
 #include "PtySession.h"
 #include "TermPane.h"
@@ -53,6 +54,7 @@ private slots:
     void testVerticalSidebarTabClickSwitchesCurrentTab();
     void testVerticalSidebarIncludesDecorativeHierarchyElements();
     void testLoggingCategoriesExposeExpectedNames();
+    void testApplicationMetadataIsConfigured();
 };
 
 namespace {
@@ -146,6 +148,20 @@ void TestMainWindow::testLoggingCategoriesExposeExpectedNames() {
     QCOMPARE(QString::fromUtf8(appLog().categoryName()), QStringLiteral("org.deepin_terminal_ghostty.app"));
     QCOMPARE(QString::fromUtf8(ptyLog().categoryName()), QStringLiteral("org.deepin_terminal_ghostty.pty"));
     QCOMPARE(QString::fromUtf8(terminalLog().categoryName()), QStringLiteral("org.deepin_terminal_ghostty.terminal"));
+}
+
+void TestMainWindow::testApplicationMetadataIsConfigured() {
+    MainWindow window;
+
+    auto *app = qobject_cast<DApplication *>(qApp);
+    QVERIFY(app);
+    QCOMPARE(app->applicationName(), QStringLiteral("deepin-terminal-ghostty"));
+    QCOMPARE(app->applicationDisplayName(), QStringLiteral("Deepin Terminal Ghostty"));
+    QCOMPARE(app->organizationName(), QStringLiteral("deepin"));
+    QVERIFY(!app->applicationVersion().isEmpty());
+    QVERIFY(!app->applicationDescription().isEmpty());
+    QVERIFY(!app->applicationLicense().isEmpty());
+    QCOMPARE(app->applicationHomePage(), QStringLiteral("https://github.com/linuxdeepin/deepin-terminal-ghostty"));
 }
 
 void TestMainWindow::testClosedSessionRemovesOnlyCurrentTab() {
@@ -516,6 +532,7 @@ void TestMainWindow::testVerticalSidebarIncludesDecorativeHierarchyElements() {
 
 int main(int argc, char *argv[]) {
     DApplication app(argc, argv);
+    applyApplicationMetadata(app);
     TestMainWindow tc;
     QTEST_SET_MAIN_SOURCE_PATH
     return QTest::qExec(&tc, argc, argv);

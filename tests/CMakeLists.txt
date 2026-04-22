@@ -80,6 +80,7 @@ add_test(NAME TerminalWidget COMMAND test_terminal_widget)
 # ---------------------------------------------------------------------------
 add_executable(test_main_window
   test_main_window.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/ApplicationMetadata.cpp
   ${CMAKE_SOURCE_DIR}/src/logging/Logging.cpp
   ${CMAKE_SOURCE_DIR}/src/app/MainWindow.cpp
   ${CMAKE_SOURCE_DIR}/src/app/AppSettings.cpp

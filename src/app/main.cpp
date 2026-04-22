@@ -1,8 +1,10 @@
+#include "ApplicationMetadata.h"
 #include "logging/Logging.h"
 
 #include <DApplication>
 #include <DLog>
 #include <DWidgetUtil>
+#include <QCoreApplication>
 #include <QLocale>
 #include <QStringList>
 #include <QTranslator>
@@ -42,9 +44,7 @@ int main(int argc, char *argv[]) {
     qCInfo(appLog) << "Application startup";
 
     DApplication app(argc, argv);
-    app.setApplicationName(QStringLiteral("deepin-terminal-ghostty"));
-    app.setProductName("deepin-terminal-ghostty");
-    app.setApplicationDisplayName("Deepin Terminal Ghostty");
+    applyApplicationMetadata(app);
     app.loadTranslator();
 
     QTranslator appTranslator;
