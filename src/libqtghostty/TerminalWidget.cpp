@@ -6,6 +6,7 @@
 #include <QClipboard>
 #include <QFontMetrics>
 #include <QGuiApplication>
+#include <QInputMethod>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
@@ -83,6 +84,7 @@ bool effectColorScheme(GhosttyTerminal terminal, void *userdata, GhosttyColorSch
 
 TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
+    setAttribute(Qt::WA_InputMethodEnabled, true);
 
     m_font = QFont("Monospace", 11);
     m_font.setStyleHint(QFont::Monospace);
@@ -425,6 +427,7 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
 void TerminalWidget::resizeEvent(QResizeEvent *event) {
     QWidget::resizeEvent(event);
     updateGridSize();
+    notifyInputMethodCursorChange();
 }
 
 GhosttyKey TerminalWidget::mapQtKeyToGhostty(int key) const {
@@ -672,6 +675,38 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     }
 }
 
+void TerminalWidget::inputMethodEvent(QInputMethodEvent *event) {
+    if (!event) {
+        return;
+    }
+
+    if (!m_ptySession) {
+        event->ignore();
+        return;
+    }
+
+    const QString commitString = event->commitString();
+    if (!commitString.isEmpty()) {
+        m_ptySession->write(commitString.toUtf8());
+    }
+
+    event->accept();
+    notifyInputMethodCursorChange();
+}
+
+QVariant TerminalWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
+    switch (query) {
+        case Qt::ImEnabled:
+            return true;
+        case Qt::ImCursorRectangle:
+            return inputMethodCursorRect();
+        case Qt::ImFont:
+            return m_font;
+        default:
+            return QWidget::inputMethodQuery(query);
+    }
+}
+
 bool TerminalWidget::focusNextPrevChild(bool next) {
     (void)next;
     // Prevent Tab / Shift+Tab from moving focus out of the terminal.
@@ -722,6 +757,7 @@ void TerminalWidget::focusInEvent(QFocusEvent *event) {
     if (m_cursorBlinkEnabled)
         m_blinkTimer->start();
     update();
+    notifyInputMethodCursorChange();
     Q_EMIT focusGained();
 }
 
@@ -732,6 +768,7 @@ void TerminalWidget::focusOutEvent(QFocusEvent *event) {
     m_blinkTimer->stop();
     m_cursorBlinkVisible = true;
     update();
+    notifyInputMethodCursorChange();
 }
 
 void TerminalWidget::sendFocusEvent(bool gained) {
@@ -780,10 +817,42 @@ void TerminalWidget::onPtyDataReceived(const QByteArray &data) {
     ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(data.constData()),
                               static_cast<size_t>(data.size()));
     update();
+    notifyInputMethodCursorChange();
 }
 
 void TerminalWidget::onPtySessionClosed() {
     Q_EMIT sessionClosed();
+}
+
+QRect TerminalWidget::inputMethodCursorRect() const {
+    QRect cursorRect(0, 0, qMax(m_cellWidth, 1), qMax(m_cellHeight, 1));
+    if (!m_terminal || !m_renderState) {
+        return cursorRect;
+    }
+
+    if (ghostty_render_state_update(m_renderState, m_terminal) != GHOSTTY_SUCCESS) {
+        return cursorRect;
+    }
+
+    bool cursorInViewport = false;
+    if (ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_HAS_VALUE, &cursorInViewport)
+            != GHOSTTY_SUCCESS
+        || !cursorInViewport) {
+        return cursorRect;
+    }
+
+    uint16_t cursorX = 0;
+    uint16_t cursorY = 0;
+    ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_X, &cursorX);
+    ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_Y, &cursorY);
+    cursorRect.moveTo(static_cast<int>(cursorX) * m_cellWidth, static_cast<int>(cursorY) * m_cellHeight);
+    return cursorRect;
+}
+
+void TerminalWidget::notifyInputMethodCursorChange() {
+    if (QInputMethod *inputMethod = QGuiApplication::inputMethod()) {
+        inputMethod->update(Qt::ImEnabled | Qt::ImCursorRectangle);
+    }
 }
 
 // ---------------------------------------------------------------------------

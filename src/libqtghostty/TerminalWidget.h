@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QFont>
+#include <QInputMethodEvent>
 #include <QTimer>
 #include <QWidget>
 
@@ -50,6 +51,8 @@ protected:
     void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    void inputMethodEvent(QInputMethodEvent *event) override;
+    QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
     void focusInEvent(QFocusEvent *event) override;
     void focusOutEvent(QFocusEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
@@ -69,6 +72,8 @@ private:
     void updateGridSize();
     void renderTerminal(QPainter &painter);
     void sendFocusEvent(bool gained);
+    QRect inputMethodCursorRect() const;
+    void notifyInputMethodCursorChange();
 
     void updateSearchHighlight();
     QString textForScreenRow(int row) const;

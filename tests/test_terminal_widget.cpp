@@ -1,4 +1,6 @@
 #include <QApplication>
+#include <QInputMethodEvent>
+#include <QInputMethodQueryEvent>
 #include <QSignalSpy>
 #include <QTest>
 
@@ -7,6 +9,7 @@
 #undef emit
 #endif
 
+#include "PtySession.h"
 #include "TerminalWidget.h"
 
 #include <ghostty/vt.h>
@@ -19,6 +22,7 @@ private slots:
     void cleanupTestCase() {}
 
     void testInitialize();
+    void testInputMethodSupport();
     void testNoAppSpecificSignals();
     void testSizeReport();
     void testTitleChanged();
@@ -29,9 +33,55 @@ private slots:
     void testSetCursorBlink();
 };
 
+namespace {
+
+QByteArray collectedPtyOutput(const QSignalSpy &spy) {
+    QByteArray output;
+    for (const QList<QVariant> &arguments : spy) {
+        if (!arguments.isEmpty())
+            output.append(arguments.at(0).toByteArray());
+    }
+    return output;
+}
+
+} // namespace
+
 void TestTerminalWidget::testInitialize() {
     TerminalWidget widget;
     QVERIFY(widget.initialize());
+}
+
+void TestTerminalWidget::testInputMethodSupport() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    widget.setFocus();
+    QVERIFY(widget.hasFocus());
+
+    QVERIFY(widget.testAttribute(Qt::WA_InputMethodEnabled));
+
+    QInputMethodQueryEvent queryEvent(Qt::ImEnabled);
+    QApplication::sendEvent(&widget, &queryEvent);
+    QVERIFY(queryEvent.value(Qt::ImEnabled).toBool());
+
+    auto *session = widget.findChild<PtySession *>();
+    QVERIFY(session);
+
+    QSignalSpy spy(session, &PtySession::dataReceived);
+    QVERIFY(spy.isValid());
+
+    QTest::qWait(100);
+    spy.clear();
+
+    QInputMethodEvent imeEvent;
+    imeEvent.setCommitString(QStringLiteral("中文"));
+    QApplication::sendEvent(&widget, &imeEvent);
+    QTest::keyClick(&widget, Qt::Key_Return);
+
+    QTRY_VERIFY_WITH_TIMEOUT(collectedPtyOutput(spy).contains(QStringLiteral("中文").toUtf8()), 2000);
 }
 
 void TestTerminalWidget::testNoAppSpecificSignals() {
