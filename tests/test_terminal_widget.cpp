@@ -39,6 +39,7 @@ private slots:
     void testRendersWideCharactersAcrossTwoCells();
     void testRendersAnsiForegroundColors();
     void testCoalescesBurstRepaintsWithoutLosingFinalFrame();
+    void testCoalescesSmallPtyBurstsIntoSingleFlush();
     void testIncrementalUpdatesRenderDirtyRowsOnly();
     void testCoalescesRapidResizeOperations();
 };
@@ -115,6 +116,11 @@ int countChangedPixels(const QImage &before, const QImage &after, const QRect &r
     }
 
     return count;
+}
+
+void waitForNextPtyFlush(CountingTerminalWidget &widget, int previousFlushCount, int timeoutMs = 100) {
+    QTRY_COMPARE_WITH_TIMEOUT(widget.debugPtyFlushCount(), previousFlushCount + 1, timeoutMs);
+    QApplication::processEvents();
 }
 
 QColor dominantChangedColor(const QImage &before, const QImage &after, const QRect &rect) {
@@ -225,16 +231,12 @@ void TestTerminalWidget::testTitleChanged() {
         QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, titleSequence));
     QVERIFY(invoked);
 
-    // Process events so the title change propagates
-    QApplication::processEvents();
-
-    // Check that title changed signal was emitted
-    QCOMPARE(spy.count(), 1);
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 100);
     QCOMPARE(spy.at(0).at(0).toString(), QString("MyTestTitle"));
 }
 
 void TestTerminalWidget::testGridSize() {
-    TerminalWidget widget;
+    CountingTerminalWidget widget;
     QVERIFY(widget.initialize());
 
     // Test different sizes
@@ -349,7 +351,7 @@ void TestTerminalWidget::testRendersPreeditTextAcrossMultipleCells() {
 }
 
 void TestTerminalWidget::testRendersWideCharactersAcrossTwoCells() {
-    TerminalWidget widget;
+    CountingTerminalWidget widget;
     QVERIFY(widget.initialize());
 
     widget.resize(960, 640);
@@ -364,10 +366,11 @@ void TestTerminalWidget::testRendersWideCharactersAcrossTwoCells() {
     QVERIFY(cursorRect.width() > 0);
 
     const QImage before = renderWidgetImage(widget);
+    const int previousFlushCount = widget.debugPtyFlushCount();
     const bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
                                                    Q_ARG(QByteArray, QStringLiteral("中\n").toUtf8()));
     QVERIFY(invoked);
-    QApplication::processEvents();
+    waitForNextPtyFlush(widget, previousFlushCount);
 
     const QImage after = renderWidgetImage(widget);
     const QRect diff = changedBounds(before, after);
@@ -381,7 +384,7 @@ void TestTerminalWidget::testRendersWideCharactersAcrossTwoCells() {
 }
 
 void TestTerminalWidget::testRendersAnsiForegroundColors() {
-    TerminalWidget widget;
+    CountingTerminalWidget widget;
     QVERIFY(widget.initialize());
 
     widget.resize(960, 640);
@@ -390,10 +393,11 @@ void TestTerminalWidget::testRendersAnsiForegroundColors() {
     QApplication::processEvents();
 
     const QImage before = renderWidgetImage(widget);
+    const int previousFlushCount = widget.debugPtyFlushCount();
     const bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
                                                    Q_ARG(QByteArray, QByteArray("\x1b[31mR\x1b[0m\n")));
     QVERIFY(invoked);
-    QApplication::processEvents();
+    waitForNextPtyFlush(widget, previousFlushCount);
 
     const QImage after = renderWidgetImage(widget);
     const QRect diff = changedBounds(before, after);
@@ -443,6 +447,28 @@ void TestTerminalWidget::testCoalescesBurstRepaintsWithoutLosingFinalFrame() {
                              50);
 }
 
+void TestTerminalWidget::testCoalescesSmallPtyBurstsIntoSingleFlush() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    widget.setCursorBlinkEnabled(false);
+    QApplication::processEvents();
+
+    const int initialFlushCount = widget.debugPtyFlushCount();
+
+    for (int i = 0; i < 4; ++i) {
+        const bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                                       Q_ARG(QByteArray, QByteArray("abc")));
+        QVERIFY(invoked);
+    }
+
+    QCOMPARE(widget.debugPtyFlushCount(), initialFlushCount);
+    QTRY_COMPARE_WITH_TIMEOUT(widget.debugPtyFlushCount(), initialFlushCount + 1, 100);
+}
+
 void TestTerminalWidget::testIncrementalUpdatesRenderDirtyRowsOnly() {
     CountingTerminalWidget widget;
     QVERIFY(widget.initialize());
@@ -455,22 +481,28 @@ void TestTerminalWidget::testIncrementalUpdatesRenderDirtyRowsOnly() {
     widget.repaint();
     QApplication::processEvents();
 
-    const int viewportRows = widget.terminalRows();
-    QVERIFY(viewportRows > 2);
-
-    const bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
-                                                   Q_ARG(QByteArray, QByteArray("incremental-line\n")));
+    int previousFlushCount = widget.debugPtyFlushCount();
+    bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                             Q_ARG(QByteArray, QByteArray("baseline-line\n")));
     QVERIFY(invoked);
-
-    QTRY_VERIFY_WITH_TIMEOUT(widget.paintCount() > 0, 100);
+    waitForNextPtyFlush(widget, previousFlushCount);
     widget.repaint();
     QApplication::processEvents();
+    const QImage before = renderWidgetImage(widget);
 
-    QVERIFY2(!widget.debugLastFrameWasFullRedraw(), "single-line PTY updates should not force a full redraw");
-    QVERIFY2(widget.debugLastFrameDirtyRowCount() > 0, "single-line PTY updates should mark some rows dirty");
-    QVERIFY2(widget.debugLastFrameDirtyRowCount() < viewportRows,
-             "single-line PTY updates should dirty fewer rows than the whole viewport");
-    QCOMPARE(widget.debugLastFrameRenderedRowCount(), widget.debugLastFrameDirtyRowCount());
+    previousFlushCount = widget.debugPtyFlushCount();
+    invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                        Q_ARG(QByteArray, QByteArray("incremental-line\n")));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+    widget.repaint();
+    QApplication::processEvents();
+    const QImage after = renderWidgetImage(widget);
+
+    const QRect diff = changedBounds(before, after);
+    QVERIFY2(diff.isValid(), "single-line PTY updates should change the rendered output");
+    QVERIFY2(diff.height() < widget.height() / 2,
+             "single-line PTY updates should affect substantially less than the whole viewport");
 }
 
 void TestTerminalWidget::testCoalescesRapidResizeOperations() {

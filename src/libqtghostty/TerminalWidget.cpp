@@ -17,8 +17,10 @@
 
 namespace {
 
+constexpr int kInitialPtyCoalesceIntervalMs = 1;
 constexpr int kBurstRenderIntervalMs = 8;
 constexpr int kResizeCoalesceIntervalMs = 8;
+constexpr int kImmediatePtyFlushBytes = 32 * 1024;
 
 void appendCodepoint(QString &text, uint32_t codepoint) {
     if (codepoint <= 0xFFFF) {
@@ -212,6 +214,10 @@ bool TerminalWidget::debugLastFrameWasFullRedraw() const {
 
 int TerminalWidget::debugResizeApplyCount() const {
     return m_debugResizeApplyCount;
+}
+
+int TerminalWidget::debugPtyFlushCount() const {
+    return m_debugPtyFlushCount;
 }
 #endif
 
@@ -1106,7 +1112,20 @@ void TerminalWidget::scheduleTerminalRepaint() {
         return;
     }
 
-    if (!m_lastRenderTime.isValid() || m_lastRenderTime.elapsed() >= kBurstRenderIntervalMs) {
+    if (m_pendingPtyData.size() >= kImmediatePtyFlushBytes) {
+        flushPendingPtyData();
+        update();
+        m_lastRenderTime.restart();
+        return;
+    }
+
+    if (!m_lastRenderTime.isValid()) {
+        if (!m_renderTimer->isActive())
+            m_renderTimer->start(kInitialPtyCoalesceIntervalMs);
+        return;
+    }
+
+    if (m_lastRenderTime.elapsed() >= kBurstRenderIntervalMs) {
         flushPendingPtyData();
         update();
         m_lastRenderTime.restart();
@@ -1147,6 +1166,9 @@ void TerminalWidget::flushPendingPtyData() {
         return;
     }
 
+#ifdef QTGHOSTTY_TESTING
+    ++m_debugPtyFlushCount;
+#endif
     ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(m_pendingPtyData.constData()),
                               static_cast<size_t>(m_pendingPtyData.size()));
     m_pendingPtyData.clear();

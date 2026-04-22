@@ -30,6 +30,7 @@ constexpr int kChildPollIntervalMs = 50;
 constexpr int kChildShutdownGraceMs = 300;
 constexpr int kChildDestructionGraceMs = 300;
 constexpr int kMaxPendingWriteBytes = 1024 * 1024;
+constexpr int kReadChunkBytes = 64 * 1024;
 constexpr const char kTermEnv[] = "TERM=xterm-256color";
 
 std::string resolveShellPath() {
@@ -153,19 +154,27 @@ void PtySession::handleMasterReadyRead() {
         return;
     }
 
-    char buffer[4096];
+    QByteArray aggregatedData;
+    aggregatedData.reserve(kReadChunkBytes);
+
     while (true) {
-        const ssize_t bytesRead = ::read(m_masterFd, buffer, sizeof(buffer));
+        const qsizetype offset = aggregatedData.size();
+        aggregatedData.resize(offset + kReadChunkBytes);
+        const ssize_t bytesRead = ::read(m_masterFd, aggregatedData.data() + offset, kReadChunkBytes);
         if (bytesRead > 0) {
-            QPointer<PtySession> guard(this);
-            emit dataReceived(QByteArray(buffer, static_cast<int>(bytesRead)));
-            if (!guard) {
-                return;
-            }
+            aggregatedData.resize(offset + static_cast<qsizetype>(bytesRead));
             continue;
         }
 
         if (bytesRead == 0) {
+            aggregatedData.resize(offset);
+            if (!aggregatedData.isEmpty()) {
+                QPointer<PtySession> guard(this);
+                emit dataReceived(aggregatedData);
+                if (!guard) {
+                    return;
+                }
+            }
             if (!closeMaster()) {
                 return;
             }
@@ -177,13 +186,30 @@ void PtySession::handleMasterReadyRead() {
         }
 
         if (errno == EINTR) {
+            aggregatedData.resize(offset);
             continue;
         }
 
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            aggregatedData.resize(offset);
+            if (!aggregatedData.isEmpty()) {
+                QPointer<PtySession> guard(this);
+                emit dataReceived(aggregatedData);
+                if (!guard) {
+                    return;
+                }
+            }
             return;
         }
 
+        aggregatedData.resize(offset);
+        if (!aggregatedData.isEmpty()) {
+            QPointer<PtySession> guard(this);
+            emit dataReceived(aggregatedData);
+            if (!guard) {
+                return;
+            }
+        }
         if (!closeMaster()) {
             return;
         }

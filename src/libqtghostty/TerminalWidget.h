@@ -49,6 +49,7 @@ public:
     int debugLastFrameDirtyRowCount() const;
     bool debugLastFrameWasFullRedraw() const;
     int debugResizeApplyCount() const;
+    int debugPtyFlushCount() const;
 #endif
 
 signals:
@@ -178,6 +179,7 @@ private:
     int m_debugLastFrameDirtyRowCount = 0;
     bool m_debugLastFrameWasFullRedraw = false;
     int m_debugResizeApplyCount = 0;
+    int m_debugPtyFlushCount = 0;
 #endif
 
     friend class TermPane;
