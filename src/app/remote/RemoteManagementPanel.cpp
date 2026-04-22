@@ -107,6 +107,8 @@ void RemoteManagementPanel::animateShow() {
 
     if (m_showAnim)
         m_showAnim->stop();
+    if (m_hideAnim)
+        m_hideAnim->stop();
     m_showAnim = new QPropertyAnimation(this, "geometry", this);
     m_showAnim->setDuration(250);
     m_showAnim->setEasingCurve(QEasingCurve::OutQuad);
@@ -124,6 +126,8 @@ void RemoteManagementPanel::animateHide() {
 
     if (m_hideAnim)
         m_hideAnim->stop();
+    if (m_showAnim)
+        m_showAnim->stop();
     m_hideAnim = new QPropertyAnimation(this, "geometry", this);
     m_hideAnim->setDuration(250);
     m_hideAnim->setEasingCurve(QEasingCurve::OutQuad);

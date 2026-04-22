@@ -5,6 +5,7 @@
 #include <DIconButton>
 #include <DLabel>
 #include <DPushButton>
+#include <QPointer>
 #include <QPropertyAnimation>
 #include <QScrollArea>
 #include <QVBoxLayout>
@@ -53,8 +54,8 @@ private:
     DLabel *m_emptyLabel = nullptr;
     QVBoxLayout *m_emptyLayout = nullptr;
 
-    QPropertyAnimation *m_showAnim = nullptr;
-    QPropertyAnimation *m_hideAnim = nullptr;
+    QPointer<QPropertyAnimation> m_showAnim;
+    QPointer<QPropertyAnimation> m_hideAnim;
 
     QList<ServerListItem *> m_items;
     bool m_isVisible = false;

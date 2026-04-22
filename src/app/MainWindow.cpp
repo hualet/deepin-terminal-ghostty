@@ -6,7 +6,6 @@
 #include "TerminalWidget.h"
 #include "VerticalTabSidebar.h"
 #include "logging/Logging.h"
-
 #include "remote/RemoteManagementPanel.h"
 #include "remote/ServerConfig.h"
 #include "remote/ServerConfigManager.h"
@@ -52,6 +51,19 @@ MainWindow::MainWindow(QWidget *parent)
     // Central widget host keeps layout switching local to MainWindow.
     setCentralWidget(m_contentHost);
     rebuildCentralLayout();
+
+    // Hide remote panel when focus moves outside of it.
+    connect(qApp, &QApplication::focusChanged, this, [this](QWidget *, QWidget *now) {
+        if (!m_remotePanel || !m_remotePanel->isPanelVisible())
+            return;
+        if (now && m_remotePanel->isAncestorOf(now))
+            return;
+        if (QApplication::activePopupWidget())
+            return;
+        if (QApplication::activeModalWidget())
+            return;
+        m_remotePanel->hidePanel();
+    });
 
     // Remote management panel overlays the right edge of the content host.
     m_remotePanel = new RemoteManagementPanel(m_contentHost);
