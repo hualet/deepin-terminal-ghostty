@@ -23,6 +23,9 @@ RemoteManagementPanel::RemoteManagementPanel(QWidget *parent) : QWidget(parent) 
 RemoteManagementPanel::~RemoteManagementPanel() = default;
 
 void RemoteManagementPanel::initUI() {
+    setBackgroundRole(QPalette::Base);
+    setAutoFillBackground(true);
+
     auto *layout = new QVBoxLayout(this);
     layout->setSpacing(8);
     layout->setContentsMargins(8, 12, 8, 8);
