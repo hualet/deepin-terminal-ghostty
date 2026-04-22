@@ -15,6 +15,24 @@
 #include <algorithm>
 #include <cstdio>
 
+namespace {
+
+void appendCodepoint(QString &text, uint32_t codepoint) {
+    if (codepoint <= 0xFFFF) {
+        text.append(QChar(static_cast<ushort>(codepoint)));
+        return;
+    }
+
+    if (codepoint <= 0x10FFFF) {
+        text.append(QChar::fromUcs4(codepoint));
+        return;
+    }
+
+    text.append(QChar::ReplacementCharacter);
+}
+
+} // namespace
+
 // ---------------------------------------------------------------------------
 // Effect callbacks (C-linkage friends of TerminalWidget)
 // ---------------------------------------------------------------------------
@@ -354,9 +372,8 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
                                                    codepoints);
 
                 QString text;
-                for (uint32_t i = 0; i < len; ++i) {
-                    text.append(QChar(codepoints[i]));
-                }
+                for (uint32_t i = 0; i < len; ++i)
+                    appendCodepoint(text, codepoints[i]);
 
                 QFont cellFont = m_font;
                 if (style.bold)
@@ -875,13 +892,8 @@ QString TerminalWidget::textForScreenRow(int row) const {
         uint32_t graphemes[16];
         size_t len = 0;
         if (ghostty_grid_ref_graphemes(&ref, graphemes, 16, &len) == GHOSTTY_SUCCESS && len > 0) {
-            for (size_t i = 0; i < len; ++i) {
-                if (graphemes[i] < 0x10000) {
-                    result.append(QChar(static_cast<ushort>(graphemes[i])));
-                } else {
-                    result.append(QChar::fromUcs4(graphemes[i]));
-                }
-            }
+            for (size_t i = 0; i < len; ++i)
+                appendCodepoint(result, graphemes[i]);
         }
     }
     return result;
@@ -1038,13 +1050,8 @@ QString TerminalWidget::selectedText() const {
             uint32_t graphemes[16];
             size_t len = 0;
             if (ghostty_grid_ref_graphemes(&ref, graphemes, 16, &len) == GHOSTTY_SUCCESS && len > 0) {
-                for (size_t i = 0; i < len; ++i) {
-                    if (graphemes[i] < 0x10000) {
-                        line.append(QChar(static_cast<ushort>(graphemes[i])));
-                    } else {
-                        line.append(QChar::fromUcs4(graphemes[i]));
-                    }
-                }
+                for (size_t i = 0; i < len; ++i)
+                    appendCodepoint(line, graphemes[i]);
             }
         }
         lines.append(line);

@@ -31,6 +31,7 @@ private slots:
     void testSetTerminalFont();
     void testSetCursorShape();
     void testSetCursorBlink();
+    void testRendersSupplementaryPlaneCharacters();
 };
 
 namespace {
@@ -201,6 +202,25 @@ void TestTerminalWidget::testSetCursorBlink() {
 
     widget.setCursorBlinkEnabled(false);
     widget.setCursorBlinkEnabled(true);
+    QVERIFY(true);
+}
+
+void TestTerminalWidget::testRendersSupplementaryPlaneCharacters() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    const QByteArray emojiLine = QStringLiteral("hello 🌍\n").toUtf8();
+    const bool invoked =
+        QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, emojiLine));
+    QVERIFY(invoked);
+
+    widget.repaint();
+    QApplication::processEvents();
+
     QVERIFY(true);
 }
 
