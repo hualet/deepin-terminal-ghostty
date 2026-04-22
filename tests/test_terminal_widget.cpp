@@ -23,6 +23,7 @@ private slots:
     void testSizeReport();
     void testTitleChanged();
     void testGridSize();
+    void testIgnoresTransientTinyResize();
     void testSetTerminalFont();
     void testSetCursorShape();
     void testSetCursorBlink();
@@ -99,6 +100,28 @@ void TestTerminalWidget::testGridSize() {
     // Should not crash
 
     QVERIFY(true);
+}
+
+void TestTerminalWidget::testIgnoresTransientTinyResize() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    widget.resize(960, 640);
+    QApplication::processEvents();
+
+    const int originalCols = widget.terminalColumns();
+    const int originalRows = widget.terminalRows();
+    QVERIFY(originalCols > 1);
+    QVERIFY(originalRows > 1);
+
+    widget.resize(1, 1);
+    QApplication::processEvents();
+
+    QCOMPARE(widget.terminalColumns(), originalCols);
+    QCOMPARE(widget.terminalRows(), originalRows);
 }
 
 void TestTerminalWidget::testSetTerminalFont() {

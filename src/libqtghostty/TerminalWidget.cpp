@@ -145,6 +145,14 @@ bool TerminalWidget::initialize() {
     return true;
 }
 
+int TerminalWidget::terminalColumns() const {
+    return m_cols;
+}
+
+int TerminalWidget::terminalRows() const {
+    return m_rows;
+}
+
 bool TerminalWidget::setupTerminal() {
     GhosttyTerminalOptions opts = {
         .cols = m_cols,
@@ -220,6 +228,12 @@ void TerminalWidget::updateGridSize() {
     int w = width();
     int h = height();
     if (m_cellWidth <= 0 || m_cellHeight <= 0)
+        return;
+
+    // Layout reparenting can transiently resize the terminal to 0x0 or 1x1.
+    // Treat those geometries as unstable and keep the previous grid size so we
+    // do not send a destructive PTY resize during layout switches.
+    if (w < m_cellWidth || h < m_cellHeight)
         return;
 
     uint16_t cols = static_cast<uint16_t>(w / m_cellWidth);

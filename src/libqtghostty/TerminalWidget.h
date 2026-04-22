@@ -22,6 +22,8 @@ public:
     ~TerminalWidget() override;
 
     bool initialize();
+    int terminalColumns() const;
+    int terminalRows() const;
 
     void setTerminalFont(const QFont &font);
     void setCursorShape(int shape);
