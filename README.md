@@ -163,4 +163,4 @@ The long-term direction includes:
 
 ## License
 
-LGPL-3.0-or-later
+LGPL-2.1-or-later
