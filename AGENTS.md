@@ -82,6 +82,8 @@ dpkg-buildpackage -us -uc -b
 
 Built `.deb` files will appear in the parent directory.
 
+When bumping the packaged version, update `debian/changelog` with real release notes for that version. Do not submit a version-only changelog entry.
+
 ## Test Commands
 
 Run all tests:

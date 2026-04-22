@@ -1,5 +1,9 @@
-deepin-terminal-ghostty (0.1.0-1) unstable; urgency=medium
+deepin-terminal-ghostty (0.2.0-1) unstable; urgency=medium
 
-  * Initial release.
+  * Add DTK logging integration and project logging guidelines.
+  * Fix transient terminal resizes that dropped visible pane content.
+  * Preserve locale when spawning PTY sessions for correct UTF-8 output.
+  * Configure application metadata for the DTK About dialog.
+  * Add Qt input method support so terminals can switch IMEs and input Chinese.
 
  -- Deepin Packages <packages@deepin.org>  Tue, 21 Apr 2026 18:58:59 +0800
