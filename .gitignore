@@ -57,3 +57,4 @@ compile_commands.json
 build/
 .codex
 .superpowers
+third_party/esctest/

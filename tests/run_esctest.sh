@@ -59,6 +59,11 @@ detect_esctest_command() {
         return 0
     fi
 
+    if [[ -f "${dir}/esctest/esctest.py" ]]; then
+        printf 'PYTHONPATH=%q python3 %q' "${dir}/esctest" "${dir}/esctest/esctest.py"
+        return 0
+    fi
+
     return 1
 }
 
