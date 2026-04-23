@@ -1,22 +1,24 @@
-- [ ] 多标签
+- [x] 多标签
   - [x] 标签页支持
-  - [ ] 垂直标题栏支持
-- [ ] 快捷键设置
+  - [x] 垂直标题栏支持
+- [x] 快捷键设置
   - [ ] 优化一些切换标签页的快捷键，应该是 Alt+数字，按下 Alt 标签页应该有数字提示
 - [ ] 个性化设置
   - [ ] 主题配色
-  - [ ] 字体
-- [ ] 屏幕拆分
-- [ ] 查找
+  - [x] 字体
+- [x] 屏幕拆分
+- [x] 查找
 - [x] shell standard keybindings
-- [ ] kitty image protocol
+- [ ] 现代扩展协议
+  - [ ] kitty image protocol
 - [ ] 面向多 Agent 优化
   - [ ] pane 状态点: 接入 shell 集成或命令退出码通路，再区分运行中/成功/失败状态；当前 UI 已先移除状态点，避免误导
 - [ ] SE
   - [x] 添加单元测试
-  - [ ] 添加日志系统
-  - [ ] 添加benchmar
-  - [ ] 添加自动化构建和打包
+  - [x] 添加日志系统
+  - [x] 添加自动化构建和打包
+  - [ ] CI
+    - [ ] clang-static-analyzer
 - [ ] 兼容性和性能测试
   - [ ] 兼容性: vttest + ucs-detect
   - [ ] 吞吐: vtebench + termbench
