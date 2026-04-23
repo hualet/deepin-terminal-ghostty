@@ -1,2 +1,3 @@
 usr/bin/*
+usr/lib/*/libghostty-vt.so.0*
 usr/share/deepin-terminal-ghostty/translations/*

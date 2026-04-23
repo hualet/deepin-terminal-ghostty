@@ -47,22 +47,20 @@ jobs:
         run: |
           dpkg-buildpackage -us -uc -b
           mkdir -p output
-          find .. -maxdepth 1 -type f \
-            -name 'deepin-terminal-ghostty_*.deb' \
-            -exec cp {} output/ \;
+          find .. -maxdepth 1 -type f -name '*.deb' -exec cp {} output/ \;
 
-      - name: Upload Debian package
+      - name: Upload Debian packages
         uses: actions/upload-artifact@v4
         with:
-          name: deepin-terminal-ghostty-deb
-          path: output/deepin-terminal-ghostty_*.deb
+          name: debian-packages
+          path: output/*.deb
 
       - name: Publish release assets
         if: github.event_name == 'push' || github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          files: output/deepin-terminal-ghostty_*.deb
+          files: output/*.deb
           generate_release_notes: ${{ github.event_name == 'push' }}
           overwrite_files: true
         env:
