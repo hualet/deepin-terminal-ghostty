@@ -1,10 +1,15 @@
 #pragma once
 
+#include "PtySession.h"
+#include "StartupOptions.h"
+
 #include <DMainWindow>
 #include <DTabBar>
 #include <QList>
 #include <QPointer>
 #include <QString>
+
+#include <optional>
 
 class QShortcut;
 class SettingsDialog;
@@ -25,8 +30,11 @@ class MainWindow : public DMainWindow {
     Q_OBJECT
 
 public:
-    explicit MainWindow(QWidget *parent = nullptr);
+    explicit MainWindow(const StartupOptions &startupOptions = {}, QWidget *parent = nullptr);
     ~MainWindow() override;
+
+signals:
+    void startupSessionFinished(int exitCode);
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -54,7 +62,7 @@ private:
     QWidget *ensureCompactTitlebarWidget();
     void detachTabBarFromTitlebarWidget();
     void setupTitleBar();
-    void addTab(bool activate = true);
+    void addTab(bool activate = true, const std::optional<PtySession::StartOptions> &startOptions = std::nullopt);
     void closePane(TermPane *pane);
     TermPane *currentPane() const;
     TerminalWidget *currentTerminal() const;
@@ -90,6 +98,8 @@ private:
     QPointer<QWidget> m_tabTitlebarWidget;
     QPointer<QWidget> m_compactTitlebarWidget;
     QPointer<RemoteManagementPanel> m_remotePanel;
+    StartupOptions m_startupOptions;
+    bool m_startupSessionHandled = false;
 
     QShortcut *m_scNewTab = nullptr;
     QShortcut *m_scCloseTab = nullptr;

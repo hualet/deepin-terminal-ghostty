@@ -219,6 +219,7 @@ set_target_properties(qtghostty PROPERTIES
 
 add_executable(deepin-terminal-ghostty
   src/app/ApplicationMetadata.cpp
+  src/app/StartupOptions.cpp
   src/app/main.cpp
   src/app/MainWindow.cpp
   src/app/AppSettings.cpp

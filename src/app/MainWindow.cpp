@@ -26,8 +26,11 @@
 #include <QTableWidget>
 #include <QVBoxLayout>
 
-MainWindow::MainWindow(QWidget *parent)
-    : DMainWindow(parent), m_stackWidget(new QStackedWidget(this)), m_contentHost(new QWidget(this)) {
+MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
+    : DMainWindow(parent),
+      m_stackWidget(new QStackedWidget(this)),
+      m_contentHost(new QWidget(this)),
+      m_startupOptions(startupOptions) {
     m_verticalTabsEnabled = AppSettings::instance()->verticalTabsEnabled();
 
     // Prevent DTK or Qt default actions from intercepting standard
@@ -117,7 +120,14 @@ MainWindow::MainWindow(QWidget *parent)
     ensureTabBar();
 
     // First tab
-    addTab(true);
+    std::optional<PtySession::StartOptions> initialSessionOptions;
+    if (!m_startupOptions.execute.isEmpty() || !m_startupOptions.workingDirectory.isEmpty()) {
+        initialSessionOptions = PtySession::StartOptions{
+            .command = m_startupOptions.execute,
+            .workingDirectory = m_startupOptions.workingDirectory,
+        };
+    }
+    addTab(true, initialSessionOptions);
 
     setupShortcuts();
 }
@@ -213,11 +223,19 @@ void MainWindow::setupTitleBar() {
     updateTitlebarPresentation();
 }
 
-void MainWindow::addTab(bool activate) {
+void MainWindow::addTab(bool activate, const std::optional<PtySession::StartOptions> &startOptions) {
     qCInfo(appLog) << "Creating terminal tab" << m_nextTabId;
-    auto *pane = new TermPane(m_stackWidget);
+    auto *pane = new TermPane(startOptions, m_stackWidget);
 
     connect(pane, &TermPane::terminalTitleChanged, this, &MainWindow::onTerminalTitleChanged);
+    connect(pane, &TermPane::startupSessionExited, this, [this](int exitCode) {
+        if (m_startupSessionHandled)
+            return;
+        m_startupSessionHandled = true;
+        Q_EMIT startupSessionFinished(exitCode);
+        if (m_startupOptions.waitForChild)
+            close();
+    });
     connect(pane, &TermPane::sessionClosed, this, &MainWindow::onTerminalSessionClosed);
     connect(pane, &TermPane::currentTerminalChanged, this, &MainWindow::onPaneTerminalChanged);
     connect(pane, &TermPane::paneStructureChanged, this, [this, pane]() {

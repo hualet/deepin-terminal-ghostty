@@ -1,8 +1,12 @@
 #pragma once
 
+#include "PtySession.h"
+
 #include <QList>
 #include <QUuid>
 #include <QWidget>
+
+#include <optional>
 
 struct ServerConfig;
 class PageSearchBar;
@@ -20,7 +24,8 @@ public:
         bool isActive = false;
     };
 
-    explicit TermPane(QWidget *parent = nullptr);
+    explicit TermPane(const std::optional<PtySession::StartOptions> &initialSessionOptions = std::nullopt,
+                      QWidget *parent = nullptr);
 
     QList<PaneInfo> paneInfos() const;
     QUuid activePaneId() const;
@@ -44,6 +49,7 @@ signals:
     void activePaneChanged(const QUuid &paneId);
     void paneTitleChanged(const QUuid &paneId, const QString &title);
     void terminalTitleChanged(const QString &title);
+    void startupSessionExited(int exitCode);
     void sessionClosed();
     void currentTerminalChanged(TerminalWidget *term);
     void requestSettings();
@@ -64,4 +70,6 @@ private:
     QWidget *m_rootWidget = nullptr;
     TerminalWidget *m_currentTerm = nullptr;
     PageSearchBar *m_searchBar = nullptr;
+    std::optional<PtySession::StartOptions> m_initialSessionOptions;
+    TerminalWidget *m_startupTerminal = nullptr;
 };

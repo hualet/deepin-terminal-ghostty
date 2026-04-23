@@ -168,9 +168,11 @@ bool TerminalWidget::initialize() {
 
     m_ptySession = new PtySession(this);
     connect(m_ptySession, &PtySession::dataReceived, this, &TerminalWidget::onPtyDataReceived);
+    connect(m_ptySession, &PtySession::childExited, this, &TerminalWidget::sessionExited);
     connect(m_ptySession, &PtySession::sessionClosed, this, &TerminalWidget::onPtySessionClosed);
 
-    if (!m_ptySession->start(m_cols, m_rows)) {
+    const PtySession::StartOptions options = m_hasStartOptions ? m_startOptions : PtySession::StartOptions{};
+    if (!m_ptySession->start(m_cols, m_rows, options)) {
         qCCritical(terminalLog) << "Failed to start PTY session for terminal widget";
         return false;
     }
@@ -992,6 +994,11 @@ void TerminalWidget::setCursorBlinkEnabled(bool blink) {
         m_cursorBlinkVisible = true;
         update();
     }
+}
+
+void TerminalWidget::setStartOptions(const PtySession::StartOptions &options) {
+    m_startOptions = options;
+    m_hasStartOptions = !options.command.isEmpty() || !options.workingDirectory.isEmpty();
 }
 
 void TerminalWidget::setScrollbackLines(int lines) {

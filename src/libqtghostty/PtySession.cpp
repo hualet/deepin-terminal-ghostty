@@ -33,6 +33,14 @@ constexpr int kMaxPendingWriteBytes = 1024 * 1024;
 constexpr int kReadChunkBytes = 64 * 1024;
 constexpr const char kTermEnv[] = "TERM=xterm-256color";
 
+int normalizedExitCode(int status) {
+    if (WIFEXITED(status))
+        return WEXITSTATUS(status);
+    if (WIFSIGNALED(status))
+        return 128 + WTERMSIG(status);
+    return 1;
+}
+
 std::string resolveShellPath() {
     const QByteArray shellEnv = qgetenv("SHELL");
     if (!shellEnv.isEmpty()) {
@@ -107,7 +115,7 @@ PtySession::~PtySession() {
     cleanupForDestruction();
 }
 
-bool PtySession::start(int cols, int rows) {
+bool PtySession::start(int cols, int rows, const StartOptions &options) {
     if (m_masterFd >= 0 || m_childPid > 0) {
         qCWarning(ptyLog) << "Refusing to start PTY session because one is already active";
         return false;
@@ -119,8 +127,9 @@ bool PtySession::start(int cols, int rows) {
     m_childKillSent = false;
     m_childShutdownElapsedMs = 0;
     m_writeBufferOffset = 0;
+    m_childExitedEmitted = false;
     qCInfo(ptyLog) << "Starting PTY session with size" << cols << "x" << rows;
-    return spawn(cols, rows);
+    return spawn(cols, rows, options);
 }
 
 void PtySession::write(const QByteArray &data) {
@@ -240,6 +249,7 @@ void PtySession::handleChildPollTimeout() {
     while (true) {
         const pid_t result = ::waitpid(m_childPid, &status, WNOHANG);
         if (result == m_childPid) {
+            emitChildExitedOnce(normalizedExitCode(status));
             m_childPid = -1;
             m_childShutdownRequested = false;
             m_childHupSent = false;
@@ -285,14 +295,17 @@ void PtySession::handleChildPollTimeout() {
     }
 }
 
-bool PtySession::spawn(int cols, int rows) {
+bool PtySession::spawn(int cols, int rows, const StartOptions &options) {
 #if !defined(__linux__)
     Q_UNUSED(cols);
     Q_UNUSED(rows);
+    Q_UNUSED(options);
     return false;
 #else
     int masterFd = -1;
     const std::string shellPath = resolveShellPath();
+    const QByteArray command = options.command.toUtf8();
+    const QByteArray workingDirectory = options.workingDirectory.toUtf8();
     std::vector<std::string> envStorage;
     std::vector<char *> envp;
 
@@ -319,6 +332,21 @@ bool PtySession::spawn(int cols, int rows) {
     }
 
     if (childPid == 0) {
+        if (!workingDirectory.isEmpty() && ::chdir(workingDirectory.constData()) != 0)
+            _exit(127);
+
+        if (!command.isEmpty()) {
+            static constexpr char kCommandShell[] = "/bin/sh";
+            char *const argv[] = {
+                const_cast<char *>(kCommandShell),
+                const_cast<char *>("-c"),
+                const_cast<char *>(command.constData()),
+                nullptr,
+            };
+            ::execve(kCommandShell, argv, envp.data());
+            _exit(127);
+        }
+
         char *const argv[] = {
             const_cast<char *>(shellPath.c_str()),
             nullptr,
@@ -330,6 +358,7 @@ bool PtySession::spawn(int cols, int rows) {
     m_masterFd = masterFd;
     m_childPid = childPid;
     m_sessionClosedEmitted = false;
+    m_childExitedEmitted = false;
     m_writeBuffer.clear();
     m_writeBufferOffset = 0;
     m_childShutdownRequested = false;
@@ -443,6 +472,14 @@ bool PtySession::emitSessionClosedOnce() {
     qCInfo(ptyLog) << "PTY session closed";
     emit sessionClosed();
     return static_cast<bool>(guard);
+}
+
+void PtySession::emitChildExitedOnce(int exitCode) {
+    if (m_childExitedEmitted)
+        return;
+
+    m_childExitedEmitted = true;
+    emit childExited(exitCode);
 }
 
 bool PtySession::flushWriteBuffer() {

@@ -3,6 +3,7 @@
 #include <QByteArray>
 #include <QObject>
 #include <QPointer>
+#include <QString>
 
 #include <sys/types.h>
 
@@ -13,15 +14,21 @@ class PtySession : public QObject {
     Q_OBJECT
 
 public:
+    struct StartOptions {
+        QString command;
+        QString workingDirectory;
+    };
+
     explicit PtySession(QObject *parent = nullptr);
     ~PtySession() override;
 
-    bool start(int cols, int rows);
+    bool start(int cols, int rows, const StartOptions &options = {});
     void write(const QByteArray &data);
     void resize(int cols, int rows, int cellWidthPx, int cellHeightPx);
 
 signals:
     void dataReceived(const QByteArray &data);
+    void childExited(int exitCode);
     void sessionClosed();
 
 private slots:
@@ -30,7 +37,7 @@ private slots:
     void handleChildPollTimeout();
 
 private:
-    bool spawn(int cols, int rows);
+    bool spawn(int cols, int rows, const StartOptions &options);
     void cleanup(bool signalChild);
     void cleanupForDestruction();
     void cleanupSynchronously(bool signalChild);
@@ -42,6 +49,7 @@ private:
     void shutdownChild(bool signalChild);
     void shutdownChildBlocking(bool signalChild);
     bool emitSessionClosedOnce();
+    void emitChildExitedOnce(int exitCode);
     void reapChildNonBlocking();
     bool setMasterNonBlocking();
     bool setMasterCloseOnExec();
@@ -54,6 +62,7 @@ private:
     QByteArray m_writeBuffer;
     int m_writeBufferOffset{0};
     bool m_sessionClosedEmitted{false};
+    bool m_childExitedEmitted{false};
     bool m_childShutdownRequested{false};
     bool m_childHupSent{false};
     bool m_childKillSent{false};

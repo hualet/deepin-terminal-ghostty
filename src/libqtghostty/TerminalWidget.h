@@ -1,5 +1,7 @@
 #pragma once
 
+#include "PtySession.h"
+
 #include <QElapsedTimer>
 #include <QFont>
 #include <QImage>
@@ -14,9 +16,6 @@
 #endif
 
 #include <ghostty/vt.h>
-
-class PtySession;
-
 class TerminalWidget : public QWidget {
     Q_OBJECT
 
@@ -32,6 +31,7 @@ public:
     void setCursorShape(int shape);
     void setCursorBlinkEnabled(bool blink);
     void setScrollbackLines(int lines);
+    void setStartOptions(const PtySession::StartOptions &options);
 
     void selectAll();
     void zoomIn();
@@ -54,6 +54,7 @@ public:
 
 signals:
     void terminalTitleChanged(const QString &title);
+    void sessionExited(int exitCode);
     void sessionClosed();
     void focusGained();
 
@@ -119,6 +120,8 @@ private:
 
     // PTY
     PtySession *m_ptySession = nullptr;
+    PtySession::StartOptions m_startOptions;
+    bool m_hasStartOptions = false;
     QByteArray m_pendingPtyData;
     QTimer *m_renderTimer = nullptr;
     QTimer *m_resizeTimer = nullptr;

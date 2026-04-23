@@ -92,7 +92,8 @@ void collectTerminalWidgetsInVisualOrder(QWidget *widget, QList<TerminalWidget *
 
 } // namespace
 
-TermPane::TermPane(QWidget *parent) : QWidget(parent) {
+TermPane::TermPane(const std::optional<PtySession::StartOptions> &initialSessionOptions, QWidget *parent)
+    : QWidget(parent), m_initialSessionOptions(initialSessionOptions) {
     m_layout = new QVBoxLayout(this);
     m_layout->setSpacing(0);
     m_layout->setContentsMargins(0, 0, 0, 0);
@@ -150,6 +151,11 @@ TerminalWidget *TermPane::currentTerminal() const {
 TerminalWidget *TermPane::createTerminal() {
     auto *term = new TerminalWidget(this);
     ensurePaneId(term);
+    if (m_initialSessionOptions) {
+        term->setStartOptions(*m_initialSessionOptions);
+        m_startupTerminal = term;
+        m_initialSessionOptions.reset();
+    }
     term->initialize();
 
     auto *settings = AppSettings::instance();
@@ -172,6 +178,12 @@ void TermPane::setupTerminalConnections(TerminalWidget *term) {
         Q_EMIT paneTitleChanged(ensurePaneId(term), displayTitle);
         if (m_currentTerm == term)
             Q_EMIT terminalTitleChanged(displayTitle);
+    });
+    connect(term, &TerminalWidget::sessionExited, this, [this, term](int exitCode) {
+        if (term == m_startupTerminal) {
+            m_startupTerminal = nullptr;
+            Q_EMIT startupSessionExited(exitCode);
+        }
     });
     connect(term, &TerminalWidget::sessionClosed, this, [this, term]() { removeTerminal(term); });
     connect(term, &TerminalWidget::focusGained, this, [this, term]() { setCurrentTerminal(term); });

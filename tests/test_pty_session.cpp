@@ -14,6 +14,8 @@ private slots:
 
     void testStartShell();
     void testWriteAndRead();
+    void testStartCommand();
+    void testReportsChildExitCode();
     void testResize();
     void testSessionClose();
     void testPreservesUtf8Locale();
@@ -51,6 +53,43 @@ void TestPtySession::testWriteAndRead() {
         }
     }
     QVERIFY2(found, "Expected output to contain 'qtghostty_test_hello'");
+}
+
+void TestPtySession::testStartCommand() {
+    PtySession session;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("printf 'qtghostty_cmd_ok'");
+    QVERIFY(session.start(80, 24, options));
+
+    QSignalSpy spy(&session, &PtySession::dataReceived);
+    QVERIFY(spy.isValid());
+
+    QByteArray output;
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 2000 && !output.contains("qtghostty_cmd_ok")) {
+        spy.wait(100);
+        for (const auto &args : spy)
+            output.append(args.at(0).toByteArray());
+        spy.clear();
+    }
+
+    QVERIFY2(output.contains("qtghostty_cmd_ok"),
+             qPrintable(QString::fromLatin1("Expected command output, got: %1").arg(QString::fromUtf8(output))));
+}
+
+void TestPtySession::testReportsChildExitCode() {
+    PtySession session;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("cd /tmp && exit 23");
+    QVERIFY(session.start(80, 24, options));
+
+    QSignalSpy exitSpy(&session, &PtySession::childExited);
+    QVERIFY(exitSpy.isValid());
+
+    QVERIFY2(exitSpy.wait(3000), "Expected childExited signal within 3 seconds");
+    QCOMPARE(exitSpy.count(), 1);
+    QCOMPARE(exitSpy.at(0).at(0).toInt(), 23);
 }
 
 void TestPtySession::testResize() {
