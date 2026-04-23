@@ -139,3 +139,11 @@ add_custom_command(TARGET test_main_window POST_BUILD
 )
 
 add_test(NAME MainWindow COMMAND test_main_window)
+
+add_test(NAME StartupCommandIntegration
+  COMMAND /bin/bash ${CMAKE_SOURCE_DIR}/tests/test_startup_command_integration.sh
+)
+
+add_test(NAME EsctestWrapperSmoke
+  COMMAND /bin/bash ${CMAKE_SOURCE_DIR}/tests/test_esctest_wrapper.sh
+)

@@ -2,7 +2,9 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QFile>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
 
 class TestPtySession : public QObject {
@@ -15,6 +17,7 @@ private slots:
     void testStartShell();
     void testWriteAndRead();
     void testStartCommand();
+    void testStartCommandInWorkingDirectory();
     void testReportsChildExitCode();
     void testResize();
     void testSessionClose();
@@ -76,6 +79,35 @@ void TestPtySession::testStartCommand() {
 
     QVERIFY2(output.contains("qtghostty_cmd_ok"),
              qPrintable(QString::fromLatin1("Expected command output, got: %1").arg(QString::fromUtf8(output))));
+}
+
+void TestPtySession::testStartCommandInWorkingDirectory() {
+    QTemporaryDir workingDir;
+    QVERIFY(workingDir.isValid());
+
+    PtySession session;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("pwd");
+    options.workingDirectory = workingDir.path();
+    QVERIFY(session.start(80, 24, options));
+
+    QSignalSpy spy(&session, &PtySession::dataReceived);
+    QVERIFY(spy.isValid());
+
+    QByteArray output;
+    QElapsedTimer timer;
+    timer.start();
+    const QByteArray expectedPath = QFile::encodeName(workingDir.path());
+    while (timer.elapsed() < 2000 && !output.contains(expectedPath)) {
+        spy.wait(100);
+        for (const auto &args : spy)
+            output.append(args.at(0).toByteArray());
+        spy.clear();
+    }
+
+    QVERIFY2(output.contains(expectedPath),
+             qPrintable(
+                 QString::fromLatin1("Expected working directory in output, got: %1").arg(QString::fromUtf8(output))));
 }
 
 void TestPtySession::testReportsChildExitCode() {

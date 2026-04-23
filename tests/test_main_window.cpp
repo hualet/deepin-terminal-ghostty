@@ -2,6 +2,7 @@
 #include "ApplicationMetadata.h"
 #include "MainWindow.h"
 #include "PtySession.h"
+#include "StartupOptions.h"
 #include "TermPane.h"
 #include "TerminalWidget.h"
 #include "VerticalTabSidebar.h"
@@ -55,6 +56,7 @@ private slots:
     void testVerticalSidebarIncludesDecorativeHierarchyElements();
     void testLoggingCategoriesExposeExpectedNames();
     void testApplicationMetadataIsConfigured();
+    void testStartupSessionFinishedEmitsExitCode();
 };
 
 namespace {
@@ -162,6 +164,26 @@ void TestMainWindow::testApplicationMetadataIsConfigured() {
     QVERIFY(!app->applicationDescription().isEmpty());
     QVERIFY(!app->applicationLicense().isEmpty());
     QCOMPARE(app->applicationHomePage(), QStringLiteral("https://github.com/linuxdeepin/deepin-terminal-ghostty"));
+}
+
+void TestMainWindow::testStartupSessionFinishedEmitsExitCode() {
+    StartupOptions options;
+    options.execute = QStringLiteral("exit 17");
+    options.waitForChild = true;
+    options.propagateExitCode = true;
+
+    MainWindow window(options);
+    QSignalSpy finishedSpy(&window, &MainWindow::startupSessionFinished);
+    QVERIFY(finishedSpy.isValid());
+
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QVERIFY2(finishedSpy.wait(5000), "Expected startupSessionFinished signal within 5 seconds");
+    QCOMPARE(finishedSpy.count(), 1);
+    QCOMPARE(finishedSpy.at(0).at(0).toInt(), 17);
+
+    QTRY_VERIFY_WITH_TIMEOUT(!window.isVisible(), 5000);
 }
 
 void TestMainWindow::testClosedSessionRemovesOnlyCurrentTab() {

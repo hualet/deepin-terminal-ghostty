@@ -21,5 +21,13 @@
     - [ ] clang-static-analyzer
 - [ ] 兼容性和性能测试
   - [ ] 兼容性: vttest + ucs-detect
+  - [ ] 兼容性: esctest
+    - [x] 启动入口: `--execute` / `--wait-for-child` / `--propagate-exit-code`
+    - [x] 包装脚本: `tests/run_esctest.sh`
+    - [ ] 固定 headless 环境: 在 CI 镜像中补齐 `xvfb-run`、字体和稳定窗口尺寸
+    - [ ] 鼠标协议: 接入 Ghostty mouse encoder，把 press / move / release / wheel 在 tracking 模式下写回 PTY
+    - [ ] 屏幕校验: 确认并补齐 `DECRQCRA` 等矩形校验和查询支持，再开放依赖 checksum 的用例
+    - [ ] 扩展协议: 分批验证 OSC 8、kitty image、focus reporting 等高级用例
+    - [ ] 用例分层: 先整理 smoke / core / extended 子集，避免一开始把不支持项全部跑红
   - [ ] 吞吐: vtebench + termbench
   - [ ] 交互体验: typometer
