@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2024 UnionTech Software Technology Co., Ltd.
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+name: Static Analysis
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  clang-static-analyzer:
+    runs-on: ubuntu-latest
+    container:
+      image: docker.io/hualet/deepin:25.1-builder
+      options: --privileged
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            clang \
+            clang-tools \
+            cmake \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            libdtk6core-dev \
+            libdtk6gui-dev \
+            libdtk6widget-dev \
+            libdtk6core-bin
+
+      - name: Configure with scan-build
+        run: |
+          scan-build \
+            --status-bugs \
+            --use-cc=clang \
+            --use-c++=clang++ \
+            cmake -S . -B build-analyzer -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=/usr
+
+      - name: Run clang static analyzer
+        run: |
+          scan-build \
+            --status-bugs \
+            --use-cc=clang \
+            --use-c++=clang++ \
+            -o scan-build-reports \
+            cmake --build build-analyzer --parallel "$(nproc)"
+
+      - name: Upload scan-build report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-static-analyzer-report
+          path: scan-build-reports/
+          if-no-files-found: ignore
