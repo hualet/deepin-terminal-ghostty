@@ -556,15 +556,10 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
             QFont cellFont = *cachedFont;
             cellFont.setFixedPitch(false);
 
-            QFontMetrics wideMetrics(cellFont);
-            const int glyphWidth = wideMetrics.horizontalAdvance(text);
-            if (glyphWidth > 0 && glyphWidth < cellRenderWidth)
-                cellFont.setStretch(qMax(100, (cellRenderWidth * 100) / glyphWidth));
-
             painter.setFont(cellFont);
             painter.setPen(cellForeground);
             painter.setLayoutDirection(Qt::LeftToRight);
-            painter.drawText(x, y + m_fontAscent, text);
+            painter.drawText(QRectF(x, y, cellRenderWidth, m_cellHeight), Qt::AlignCenter | Qt::TextSingleLine, text);
             painter.setFont(m_font);
         }
 
