@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Deepin Terminal
+GenericName=Terminal Emulator
+Comment=Terminal emulator based on Ghostty
+Exec=deepin-terminal-ghostty
+Icon=deepin-terminal-ghostty
+Categories=System;TerminalEmulator;
+Terminal=false
+StartupNotify=true

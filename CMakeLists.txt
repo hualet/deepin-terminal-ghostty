@@ -302,6 +302,23 @@ install(FILES ${APP_TRANSLATION_QM_FILES}
   DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/translations
 )
 
+install(FILES resources/deepin-terminal-ghostty.desktop
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
+)
+
+install(FILES resources/logo_1024x1024.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/1024x1024/apps
+  RENAME deepin-terminal-ghostty.png
+)
+install(FILES resources/logo_256x256.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
+  RENAME deepin-terminal-ghostty.png
+)
+install(FILES resources/logo_128x128.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/128x128/apps
+  RENAME deepin-terminal-ghostty.png
+)
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
