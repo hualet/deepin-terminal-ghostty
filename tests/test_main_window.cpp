@@ -45,6 +45,7 @@ private slots:
     void testClosedSessionRemovesOnlyCurrentTab();
     void testAltArrowWithKeypadModifierIsConsumedByPane();
     void testTermPaneReportsPaneSnapshotsAfterSplit();
+    void testAppTerminalsSetTerminalContentMargins();
     void testVerticalTabsActionReflectsAndUpdatesSettings();
     void testVerticalTabsActionTracksExternalSettingChanges();
     void testVerticalTabsActionReflectsStartupSetting();
@@ -324,6 +325,17 @@ void TestMainWindow::testTermPaneReportsPaneSnapshotsAfterSplit() {
     pane.closeCurrentSplit();
     QCOMPARE(pane.paneInfos().size(), 0);
     QVERIFY(pane.activePaneId().isNull());
+}
+
+void TestMainWindow::testAppTerminalsSetTerminalContentMargins() {
+    ExposedTermPane pane;
+    pane.resize(1200, 800);
+    pane.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&pane));
+
+    auto *terminal = pane.currentTerminal();
+    QVERIFY(terminal);
+    QCOMPARE(terminal->contentsMargins(), QMargins(4, 4, 4, 4));
 }
 
 void TestMainWindow::testVerticalTabsActionReflectsAndUpdatesSettings() {

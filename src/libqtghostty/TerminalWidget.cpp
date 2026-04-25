@@ -21,7 +21,6 @@ constexpr int kInitialPtyCoalesceIntervalMs = 1;
 constexpr int kBurstRenderIntervalMs = 8;
 constexpr int kResizeCoalesceIntervalMs = 8;
 constexpr int kImmediatePtyFlushBytes = 32 * 1024;
-
 void appendCodepoint(QString &text, uint32_t codepoint) {
     if (codepoint <= 0xFFFF) {
         text.append(QChar(static_cast<ushort>(codepoint)));
@@ -321,8 +320,9 @@ bool TerminalWidget::setupEncoders() {
 }
 
 void TerminalWidget::updateGridSize() {
-    int w = width();
-    int h = height();
+    const QRect contentRect = terminalContentRect();
+    int w = contentRect.width();
+    int h = contentRect.height();
     if (m_cellWidth <= 0 || m_cellHeight <= 0)
         return;
 
@@ -380,7 +380,9 @@ bool TerminalWidget::syncRenderState() const {
 
 void TerminalWidget::ensureBackBuffer() {
     const qreal devicePixelRatio = devicePixelRatioF();
-    const QSize pixelSize(qMax(1, qRound(width() * devicePixelRatio)), qMax(1, qRound(height() * devicePixelRatio)));
+    const QRect contentRect = terminalContentRect();
+    const QSize pixelSize(qMax(1, qRound(contentRect.width() * devicePixelRatio)),
+                          qMax(1, qRound(contentRect.height() * devicePixelRatio)));
     if (pixelSize.isEmpty()) {
         m_backBuffer = QImage();
         return;
@@ -406,6 +408,8 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
         return;
 
     painter.fillRect(rect(), QColor(colors.background.r, colors.background.g, colors.background.b));
+    const QRect contentRect = terminalContentRect();
+    const QPoint contentOrigin = contentRect.topLeft();
 
     err = ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, &m_rowIter);
     if (err != GHOSTTY_SUCCESS)
@@ -420,14 +424,15 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
 
     const bool fullRedraw = dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FULL;
     if (!fullRedraw && dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FALSE) {
-        painter.drawImage(QPoint(0, 0), m_backBuffer);
+        painter.drawImage(contentOrigin, m_backBuffer);
         return;
     }
 
     QPainter backPainter(&m_backBuffer);
     backPainter.setFont(m_font);
     if (fullRedraw) {
-        backPainter.fillRect(rect(), QColor(colors.background.r, colors.background.g, colors.background.b));
+        backPainter.fillRect(QRect(QPoint(0, 0), contentRect.size()),
+                             QColor(colors.background.r, colors.background.g, colors.background.b));
     }
 
 #ifdef QTGHOSTTY_TESTING
@@ -459,7 +464,7 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     }
     GhosttyRenderStateDirty cleanState = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
     ghostty_render_state_set(m_renderState, GHOSTTY_RENDER_STATE_OPTION_DIRTY, &cleanState);
-    painter.drawImage(QPoint(0, 0), m_backBuffer);
+    painter.drawImage(contentOrigin, m_backBuffer);
 }
 
 void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStateColors &colors) {
@@ -468,7 +473,7 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
 
     const QColor defaultBackground(colors.background.r, colors.background.g, colors.background.b);
     const QColor defaultForeground(colors.foreground.r, colors.foreground.g, colors.foreground.b);
-    painter.fillRect(0, y, width(), m_cellHeight, defaultBackground);
+    painter.fillRect(0, y, terminalContentRect().width(), m_cellHeight, defaultBackground);
 
     constexpr GhosttyRenderStateRowCellsData kCellDataKeys[] = {
         GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW,
@@ -599,6 +604,7 @@ void TerminalWidget::renderOverlays(QPainter &painter) const {
     if (!m_terminal || !m_renderState)
         return;
 
+    const QPoint origin = terminalContentOrigin();
     size_t scrollOffset = 0;
     if (!m_searchMatches.isEmpty() || m_selection.active) {
         GhosttyTerminalScrollbar scrollbar = {};
@@ -608,10 +614,10 @@ void TerminalWidget::renderOverlays(QPainter &painter) const {
 
     if (!m_searchMatches.isEmpty() || m_selection.active) {
         for (int viewportRow = 0; viewportRow < static_cast<int>(m_rows); ++viewportRow) {
-            const int y = viewportRow * m_cellHeight;
+            const int y = origin.y() + viewportRow * m_cellHeight;
             const int screenRow = static_cast<int>(viewportRow + scrollOffset);
             for (int col = 0; col < static_cast<int>(m_cols); ++col) {
-                const int x = col * m_cellWidth;
+                const int x = origin.x() + col * m_cellWidth;
                 if (!m_searchMatches.isEmpty()) {
                     for (int i = 0; i < m_searchMatches.size(); ++i) {
                         const auto &match = m_searchMatches[i];
@@ -648,8 +654,8 @@ void TerminalWidget::renderOverlays(QPainter &painter) const {
         if (colors.cursor_has_value)
             curColor = colors.cursor;
 
-        int curX = cx * m_cellWidth;
-        int curY = cy * m_cellHeight;
+        int curX = origin.x() + cx * m_cellWidth;
+        int curY = origin.y() + cy * m_cellHeight;
         bool cursorBlinking = false;
         ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_BLINKING, &cursorBlinking);
 
@@ -1008,7 +1014,7 @@ QVariant TerminalWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
         case Qt::ImAnchorRectangle:
             return inputMethodCursorRect();
         case Qt::ImInputItemClipRectangle:
-            return rect();
+            return terminalContentRect();
         case Qt::ImCursorPosition:
         case Qt::ImAnchorPosition:
             return 0;
@@ -1130,8 +1136,7 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
         ghostty_mouse_event_set_action(m_mouseEvent, GHOSTTY_MOUSE_ACTION_PRESS);
         ghostty_mouse_event_set_button(m_mouseEvent, button);
         ghostty_mouse_event_set_mods(m_mouseEvent, ghosttyMouseMods(event->modifiers()));
-        GhosttyMousePosition pos = {static_cast<float>(event->position().x()),
-                                    static_cast<float>(event->position().y())};
+        GhosttyMousePosition pos = ghosttyMousePositionForEvent(event->position());
         ghostty_mouse_event_set_position(m_mouseEvent, pos);
         encodeAndSendMouseEvent(m_mouseEncoder, m_mouseEvent, m_ptySession);
         event->accept();
@@ -1167,7 +1172,7 @@ void TerminalWidget::onPtySessionClosed() {
 }
 
 QRect TerminalWidget::inputMethodCursorRect() const {
-    QRect cursorRect(0, 0, qMax(m_cellWidth, 1), qMax(m_cellHeight, 1));
+    QRect cursorRect(terminalContentOrigin(), QSize(qMax(m_cellWidth, 1), qMax(m_cellHeight, 1)));
     if (!m_terminal || !m_renderState) {
         return cursorRect;
     }
@@ -1187,8 +1192,44 @@ QRect TerminalWidget::inputMethodCursorRect() const {
     uint16_t cursorY = 0;
     ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_X, &cursorX);
     ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_Y, &cursorY);
-    cursorRect.moveTo(static_cast<int>(cursorX) * m_cellWidth, static_cast<int>(cursorY) * m_cellHeight);
+    cursorRect.moveTo(terminalContentOrigin()
+                      + QPoint(static_cast<int>(cursorX) * m_cellWidth, static_cast<int>(cursorY) * m_cellHeight));
     return cursorRect;
+}
+
+QRect TerminalWidget::terminalContentRect() const {
+    return contentsRect();
+}
+
+QPoint TerminalWidget::terminalContentOrigin() const {
+    return terminalContentRect().topLeft();
+}
+
+QPoint TerminalWidget::terminalContentPosition(const QPoint &position) const {
+    const QRect contentRect = terminalContentRect();
+    if (contentRect.isEmpty())
+        return {};
+
+    const int maxX = qMax(0, contentRect.width() - 1);
+    const int maxY = qMax(0, contentRect.height() - 1);
+    return QPoint(qBound(0, position.x() - contentRect.x(), maxX), qBound(0, position.y() - contentRect.y(), maxY));
+}
+
+int TerminalWidget::viewportColumnForPosition(const QPoint &position) const {
+    if (m_cellWidth <= 0 || m_cols == 0)
+        return 0;
+    return qBound(0, terminalContentPosition(position).x() / m_cellWidth, static_cast<int>(m_cols) - 1);
+}
+
+int TerminalWidget::viewportRowForPosition(const QPoint &position) const {
+    if (m_cellHeight <= 0 || m_rows == 0)
+        return 0;
+    return qBound(0, terminalContentPosition(position).y() / m_cellHeight, static_cast<int>(m_rows) - 1);
+}
+
+GhosttyMousePosition TerminalWidget::ghosttyMousePositionForEvent(const QPointF &position) const {
+    const QPoint localPosition = terminalContentPosition(position.toPoint());
+    return {static_cast<float>(localPosition.x()), static_cast<float>(localPosition.y())};
 }
 
 void TerminalWidget::notifyInputMethodCursorChange() {
@@ -1401,7 +1442,7 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
         ghostty_mouse_event_set_action(m_mouseEvent, GHOSTTY_MOUSE_ACTION_PRESS);
         ghostty_mouse_event_set_button(m_mouseEvent, ghosttyMouseButtonForQt(event->button()));
         ghostty_mouse_event_set_mods(m_mouseEvent, ghosttyMouseMods(event->modifiers()));
-        GhosttyMousePosition pos = {static_cast<float>(event->pos().x()), static_cast<float>(event->pos().y())};
+        GhosttyMousePosition pos = ghosttyMousePositionForEvent(event->position());
         ghostty_mouse_event_set_position(m_mouseEvent, pos);
 
         bool anyButton = event->buttons() != Qt::NoButton;
@@ -1414,8 +1455,8 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
 
     if (event->button() == Qt::LeftButton) {
         m_selection.active = false;
-        m_selection.startCol = event->pos().x() / m_cellWidth;
-        m_selection.startRow = screenRowForViewportRow(event->pos().y() / m_cellHeight);
+        m_selection.startCol = viewportColumnForPosition(event->pos());
+        m_selection.startRow = screenRowForViewportRow(viewportRowForPosition(event->pos()));
         m_selection.endCol = m_selection.startCol;
         m_selection.endRow = m_selection.startRow;
         update();
@@ -1440,7 +1481,7 @@ void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
             ghostty_mouse_event_set_button(m_mouseEvent, heldButton);
 
         ghostty_mouse_event_set_mods(m_mouseEvent, ghosttyMouseMods(event->modifiers()));
-        GhosttyMousePosition pos = {static_cast<float>(event->pos().x()), static_cast<float>(event->pos().y())};
+        GhosttyMousePosition pos = ghosttyMousePositionForEvent(event->position());
         ghostty_mouse_event_set_position(m_mouseEvent, pos);
 
         bool anyButton = event->buttons() != Qt::NoButton;
@@ -1452,8 +1493,8 @@ void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
     }
 
     if (event->buttons() & Qt::LeftButton) {
-        m_selection.endCol = event->pos().x() / m_cellWidth;
-        m_selection.endRow = screenRowForViewportRow(event->pos().y() / m_cellHeight);
+        m_selection.endCol = viewportColumnForPosition(event->pos());
+        m_selection.endRow = screenRowForViewportRow(viewportRowForPosition(event->pos()));
         m_selection.active = true;
         update();
     }
@@ -1471,7 +1512,7 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
         ghostty_mouse_event_set_action(m_mouseEvent, GHOSTTY_MOUSE_ACTION_RELEASE);
         ghostty_mouse_event_set_button(m_mouseEvent, ghosttyMouseButtonForQt(event->button()));
         ghostty_mouse_event_set_mods(m_mouseEvent, ghosttyMouseMods(event->modifiers()));
-        GhosttyMousePosition pos = {static_cast<float>(event->pos().x()), static_cast<float>(event->pos().y())};
+        GhosttyMousePosition pos = ghosttyMousePositionForEvent(event->position());
         ghostty_mouse_event_set_position(m_mouseEvent, pos);
 
         bool anyButton = event->buttons() != Qt::NoButton;
@@ -1487,8 +1528,8 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
     }
 
     if (event->button() == Qt::LeftButton) {
-        m_selection.endCol = event->pos().x() / m_cellWidth;
-        m_selection.endRow = screenRowForViewportRow(event->pos().y() / m_cellHeight);
+        m_selection.endCol = viewportColumnForPosition(event->pos());
+        m_selection.endRow = screenRowForViewportRow(viewportRowForPosition(event->pos()));
         m_selection.active = true;
         update();
     }

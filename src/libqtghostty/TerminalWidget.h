@@ -92,6 +92,12 @@ private:
     void renderPreeditText(QPainter &painter);
     void sendFocusEvent(bool gained);
     QRect inputMethodCursorRect() const;
+    QRect terminalContentRect() const;
+    QPoint terminalContentOrigin() const;
+    QPoint terminalContentPosition(const QPoint &position) const;
+    int viewportColumnForPosition(const QPoint &position) const;
+    int viewportRowForPosition(const QPoint &position) const;
+    GhosttyMousePosition ghosttyMousePositionForEvent(const QPointF &position) const;
     void notifyInputMethodCursorChange();
     void scheduleTerminalRepaint();
     void flushPendingPtyData();

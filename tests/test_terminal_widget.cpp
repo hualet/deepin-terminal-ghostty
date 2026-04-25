@@ -35,6 +35,7 @@ private slots:
     void testSetTerminalFont();
     void testSetCursorShape();
     void testSetCursorBlink();
+    void testContentsMarginsInsetTerminalGridAndCursorRect();
     void testRendersSupplementaryPlaneCharacters();
     void testRendersPreeditTextAcrossMultipleCells();
     void testRendersWideCharactersAcrossTwoCells();
@@ -325,6 +326,27 @@ void TestTerminalWidget::testRendersSupplementaryPlaneCharacters() {
     QVERIFY(true);
 }
 
+void TestTerminalWidget::testContentsMarginsInsetTerminalGridAndCursorRect() {
+    TerminalWidget baselineWidget;
+    QVERIFY(baselineWidget.initialize());
+    baselineWidget.resize(960, 640);
+
+    TerminalWidget paddedWidget;
+    paddedWidget.setContentsMargins(4, 4, 4, 4);
+    QVERIFY(paddedWidget.initialize());
+    paddedWidget.resize(960, 640);
+    paddedWidget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&paddedWidget));
+    QApplication::processEvents();
+
+    QVERIFY(paddedWidget.terminalColumns() < baselineWidget.terminalColumns());
+
+    QInputMethodQueryEvent queryEvent(Qt::ImCursorRectangle);
+    QApplication::sendEvent(&paddedWidget, &queryEvent);
+    const QRect cursorRect = queryEvent.value(Qt::ImCursorRectangle).toRect();
+    QCOMPARE(cursorRect.topLeft(), QPoint(4, 4));
+}
+
 void TestTerminalWidget::testRendersPreeditTextAcrossMultipleCells() {
     TerminalWidget widget;
     QVERIFY(widget.initialize());
@@ -379,8 +401,8 @@ void TestTerminalWidget::testRendersWideCharactersAcrossTwoCells() {
 
     const QImage after = renderWidgetImage(widget);
     const QRect diff = changedBounds(before, after);
-    const QRect firstCellRect(0, 0, cursorRect.width(), cursorRect.height());
-    const QRect secondCellRect(cursorRect.width(), 0, cursorRect.width(), cursorRect.height());
+    const QRect firstCellRect(cursorRect.topLeft(), cursorRect.size());
+    const QRect secondCellRect(cursorRect.topLeft() + QPoint(cursorRect.width(), 0), cursorRect.size());
     const int secondCellChanges = countChangedPixels(before, after, secondCellRect);
     QVERIFY2(diff.isValid(), "wide character should change the rendered output");
     QVERIFY2(diff.width() > cursorRect.width(), "wide character should render wider than a single terminal cell");

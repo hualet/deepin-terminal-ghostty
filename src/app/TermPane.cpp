@@ -22,6 +22,8 @@
 
 namespace {
 
+constexpr int kTerminalContentPadding = 4;
+
 Qt::KeyboardModifiers normalizedModifiers(Qt::KeyboardModifiers modifiers) {
     return modifiers & (Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier);
 }
@@ -150,6 +152,9 @@ TerminalWidget *TermPane::currentTerminal() const {
 
 TerminalWidget *TermPane::createTerminal() {
     auto *term = new TerminalWidget(this);
+    term->setContentsMargins(kTerminalContentPadding, kTerminalContentPadding, kTerminalContentPadding,
+                             kTerminalContentPadding);
+
     ensurePaneId(term);
     if (m_initialSessionOptions) {
         term->setStartOptions(*m_initialSessionOptions);
