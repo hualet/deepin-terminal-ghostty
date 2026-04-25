@@ -39,3 +39,58 @@
     - [ ] 用例分层: 先整理 smoke / core / extended 子集，避免一开始把不支持项全部跑红
   - [ ] 吞吐: vtebench + termbench
   - [ ] 交互体验: typometer
+
+
+
+## ucs-detect current status
+
+╔══════════════════════════════════════╗ ╔════════════════════════════════════════════╗
+║        Terminal Capabilities         ║ ║         Terminal Capabilities (2)          ║
+╠════════════════════╦═════════════════╣ ╠══════════════════════════════════════╦═════╣
+║      Terminal Type ║ xterm-256color  ║ ║                Bracketed Paste MIME? ║ No  ║
+║           Software ║ deepin-termina… ║ ║            Color Report (OSC 10/11)? ║ No  ║
+║             Colors ║ 24-bit          ║ ║               Enable SGR Mouse Mode? ║ Yes ║
+║       Size (cells) ║ 89 x 32         ║ ║ In-Band Window Resize Notifications? ║ Yes ║
+║      Size (pixels) ║ 801 x 576       ║ ║                     iTerm2 Features? ║ No  ║
+║ Cell Size (pixels) ║ 9 x 18          ║ ║                     Kitty Clipboard? ║ No  ║
+║       Aspect Ratio ║ 4:3 (VGA)       ║ ║                      Kitty Keyboard? ║ Yes ║
+║     Tab Stop Width ║ 8               ║ ║                 Kitty Notifications? ║ No  ║
+║          Graphics? ║ Kitty, iTerm2   ║ ║                Kitty Pointer Shapes? ║ No  ║
+║       Device Class ║ VT500           ║ ║                   Kitty Text Sizing? ║ No  ║
+║    Ambiguous Width ║ narrow (1)      ║ ║                    OSC 52 Clipboard? ║ No  ║
+║    Graphemes(2027) ║ Yes             ║ ║        Send FocusIn/FocusOut events? ║ Yes ║
+║               WIDE ║ 100.0 %         ║ ║            Set bracketed paste mode? ║ Yes ║
+║      Standalone RI ║ 100.0 %         ║ ║                 Synchronized Output? ║ Yes ║
+║   Standalone Fitz. ║ 100.0 %         ║ ║                           XTGETTCAP? ║ No  ║
+║           RI Flags ║ 100.0 %         ║ ╚══════════════════════════════════════╩═════╝
+║                ZWJ ║ 100.0 %         ║                                               
+║               VS16 ║ 100.0 %         ║                                               
+║               VS15 ║ 95.6 %          ║                                               
+║          Languages ║ 83.9 %          ║                                               
+╚════════════════════╩═════════════════╝                                               
+
+╔══════════════════════════════════════════════════╗
+║       Language Support (99 of 118 passed)        ║
+╠═════════════════════╦═══════╦══════════╦═════════╣
+║       Language      ║ Total ║ Failures ║ Success ║
+╠═════════════════════╬═══════╬══════════╬═════════╣
+║       Bengali       ║  385  ║    96    ║  75.1 % ║
+║       Bhojpuri      ║  313  ║    41    ║  86.9 % ║
+║       Burmese       ║  268  ║    10    ║  96.3 % ║
+║       Gujarati      ║  343  ║    50    ║  85.4 % ║
+║        Hindi        ║  390  ║    82    ║  79.0 % ║
+║ Javanese (Javanese) ║  530  ║    43    ║  91.9 % ║
+║       Kannada       ║  287  ║    14    ║  95.1 % ║
+║    Khmer, Central   ║  443  ║    8     ║  98.2 % ║
+║         Khün        ║  396  ║    1     ║  99.7 % ║
+║        Magahi       ║  314  ║    43    ║  86.3 % ║
+║       Maithili      ║  357  ║    71    ║  80.1 % ║
+║      Malayalam      ║  845  ║   246    ║  70.9 % ║
+║       Marathi       ║  391  ║    86    ║  78.0 % ║
+║         Mon         ║  332  ║    3     ║  99.1 % ║
+║        Nepali       ║  352  ║    69    ║  80.4 % ║
+║       Sanskrit      ║  493  ║   145    ║  70.6 % ║
+║  Sanskrit (Grantha) ║  293  ║    39    ║  86.7 % ║
+║   Tamang, Eastern   ║   70  ║    11    ║  84.3 % ║
+║        Telugu       ║  384  ║    42    ║  89.1 % ║
+╚═════════════════════╩═══════╩══════════╩═════════╝
