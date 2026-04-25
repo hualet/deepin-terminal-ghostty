@@ -234,6 +234,8 @@ void TermPane::removeTerminal(TerminalWidget *term) {
     }
 
     int index = splitter->indexOf(term);
+    QList<int> sizes = splitter->sizes();
+    const int removedSize = sizes.value(index, 0);
     TerminalWidget *replacementTerm = nullptr;
     if (m_currentTerm == term) {
         QList<QWidget *> remainingWidgets;
@@ -244,13 +246,20 @@ void TermPane::removeTerminal(TerminalWidget *term) {
         }
 
         if (!remainingWidgets.isEmpty()) {
-            const int replacementIndex = qMin(index, remainingWidgets.size() - 1);
+            const int replacementIndex = index > 0 ? index - 1 : 0;
             replacementTerm = firstTerminalWidget(remainingWidgets.at(replacementIndex));
         }
     }
 
     term->setParent(nullptr);
     term->deleteLater();
+
+    sizes.removeAt(index);
+    if (!sizes.isEmpty()) {
+        const int recipientIndex = qMax(0, index - 1);
+        sizes[recipientIndex] += removedSize;
+        splitter->setSizes(sizes);
+    }
 
     promoteSingleChildSplitter(splitter);
 
@@ -282,19 +291,6 @@ QList<TerminalWidget *> TermPane::terminalsInVisualOrder() const {
 
 void TermPane::splitTerminal(TerminalWidget *term, TerminalWidget *newTerm, Qt::Orientation orientation) {
     auto *splitter = qobject_cast<QSplitter *>(term->parentWidget());
-
-    if (splitter && splitter->orientation() == orientation) {
-        const int index = splitter->indexOf(term);
-        QList<int> sizes = splitter->sizes();
-        const int originalSize = sizes.value(index, 2);
-        const int firstSize = qMax(1, originalSize / 2);
-        sizes[index] = firstSize;
-        sizes.insert(index + 1, qMax(1, originalSize - firstSize));
-        splitter->insertWidget(index + 1, newTerm);
-        splitter->setSizes(sizes);
-        return;
-    }
-
     if (!splitter)
         m_layout->removeWidget(term);
 
@@ -328,6 +324,7 @@ void TermPane::promoteSingleChildSplitter(QSplitter *splitter) {
     if (parentSplitter) {
         const int parentIndex = parentSplitter->indexOf(splitter);
         QList<int> sizes = parentSplitter->sizes();
+        splitter->setParent(nullptr);
         parentSplitter->insertWidget(parentIndex, remaining);
         sizes.removeAt(parentIndex);
         sizes.insert(parentIndex, promotedSize);
@@ -338,7 +335,6 @@ void TermPane::promoteSingleChildSplitter(QSplitter *splitter) {
         m_rootWidget = remaining;
     }
 
-    splitter->setParent(nullptr);
     splitter->deleteLater();
 }
 

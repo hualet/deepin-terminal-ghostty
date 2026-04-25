@@ -45,6 +45,7 @@ private slots:
     void testClosedSessionRemovesOnlyCurrentTab();
     void testAltArrowWithKeypadModifierIsConsumedByPane();
     void testTermPaneReportsPaneSnapshotsAfterSplit();
+    void testClosingRepeatedSameDirectionSplitsPreservesSiblings();
     void testCloseOtherTerminalsPublishesSingleStructureChange();
     void testAppTerminalsSetTerminalContentMargins();
     void testVerticalTabsActionReflectsAndUpdatesSettings();
@@ -126,6 +127,15 @@ PtySession *ptySession(TerminalWidget *terminal) {
     if (!terminal)
         return nullptr;
     return terminal->findChild<PtySession *>();
+}
+
+TerminalWidget *terminalForPaneId(TermPane &pane, const QUuid &paneId) {
+    const auto terminals = pane.findChildren<TerminalWidget *>();
+    for (auto *terminal : terminals) {
+        if (terminal->property("paneId").toUuid() == paneId)
+            return terminal;
+    }
+    return nullptr;
 }
 
 } // namespace
@@ -326,6 +336,68 @@ void TestMainWindow::testTermPaneReportsPaneSnapshotsAfterSplit() {
     pane.closeCurrentSplit();
     QCOMPARE(pane.paneInfos().size(), 0);
     QVERIFY(pane.activePaneId().isNull());
+}
+
+void TestMainWindow::testClosingRepeatedSameDirectionSplitsPreservesSiblings() {
+    ExposedTermPane pane;
+    pane.resize(1200, 800);
+    pane.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&pane));
+
+    const QUuid firstPaneId = pane.activePaneId();
+    pane.splitCurrent(Qt::Horizontal);
+    const QUuid secondPaneId = pane.activePaneId();
+
+    QVERIFY(pane.focusPane(firstPaneId));
+    pane.splitCurrent(Qt::Horizontal);
+    const QUuid thirdPaneId = pane.activePaneId();
+
+    pane.splitCurrent(Qt::Horizontal);
+    const QUuid fourthPaneId = pane.activePaneId();
+
+    const auto beforeClose = pane.paneInfos();
+    QCOMPARE(beforeClose.size(), 4);
+    QCOMPARE(beforeClose.at(0).id, firstPaneId);
+    QCOMPARE(beforeClose.at(1).id, thirdPaneId);
+    QCOMPARE(beforeClose.at(2).id, fourthPaneId);
+    QCOMPARE(beforeClose.at(3).id, secondPaneId);
+    QCoreApplication::processEvents();
+
+    auto *firstTerminal = terminalForPaneId(pane, firstPaneId);
+    auto *secondTerminal = terminalForPaneId(pane, secondPaneId);
+    auto *thirdTerminal = terminalForPaneId(pane, thirdPaneId);
+    QVERIFY(firstTerminal);
+    QVERIFY(secondTerminal);
+    QVERIFY(thirdTerminal);
+
+    const int firstWidthBeforeClose = firstTerminal->width();
+    const int secondWidthBeforeClose = secondTerminal->width();
+    const int thirdWidthBeforeClose = thirdTerminal->width();
+
+    QVERIFY(pane.focusPane(fourthPaneId));
+    pane.closeCurrentSplit();
+    QCoreApplication::processEvents();
+
+    const auto afterFourthClose = pane.paneInfos();
+    QCOMPARE(afterFourthClose.size(), 3);
+    QCOMPARE(afterFourthClose.at(0).id, firstPaneId);
+    QCOMPARE(afterFourthClose.at(1).id, thirdPaneId);
+    QCOMPARE(afterFourthClose.at(2).id, secondPaneId);
+    QCOMPARE(pane.activePaneId(), thirdPaneId);
+    QVERIFY(thirdTerminal->width() > thirdWidthBeforeClose);
+    QVERIFY(firstTerminal->width() <= firstWidthBeforeClose + 1);
+
+    pane.closeCurrentSplit();
+    QCoreApplication::processEvents();
+
+    const auto afterThirdClose = pane.paneInfos();
+    QCOMPARE(afterThirdClose.size(), 2);
+    QCOMPARE(afterThirdClose.at(0).id, firstPaneId);
+    QCOMPARE(afterThirdClose.at(1).id, secondPaneId);
+    QVERIFY2(secondTerminal->width() >= secondWidthBeforeClose - 1,
+             qPrintable(QStringLiteral("second width changed from %1 to %2")
+                            .arg(secondWidthBeforeClose)
+                            .arg(secondTerminal->width())));
 }
 
 void TestMainWindow::testCloseOtherTerminalsPublishesSingleStructureChange() {
