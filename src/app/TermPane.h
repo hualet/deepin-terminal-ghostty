@@ -59,6 +59,11 @@ private:
     void setupTerminalConnections(TerminalWidget *term);
     void setCurrentTerminal(TerminalWidget *term);
     void removeTerminal(TerminalWidget *term);
+    QSplitter *createPaneSplitter(Qt::Orientation orientation);
+    QList<TerminalWidget *> terminalsInVisualOrder() const;
+    void splitTerminal(TerminalWidget *term, TerminalWidget *newTerm, Qt::Orientation orientation);
+    void promoteSingleChildSplitter(QSplitter *splitter);
+    void notifyPaneStructureChanged();
     void showTerminalContextMenu(TerminalWidget *term, const QPoint &globalPos);
     void showSearchBar();
     void hideSearchBar();
@@ -72,4 +77,6 @@ private:
     PageSearchBar *m_searchBar = nullptr;
     std::optional<PtySession::StartOptions> m_initialSessionOptions;
     TerminalWidget *m_startupTerminal = nullptr;
+    bool m_deferPaneStructureChanged = false;
+    bool m_pendingPaneStructureChanged = false;
 };
