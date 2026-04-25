@@ -50,6 +50,9 @@ public:
     bool debugLastFrameWasFullRedraw() const;
     int debugResizeApplyCount() const;
     int debugPtyFlushCount() const;
+    void debugSetSelection(int startRow, int startCol, int endRow, int endCol, bool active);
+    bool debugCellInSelection(int screenRow, int col) const;
+    QString debugSelectedText() const;
 #endif
 
 signals:

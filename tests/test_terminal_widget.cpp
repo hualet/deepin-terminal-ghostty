@@ -49,6 +49,14 @@ private slots:
     void testMouseTrackingDisabledDoesNotSendEvents();
     void testMouseTrackingReleaseSendsSGR();
     void testMouseTrackingWheelSendsSGR();
+
+    void testCellInSelectionSameRow();
+    void testCellInSelectionTopLeftToBottomRight();
+    void testCellInSelectionBottomRightToTopLeft();
+    void testCellInSelectionTopRightToBottomLeft();
+    void testCellInSelectionBottomLeftToTopRight();
+    void testSelectedTextTopLeftToBottomRight();
+    void testSelectedTextBottomRightToTopLeft();
 };
 
 namespace {
@@ -700,6 +708,143 @@ void TestTerminalWidget::testMouseTrackingWheelSendsSGR() {
     QVERIFY2(output.endsWith('M'), qPrintable("SGR wheel: expected trailing M, got: " + output.toHex()));
     QVERIFY2(output.contains("64;") || output.contains("65;"),
              qPrintable("SGR wheel: expected button 64 (up) or 65 (down), got: " + output.toHex()));
+}
+
+void TestTerminalWidget::testCellInSelectionSameRow() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.debugSetSelection(2, 3, 2, 7, true);
+
+    QVERIFY(!widget.debugCellInSelection(2, 2));
+    QVERIFY(widget.debugCellInSelection(2, 3));
+    QVERIFY(widget.debugCellInSelection(2, 5));
+    QVERIFY(widget.debugCellInSelection(2, 7));
+    QVERIFY(!widget.debugCellInSelection(2, 8));
+    QVERIFY(!widget.debugCellInSelection(1, 5));
+    QVERIFY(!widget.debugCellInSelection(3, 5));
+}
+
+void TestTerminalWidget::testCellInSelectionTopLeftToBottomRight() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.debugSetSelection(1, 2, 3, 6, true);
+
+    QVERIFY(widget.debugCellInSelection(1, 2));
+    QVERIFY(widget.debugCellInSelection(1, 10));
+    QVERIFY(!widget.debugCellInSelection(1, 1));
+
+    QVERIFY(widget.debugCellInSelection(2, 0));
+    QVERIFY(widget.debugCellInSelection(2, 10));
+
+    QVERIFY(widget.debugCellInSelection(3, 0));
+    QVERIFY(widget.debugCellInSelection(3, 6));
+    QVERIFY(!widget.debugCellInSelection(3, 7));
+
+    QVERIFY(!widget.debugCellInSelection(0, 5));
+    QVERIFY(!widget.debugCellInSelection(4, 5));
+}
+
+void TestTerminalWidget::testCellInSelectionBottomRightToTopLeft() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.debugSetSelection(3, 6, 1, 2, true);
+
+    QVERIFY(widget.debugCellInSelection(1, 2));
+    QVERIFY(widget.debugCellInSelection(1, 10));
+    QVERIFY(!widget.debugCellInSelection(1, 1));
+
+    QVERIFY(widget.debugCellInSelection(2, 0));
+    QVERIFY(widget.debugCellInSelection(2, 10));
+
+    QVERIFY(widget.debugCellInSelection(3, 0));
+    QVERIFY(widget.debugCellInSelection(3, 6));
+    QVERIFY(!widget.debugCellInSelection(3, 7));
+
+    QVERIFY(!widget.debugCellInSelection(0, 5));
+    QVERIFY(!widget.debugCellInSelection(4, 5));
+}
+
+void TestTerminalWidget::testCellInSelectionTopRightToBottomLeft() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.debugSetSelection(1, 8, 3, 2, true);
+
+    QVERIFY(widget.debugCellInSelection(1, 8));
+    QVERIFY(widget.debugCellInSelection(1, 20));
+    QVERIFY(!widget.debugCellInSelection(1, 7));
+
+    QVERIFY(widget.debugCellInSelection(2, 0));
+    QVERIFY(widget.debugCellInSelection(2, 20));
+
+    QVERIFY(widget.debugCellInSelection(3, 0));
+    QVERIFY(widget.debugCellInSelection(3, 2));
+    QVERIFY(!widget.debugCellInSelection(3, 3));
+}
+
+void TestTerminalWidget::testCellInSelectionBottomLeftToTopRight() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.debugSetSelection(3, 2, 1, 8, true);
+
+    QVERIFY(widget.debugCellInSelection(1, 8));
+    QVERIFY(widget.debugCellInSelection(1, 20));
+    QVERIFY(!widget.debugCellInSelection(1, 7));
+
+    QVERIFY(widget.debugCellInSelection(2, 0));
+    QVERIFY(widget.debugCellInSelection(2, 20));
+
+    QVERIFY(widget.debugCellInSelection(3, 0));
+    QVERIFY(widget.debugCellInSelection(3, 2));
+    QVERIFY(!widget.debugCellInSelection(3, 3));
+}
+
+void TestTerminalWidget::testSelectedTextTopLeftToBottomRight() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    widget.debugSetSelection(0, 1, 2, 2, true);
+
+    widget.debugSetSelection(2, 2, 0, 1, true);
+    const QString reverseText = widget.debugSelectedText();
+
+    widget.debugSetSelection(0, 1, 2, 2, true);
+    const QString forwardText = widget.debugSelectedText();
+
+    QCOMPARE(reverseText, forwardText);
+}
+
+void TestTerminalWidget::testSelectedTextBottomRightToTopLeft() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("AAAA\nBBBB\nCCCC\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    widget.debugSetSelection(0, 1, 2, 2, true);
+    const QString forwardText = widget.debugSelectedText();
+    QVERIFY(!forwardText.isEmpty());
+
+    widget.debugSetSelection(2, 2, 0, 1, true);
+    const QString reverseText = widget.debugSelectedText();
+
+    QCOMPARE(reverseText, forwardText);
 }
 
 // We need QApplication for QWidget tests

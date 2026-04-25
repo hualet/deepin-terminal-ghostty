@@ -337,6 +337,22 @@ int TerminalWidget::debugResizeApplyCount() const {
 int TerminalWidget::debugPtyFlushCount() const {
     return m_debugPtyFlushCount;
 }
+
+void TerminalWidget::debugSetSelection(int startRow, int startCol, int endRow, int endCol, bool active) {
+    m_selection.startRow = startRow;
+    m_selection.startCol = startCol;
+    m_selection.endRow = endRow;
+    m_selection.endCol = endCol;
+    m_selection.active = active;
+}
+
+bool TerminalWidget::debugCellInSelection(int screenRow, int col) const {
+    return cellInSelection(screenRow, col);
+}
+
+QString TerminalWidget::debugSelectedText() const {
+    return selectedText();
+}
 #endif
 
 bool TerminalWidget::setupTerminal() {
@@ -1709,18 +1725,20 @@ bool TerminalWidget::cellInSelection(int screenRow, int col) const {
     if (screenRow < top || screenRow > bottom)
         return false;
 
-    int left = qMin(m_selection.startCol, m_selection.endCol);
-    int right = qMax(m_selection.startCol, m_selection.endCol);
+    int topCol = (m_selection.startRow <= m_selection.endRow) ? m_selection.startCol : m_selection.endCol;
+    int bottomCol = (m_selection.startRow <= m_selection.endRow) ? m_selection.endCol : m_selection.startCol;
+    int left = qMin(topCol, bottomCol);
+    int right = qMax(topCol, bottomCol);
 
-    if (m_selection.startRow == m_selection.endRow) {
-        return screenRow == top && col >= left && col <= right;
+    if (top == bottom) {
+        return col >= left && col <= right;
     }
 
     if (screenRow == top)
-        return col >= m_selection.startCol;
+        return col >= topCol;
     if (screenRow == bottom)
-        return col <= m_selection.endCol;
-    return col >= left && col <= right;
+        return col <= bottomCol;
+    return true;
 }
 
 QString TerminalWidget::selectedText() const {
@@ -1729,6 +1747,8 @@ QString TerminalWidget::selectedText() const {
 
     int top = qMin(m_selection.startRow, m_selection.endRow);
     int bottom = qMax(m_selection.startRow, m_selection.endRow);
+    int topCol = (m_selection.startRow <= m_selection.endRow) ? m_selection.startCol : m_selection.endCol;
+    int bottomCol = (m_selection.startRow <= m_selection.endRow) ? m_selection.endCol : m_selection.startCol;
 
     QStringList lines;
     for (int row = top; row <= bottom; ++row) {
@@ -1737,12 +1757,12 @@ QString TerminalWidget::selectedText() const {
         int right = m_cols - 1;
 
         if (row == top && row == bottom) {
-            left = qMin(m_selection.startCol, m_selection.endCol);
-            right = qMax(m_selection.startCol, m_selection.endCol);
+            left = qMin(topCol, bottomCol);
+            right = qMax(topCol, bottomCol);
         } else if (row == top) {
-            left = m_selection.startCol;
+            left = topCol;
         } else if (row == bottom) {
-            right = m_selection.endCol;
+            right = bottomCol;
         }
 
         for (int col = left; col <= right; ++col) {
