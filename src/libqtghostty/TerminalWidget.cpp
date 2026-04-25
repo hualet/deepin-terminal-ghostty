@@ -136,6 +136,10 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
 }
 
 TerminalWidget::~TerminalWidget() {
+    if (m_mouseEvent)
+        ghostty_mouse_event_free(m_mouseEvent);
+    if (m_mouseEncoder)
+        ghostty_mouse_encoder_free(m_mouseEncoder);
     if (m_keyEvent)
         ghostty_key_event_free(m_keyEvent);
     if (m_keyEncoder)
@@ -162,7 +166,7 @@ bool TerminalWidget::initialize() {
         return false;
     }
     if (!setupEncoders()) {
-        qCCritical(terminalLog) << "Failed to initialize Ghostty key encoder state";
+        qCCritical(terminalLog) << "Failed to initialize Ghostty encoder state";
         return false;
     }
 
@@ -290,6 +294,28 @@ bool TerminalWidget::setupEncoders() {
         std::fprintf(stderr, "ghostty_key_event_new failed (%d)\n", err);
         return false;
     }
+
+    err = ghostty_mouse_encoder_new(nullptr, &m_mouseEncoder);
+    if (err != GHOSTTY_SUCCESS) {
+        std::fprintf(stderr, "ghostty_mouse_encoder_new failed (%d)\n", err);
+        return false;
+    }
+
+    err = ghostty_mouse_event_new(nullptr, &m_mouseEvent);
+    if (err != GHOSTTY_SUCCESS) {
+        std::fprintf(stderr, "ghostty_mouse_event_new failed (%d)\n", err);
+        return false;
+    }
+
+    GhosttyMouseEncoderSize encoderSize = GHOSTTY_INIT_SIZED(GhosttyMouseEncoderSize);
+    encoderSize.cell_width = static_cast<uint32_t>(m_cellWidth);
+    encoderSize.cell_height = static_cast<uint32_t>(m_cellHeight);
+    encoderSize.screen_width = static_cast<uint32_t>(m_cellWidth) * m_cols;
+    encoderSize.screen_height = static_cast<uint32_t>(m_cellHeight) * m_rows;
+    ghostty_mouse_encoder_setopt(m_mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &encoderSize);
+
+    bool trackLastCell = true;
+    ghostty_mouse_encoder_setopt(m_mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_TRACK_LAST_CELL, &trackLastCell);
 
     return true;
 }
@@ -808,6 +834,53 @@ bool isC0ControlChar(const QByteArray &text) {
     return c <= 0x1F || c == 0x7F;
 }
 
+GhosttyMods ghosttyMouseMods(Qt::KeyboardModifiers mods) {
+    GhosttyMods result = 0;
+    if (mods & Qt::ShiftModifier)
+        result |= GHOSTTY_MODS_SHIFT;
+    if (mods & Qt::ControlModifier)
+        result |= GHOSTTY_MODS_CTRL;
+    if (mods & Qt::AltModifier)
+        result |= GHOSTTY_MODS_ALT;
+    if (mods & Qt::MetaModifier)
+        result |= GHOSTTY_MODS_SUPER;
+    return result;
+}
+
+GhosttyMouseButton ghosttyMouseButtonForQt(Qt::MouseButton button) {
+    switch (button) {
+        case Qt::LeftButton:
+            return GHOSTTY_MOUSE_BUTTON_LEFT;
+        case Qt::RightButton:
+            return GHOSTTY_MOUSE_BUTTON_RIGHT;
+        case Qt::MiddleButton:
+            return GHOSTTY_MOUSE_BUTTON_MIDDLE;
+        default:
+            return GHOSTTY_MOUSE_BUTTON_UNKNOWN;
+    }
+}
+
+GhosttyMouseButton ghosttyMouseButtonForHeld(Qt::MouseButtons buttons) {
+    if (buttons & Qt::LeftButton)
+        return GHOSTTY_MOUSE_BUTTON_LEFT;
+    if (buttons & Qt::MiddleButton)
+        return GHOSTTY_MOUSE_BUTTON_MIDDLE;
+    if (buttons & Qt::RightButton)
+        return GHOSTTY_MOUSE_BUTTON_RIGHT;
+    return GHOSTTY_MOUSE_BUTTON_UNKNOWN;
+}
+
+bool encodeAndSendMouseEvent(GhosttyMouseEncoder encoder, GhosttyMouseEvent event, PtySession *pty) {
+    char buf[128];
+    size_t written = 0;
+    GhosttyResult err = ghostty_mouse_encoder_encode(encoder, event, buf, sizeof(buf), &written);
+    if (err == GHOSTTY_SUCCESS && written > 0) {
+        pty->write(QByteArray(buf, static_cast<int>(written)));
+        return true;
+    }
+    return false;
+}
+
 } // anonymous namespace
 
 void TerminalWidget::keyPressEvent(QKeyEvent *event) {
@@ -1044,22 +1117,38 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
     if (!m_terminal)
         return;
 
+    const int delta = event->angleDelta().y();
+    if (delta == 0)
+        return;
+
     bool mouseTracking = false;
     ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &mouseTracking);
-    if (mouseTracking)
-        return; // minimal implementation: ignore wheel in mouse-tracking mode
 
-    int delta = event->angleDelta().y();
-    if (delta != 0) {
-        int rows = delta > 0 ? -3 : 3;
-        GhosttyTerminalScrollViewport sv = {
-            .tag = GHOSTTY_SCROLL_VIEWPORT_DELTA,
-            .value = {.delta = static_cast<intptr_t>(rows)},
-        };
-        ghostty_terminal_scroll_viewport(m_terminal, sv);
-        m_renderStateDirty = true;
-        update();
+    if (mouseTracking && m_mouseEncoder && m_mouseEvent && m_ptySession) {
+        ghostty_mouse_encoder_setopt_from_terminal(m_mouseEncoder, m_terminal);
+        GhosttyMouseButton button = delta > 0 ? GHOSTTY_MOUSE_BUTTON_FOUR : GHOSTTY_MOUSE_BUTTON_FIVE;
+        ghostty_mouse_event_set_action(m_mouseEvent, GHOSTTY_MOUSE_ACTION_PRESS);
+        ghostty_mouse_event_set_button(m_mouseEvent, button);
+        ghostty_mouse_event_set_mods(m_mouseEvent, ghosttyMouseMods(event->modifiers()));
+        GhosttyMousePosition pos = {static_cast<float>(event->position().x()),
+                                    static_cast<float>(event->position().y())};
+        ghostty_mouse_event_set_position(m_mouseEvent, pos);
+        encodeAndSendMouseEvent(m_mouseEncoder, m_mouseEvent, m_ptySession);
+        event->accept();
+        return;
     }
+
+    if (mouseTracking)
+        return;
+
+    int rows = delta > 0 ? -3 : 3;
+    GhosttyTerminalScrollViewport sv = {
+        .tag = GHOSTTY_SCROLL_VIEWPORT_DELTA,
+        .value = {.delta = static_cast<intptr_t>(rows)},
+    };
+    ghostty_terminal_scroll_viewport(m_terminal, sv);
+    m_renderStateDirty = true;
+    update();
 }
 
 void TerminalWidget::onPtyDataReceived(const QByteArray &data) {
@@ -1155,6 +1244,15 @@ void TerminalWidget::applyPendingResize() {
 
     if (m_ptySession)
         m_ptySession->resize(m_cols, m_rows, m_cellWidth, m_cellHeight);
+
+    if (m_mouseEncoder) {
+        GhosttyMouseEncoderSize encoderSize = GHOSTTY_INIT_SIZED(GhosttyMouseEncoderSize);
+        encoderSize.cell_width = static_cast<uint32_t>(m_cellWidth);
+        encoderSize.cell_height = static_cast<uint32_t>(m_cellHeight);
+        encoderSize.screen_width = static_cast<uint32_t>(m_cellWidth) * m_cols;
+        encoderSize.screen_height = static_cast<uint32_t>(m_cellHeight) * m_rows;
+        ghostty_mouse_encoder_setopt(m_mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &encoderSize);
+    }
 
 #ifdef QTGHOSTTY_TESTING
     ++m_debugResizeApplyCount;
@@ -1292,6 +1390,28 @@ bool TerminalWidget::hasSearchMatches() const {
 // ---------------------------------------------------------------------------
 
 void TerminalWidget::mousePressEvent(QMouseEvent *event) {
+    if (!m_terminal || !m_ptySession)
+        return;
+
+    bool mouseTracking = false;
+    ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &mouseTracking);
+
+    if (mouseTracking && m_mouseEncoder && m_mouseEvent) {
+        ghostty_mouse_encoder_setopt_from_terminal(m_mouseEncoder, m_terminal);
+        ghostty_mouse_event_set_action(m_mouseEvent, GHOSTTY_MOUSE_ACTION_PRESS);
+        ghostty_mouse_event_set_button(m_mouseEvent, ghosttyMouseButtonForQt(event->button()));
+        ghostty_mouse_event_set_mods(m_mouseEvent, ghosttyMouseMods(event->modifiers()));
+        GhosttyMousePosition pos = {static_cast<float>(event->pos().x()), static_cast<float>(event->pos().y())};
+        ghostty_mouse_event_set_position(m_mouseEvent, pos);
+
+        bool anyButton = event->buttons() != Qt::NoButton;
+        ghostty_mouse_encoder_setopt(m_mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED, &anyButton);
+
+        encodeAndSendMouseEvent(m_mouseEncoder, m_mouseEvent, m_ptySession);
+        event->accept();
+        return;
+    }
+
     if (event->button() == Qt::LeftButton) {
         m_selection.active = false;
         m_selection.startCol = event->pos().x() / m_cellWidth;
@@ -1303,6 +1423,34 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
 }
 
 void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
+    if (!m_terminal || !m_ptySession)
+        return;
+
+    bool mouseTracking = false;
+    ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &mouseTracking);
+
+    if (mouseTracking && m_mouseEncoder && m_mouseEvent) {
+        ghostty_mouse_encoder_setopt_from_terminal(m_mouseEncoder, m_terminal);
+        ghostty_mouse_event_set_action(m_mouseEvent, GHOSTTY_MOUSE_ACTION_MOTION);
+
+        GhosttyMouseButton heldButton = ghosttyMouseButtonForHeld(event->buttons());
+        if (heldButton == GHOSTTY_MOUSE_BUTTON_UNKNOWN)
+            ghostty_mouse_event_clear_button(m_mouseEvent);
+        else
+            ghostty_mouse_event_set_button(m_mouseEvent, heldButton);
+
+        ghostty_mouse_event_set_mods(m_mouseEvent, ghosttyMouseMods(event->modifiers()));
+        GhosttyMousePosition pos = {static_cast<float>(event->pos().x()), static_cast<float>(event->pos().y())};
+        ghostty_mouse_event_set_position(m_mouseEvent, pos);
+
+        bool anyButton = event->buttons() != Qt::NoButton;
+        ghostty_mouse_encoder_setopt(m_mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED, &anyButton);
+
+        encodeAndSendMouseEvent(m_mouseEncoder, m_mouseEvent, m_ptySession);
+        event->accept();
+        return;
+    }
+
     if (event->buttons() & Qt::LeftButton) {
         m_selection.endCol = event->pos().x() / m_cellWidth;
         m_selection.endRow = screenRowForViewportRow(event->pos().y() / m_cellHeight);
@@ -1312,6 +1460,32 @@ void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
 }
 
 void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
+    if (!m_terminal || !m_ptySession)
+        return;
+
+    bool mouseTracking = false;
+    ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &mouseTracking);
+
+    if (mouseTracking && m_mouseEncoder && m_mouseEvent) {
+        ghostty_mouse_encoder_setopt_from_terminal(m_mouseEncoder, m_terminal);
+        ghostty_mouse_event_set_action(m_mouseEvent, GHOSTTY_MOUSE_ACTION_RELEASE);
+        ghostty_mouse_event_set_button(m_mouseEvent, ghosttyMouseButtonForQt(event->button()));
+        ghostty_mouse_event_set_mods(m_mouseEvent, ghosttyMouseMods(event->modifiers()));
+        GhosttyMousePosition pos = {static_cast<float>(event->pos().x()), static_cast<float>(event->pos().y())};
+        ghostty_mouse_event_set_position(m_mouseEvent, pos);
+
+        bool anyButton = event->buttons() != Qt::NoButton;
+        ghostty_mouse_encoder_setopt(m_mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED, &anyButton);
+
+        encodeAndSendMouseEvent(m_mouseEncoder, m_mouseEvent, m_ptySession);
+
+        if (!anyButton)
+            ghostty_mouse_encoder_reset(m_mouseEncoder);
+
+        event->accept();
+        return;
+    }
+
     if (event->button() == Qt::LeftButton) {
         m_selection.endCol = event->pos().x() / m_cellWidth;
         m_selection.endRow = screenRowForViewportRow(event->pos().y() / m_cellHeight);

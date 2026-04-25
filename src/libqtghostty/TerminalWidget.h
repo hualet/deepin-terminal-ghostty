@@ -116,6 +116,8 @@ private:
     GhosttyRenderStateRowCells m_rowCells = nullptr;
     GhosttyKeyEncoder m_keyEncoder = nullptr;
     GhosttyKeyEvent m_keyEvent = nullptr;
+    GhosttyMouseEncoder m_mouseEncoder = nullptr;
+    GhosttyMouseEvent m_mouseEvent = nullptr;
     mutable bool m_renderStateDirty = true;
 
     // PTY

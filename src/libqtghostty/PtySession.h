@@ -28,6 +28,7 @@ public:
 
 signals:
     void dataReceived(const QByteArray &data);
+    void dataWritten(const QByteArray &data);
     void childExited(int exitCode);
     void sessionClosed();
 

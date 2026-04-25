@@ -152,6 +152,8 @@ void PtySession::write(const QByteArray &data) {
 
     m_writeBuffer.append(data.constData(), bytesToAppend);
     (void)flushWriteBuffer();
+
+    Q_EMIT dataWritten(data.left(bytesToAppend));
 }
 
 void PtySession::resize(int cols, int rows, int cellWidthPx, int cellHeightPx) {

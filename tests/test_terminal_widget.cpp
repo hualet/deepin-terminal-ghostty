@@ -6,6 +6,7 @@
 #include <QPainter>
 #include <QSignalSpy>
 #include <QTest>
+#include <QWheelEvent>
 
 // Undefine Qt's emit macro before Ghostty headers (same workaround as TerminalWidget.h)
 #ifdef emit
@@ -42,6 +43,10 @@ private slots:
     void testCoalescesSmallPtyBurstsIntoSingleFlush();
     void testIncrementalUpdatesRenderDirtyRowsOnly();
     void testCoalescesRapidResizeOperations();
+    void testMouseTrackingEnabledSendsSGREvents();
+    void testMouseTrackingDisabledDoesNotSendEvents();
+    void testMouseTrackingReleaseSendsSGR();
+    void testMouseTrackingWheelSendsSGR();
 };
 
 namespace {
@@ -525,6 +530,115 @@ void TestTerminalWidget::testCoalescesRapidResizeOperations() {
     QTRY_VERIFY_WITH_TIMEOUT(widget.debugResizeApplyCount() > initialApplyCount, 100);
     QVERIFY2(widget.debugResizeApplyCount() - initialApplyCount < 6,
              "rapid resize events should be coalesced into fewer terminal resizes");
+}
+
+void TestTerminalWidget::testMouseTrackingEnabledSendsSGREvents() {
+    CountingTerminalWidget widget;
+    widget.resize(800, 600);
+    QVERIFY(widget.initialize());
+
+    auto *session = widget.findChild<PtySession *>();
+    QVERIFY(session);
+
+    QSignalSpy spy(session, &PtySession::dataWritten);
+    QVERIFY(spy.isValid());
+
+    const int flushCountBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("\033[?1000h\033[?1006h")));
+    waitForNextPtyFlush(widget, flushCountBefore);
+    QApplication::processEvents();
+    spy.clear();
+
+    QMouseEvent pressEvent(QEvent::MouseButtonPress, QPointF(0, 0), QPointF(0, 0), Qt::LeftButton, Qt::LeftButton,
+                           Qt::NoModifier);
+    QApplication::sendEvent(&widget, &pressEvent);
+
+    QVERIFY(spy.count() > 0);
+    const QByteArray output = collectedPtyOutput(spy);
+    QVERIFY2(output.startsWith("\x1b[<"), qPrintable("SGR press: expected ESC[< prefix, got: " + output.toHex()));
+    QVERIFY2(output.endsWith('M'), qPrintable("SGR press: expected trailing M, got: " + output.toHex()));
+}
+
+void TestTerminalWidget::testMouseTrackingDisabledDoesNotSendEvents() {
+    TerminalWidget widget;
+    widget.resize(800, 600);
+    QVERIFY(widget.initialize());
+
+    auto *session = widget.findChild<PtySession *>();
+    QVERIFY(session);
+
+    QSignalSpy spy(session, &PtySession::dataWritten);
+    QVERIFY(spy.isValid());
+    spy.clear();
+
+    QMouseEvent pressEvent(QEvent::MouseButtonPress, QPointF(0, 0), QPointF(0, 0), Qt::LeftButton, Qt::LeftButton,
+                           Qt::NoModifier);
+    QApplication::sendEvent(&widget, &pressEvent);
+
+    QCOMPARE(spy.count(), 0);
+}
+
+void TestTerminalWidget::testMouseTrackingReleaseSendsSGR() {
+    CountingTerminalWidget widget;
+    widget.resize(800, 600);
+    QVERIFY(widget.initialize());
+
+    auto *session = widget.findChild<PtySession *>();
+    QVERIFY(session);
+
+    QSignalSpy spy(session, &PtySession::dataWritten);
+    QVERIFY(spy.isValid());
+
+    const int flushCountBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("\033[?1000h\033[?1006h")));
+    waitForNextPtyFlush(widget, flushCountBefore);
+    QApplication::processEvents();
+
+    QMouseEvent pressEvent(QEvent::MouseButtonPress, QPointF(0, 0), QPointF(0, 0), Qt::LeftButton, Qt::LeftButton,
+                           Qt::NoModifier);
+    QApplication::sendEvent(&widget, &pressEvent);
+    spy.clear();
+
+    QMouseEvent releaseEvent(QEvent::MouseButtonRelease, QPointF(0, 0), QPointF(0, 0), Qt::LeftButton, Qt::NoButton,
+                             Qt::NoModifier);
+    QApplication::sendEvent(&widget, &releaseEvent);
+
+    QVERIFY(spy.count() > 0);
+    const QByteArray output = collectedPtyOutput(spy);
+    QVERIFY2(output.startsWith("\x1b[<"), qPrintable("SGR release: expected ESC[< prefix, got: " + output.toHex()));
+    QVERIFY2(output.endsWith('m'), qPrintable("SGR release: expected trailing m, got: " + output.toHex()));
+}
+
+void TestTerminalWidget::testMouseTrackingWheelSendsSGR() {
+    CountingTerminalWidget widget;
+    widget.resize(800, 600);
+    QVERIFY(widget.initialize());
+
+    auto *session = widget.findChild<PtySession *>();
+    QVERIFY(session);
+
+    QSignalSpy spy(session, &PtySession::dataWritten);
+    QVERIFY(spy.isValid());
+
+    const int flushCountBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("\033[?1000h\033[?1006h")));
+    waitForNextPtyFlush(widget, flushCountBefore);
+    QApplication::processEvents();
+    spy.clear();
+
+    QWheelEvent wheelEvent(QPointF(10, 10), QPointF(10, 10), QPoint(), QPoint(0, 120), Qt::NoButton, Qt::NoModifier,
+                           Qt::ScrollUpdate, false);
+    QApplication::sendEvent(&widget, &wheelEvent);
+
+    QVERIFY(spy.count() > 0);
+    const QByteArray output = collectedPtyOutput(spy);
+    QVERIFY2(output.startsWith("\x1b[<"), qPrintable("SGR wheel: expected ESC[< prefix, got: " + output.toHex()));
+    QVERIFY2(output.endsWith('M'), qPrintable("SGR wheel: expected trailing M, got: " + output.toHex()));
+    QVERIFY2(output.contains("64;") || output.contains("65;"),
+             qPrintable("SGR wheel: expected button 64 (up) or 65 (down), got: " + output.toHex()));
 }
 
 // We need QApplication for QWidget tests
