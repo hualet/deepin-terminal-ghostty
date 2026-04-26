@@ -214,15 +214,24 @@ void MainWindow::setupTitleBar() {
     ensureCompactTitlebarWidget();
 
     auto *menu = new QMenu(this);
+
+    m_verticalTabsAction = menu->addAction(tr("Vertical Tabs"));
+    m_verticalTabsAction->setObjectName(QStringLiteral("verticalTabsAction"));
+    m_verticalTabsAction->setCheckable(true);
+    m_verticalTabsAction->setChecked(m_verticalTabsEnabled);
+    connect(m_verticalTabsAction, &QAction::toggled, this, [this](bool checked) {
+        AppSettings::instance()->setVerticalTabsEnabled(checked);
+        setVerticalTabsEnabled(checked);
+    });
+
     auto *remoteAction = menu->addAction(tr("Remote Management"));
     connect(remoteAction, &QAction::triggered, this, &MainWindow::onShortcutRemoteManagement);
-
-    menu->addSeparator();
 
     auto *settingsAction = menu->addAction(tr("Settings"));
     connect(settingsAction, &QAction::triggered, this, &MainWindow::onSettingsTriggered);
 
     menu->addSeparator();
+
     auto *themeMenu = menu->addMenu(tr("Theme"));
     auto themes = ThemeLoader::loadThemes();
     QString currentScheme = AppSettings::instance()->colorScheme();
@@ -280,14 +289,7 @@ void MainWindow::setupTitleBar() {
         connect(act, &QAction::triggered, this, [this, name]() { AppSettings::instance()->setColorScheme(name); });
     }
 
-    m_verticalTabsAction = menu->addAction(tr("Vertical Tabs"));
-    m_verticalTabsAction->setObjectName(QStringLiteral("verticalTabsAction"));
-    m_verticalTabsAction->setCheckable(true);
-    m_verticalTabsAction->setChecked(m_verticalTabsEnabled);
-    connect(m_verticalTabsAction, &QAction::toggled, this, [this](bool checked) {
-        AppSettings::instance()->setVerticalTabsEnabled(checked);
-        setVerticalTabsEnabled(checked);
-    });
+    menu->addSeparator();
 
     tb->setMenu(menu);
     updateTitlebarPresentation();
