@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PtySession.h"
+#include "TerminalTheme.h"
 
 #include <QElapsedTimer>
 #include <QFont>
@@ -31,6 +32,7 @@ public:
     void setCursorShape(int shape);
     void setCursorBlinkEnabled(bool blink);
     void setScrollbackLines(int lines);
+    void applyTheme(const TerminalTheme &theme);
     void setStartOptions(const PtySession::StartOptions &options);
 
     void selectAll();
@@ -53,6 +55,9 @@ public:
     void debugSetSelection(int startRow, int startCol, int endRow, int endCol, bool active);
     bool debugCellInSelection(int screenRow, int col) const;
     QString debugSelectedText() const;
+    bool debugAppliedIsDark() const;
+    QColor debugAppliedForeground() const;
+    QColor debugAppliedBackground() const;
 #endif
 
 signals:
@@ -169,6 +174,7 @@ private:
 
     // Scrollback
     int m_scrollbackLines = 1000;
+    bool m_isDark = true;
 
     // Input method composition
     QString m_preeditText;

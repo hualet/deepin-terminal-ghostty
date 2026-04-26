@@ -208,9 +208,9 @@ void effectTitleChanged(GhosttyTerminal terminal, void *userdata) {
 
 bool effectColorScheme(GhosttyTerminal terminal, void *userdata, GhosttyColorScheme *out_scheme) {
     (void)terminal;
-    (void)userdata;
-    (void)out_scheme;
-    return false;
+    auto *widget = static_cast<TerminalWidget *>(userdata);
+    *out_scheme = widget->m_isDark ? GHOSTTY_COLOR_SCHEME_DARK : GHOSTTY_COLOR_SCHEME_LIGHT;
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -1208,6 +1208,34 @@ void TerminalWidget::setScrollbackLines(int lines) {
     m_scrollbackLines = lines;
 }
 
+void TerminalWidget::applyTheme(const TerminalTheme &theme) {
+    if (!m_terminal)
+        return;
+
+    auto toRgb = [](const QColor &c) -> GhosttyColorRgb {
+        return {static_cast<uint8_t>(c.red()), static_cast<uint8_t>(c.green()), static_cast<uint8_t>(c.blue())};
+    };
+
+    auto fg = toRgb(theme.foreground);
+    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_COLOR_FOREGROUND, &fg);
+
+    auto bg = toRgb(theme.background);
+    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND, &bg);
+
+    auto cr = toRgb(theme.cursor);
+    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_COLOR_CURSOR, &cr);
+
+    GhosttyColorRgb palette[256] = {};
+    ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_COLOR_PALETTE, palette);
+    for (int i = 0; i < 16; ++i)
+        palette[i] = toRgb(theme.ansi[i]);
+    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_COLOR_PALETTE, palette);
+
+    m_isDark = theme.isDark;
+    m_renderStateDirty = true;
+    update();
+}
+
 void TerminalWidget::focusInEvent(QFocusEvent *event) {
     QWidget::focusInEvent(event);
     m_hasFocus = true;
@@ -1827,3 +1855,25 @@ void TerminalWidget::zoomOut() {
     f.setPointSize(qMax(f.pointSize() - 1, 5));
     setTerminalFont(f);
 }
+
+#ifdef QTGHOSTTY_TESTING
+bool TerminalWidget::debugAppliedIsDark() const {
+    return m_isDark;
+}
+
+QColor TerminalWidget::debugAppliedForeground() const {
+    if (!m_terminal)
+        return QColor();
+    GhosttyColorRgb rgb;
+    ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_COLOR_FOREGROUND, &rgb);
+    return QColor(rgb.r, rgb.g, rgb.b);
+}
+
+QColor TerminalWidget::debugAppliedBackground() const {
+    if (!m_terminal)
+        return QColor();
+    GhosttyColorRgb rgb;
+    ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_COLOR_BACKGROUND, &rgb);
+    return QColor(rgb.r, rgb.g, rgb.b);
+}
+#endif
