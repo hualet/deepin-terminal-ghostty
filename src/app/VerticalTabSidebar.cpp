@@ -1,5 +1,6 @@
 #include "VerticalTabSidebar.h"
 
+#include <DGuiApplicationHelper>
 #include <QAbstractButton>
 #include <QApplication>
 #include <QFontMetrics>
@@ -13,6 +14,8 @@
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
+
+DGUI_USE_NAMESPACE
 
 namespace {
 
@@ -83,190 +86,139 @@ VerticalTabSidebar::VerticalTabSidebar(QWidget *parent) : QWidget(parent) {
     scrollArea->setWidget(content);
     outerLayout->addWidget(scrollArea);
 
-    setDarkMode(true);
+    applyStylesheet();
+    connect(DGuiApplicationHelper::instance(), &DGuiApplicationHelper::paletteTypeChanged, this,
+            &VerticalTabSidebar::applyStylesheet);
 }
 
-void VerticalTabSidebar::setDarkMode(bool dark) {
-    if (m_darkMode == dark)
-        return;
-    m_darkMode = dark;
-    if (dark) {
-        setStyleSheet(QStringLiteral(R"(
-            #verticalTabSidebar {
-                background: rgba(12, 15, 22, 0.72);
-            }
-            #verticalTabSidebarScrollArea {
-                border: none;
-                background: transparent;
-            }
-            #verticalTabSidebarContent {
-                background: transparent;
-            }
-            #verticalTabSection {
-                border: 1px solid rgba(255, 255, 255, 0.05);
-                border-radius: 12px;
-                background-color: rgba(29, 32, 40, 0.96);
-            }
-            #verticalTabSection:hover {
-                background-color: rgba(37, 41, 51, 0.98);
-            }
-            #verticalTabSection[isCurrent="true"] {
-                border: 1px solid rgba(83, 143, 255, 0.45);
-                background-color: rgba(30, 45, 74, 0.98);
-            }
-            #verticalTabHeader {
-                background: transparent;
-            }
-            #verticalTabSection[isCurrent="true"] #verticalTabButton {
-                color: rgb(242, 247, 255);
-            }
-            #verticalTabExpandButton {
-                border: none;
-                background: transparent;
-                padding: 0px 1px;
-                margin: 0px;
-                color: rgba(210, 218, 232, 0.7);
-            }
-            #verticalTabExpandButton:hover {
-                background-color: rgba(255, 255, 255, 0.08);
-                border-radius: 6px;
-            }
-            #verticalTabButton {
-                border: none;
-                background: transparent;
-                padding: 6px 0px;
-                margin: 0px;
-                color: rgb(220, 225, 236);
-                text-align: left;
-                font-size: 15px;
-            }
-            #verticalTabButton:checked {
-                font-weight: 600;
-            }
-            #verticalTabBadge,
-            #verticalPaneBadge {
-                border-radius: 12px;
-                background-color: rgba(255, 255, 255, 0.08);
-                color: rgb(220, 225, 236);
-            }
-            #verticalTabSection[isCurrent="true"] #verticalTabBadge {
-                background-color: rgba(83, 143, 255, 0.18);
-            }
-            #verticalPaneList {
-                background: transparent;
-            }
-            #verticalPaneGuide {
-                min-width: 1px;
-                max-width: 1px;
-                background-color: rgba(255, 255, 255, 0.12);
-                margin-top: 2px;
-                margin-bottom: 4px;
-            }
-            #verticalPaneButton {
-                border: none;
-                background: transparent;
-                padding: 5px 0px;
-                margin: 0px;
-                color: rgb(183, 191, 204);
-                text-align: left;
-                font-size: 14px;
-            }
-            #verticalPaneButton[active="true"] {
-                color: rgb(229, 235, 245);
-            }
-            #verticalPaneButton:checked {
-                font-weight: 500;
-            }
-        )"));
-    } else {
-        setStyleSheet(QStringLiteral(R"(
-            #verticalTabSidebar {
-                background: rgba(235, 235, 235, 0.9);
-            }
-            #verticalTabSidebarScrollArea {
-                border: none;
-                background: transparent;
-            }
-            #verticalTabSidebarContent {
-                background: transparent;
-            }
-            #verticalTabSection {
-                border: 1px solid rgba(0, 0, 0, 0.06);
-                border-radius: 12px;
-                background-color: rgba(255, 255, 255, 0.96);
-            }
-            #verticalTabSection:hover {
-                background-color: rgba(245, 245, 245, 0.98);
-            }
-            #verticalTabSection[isCurrent="true"] {
-                border: 1px solid rgba(83, 143, 255, 0.4);
-                background-color: rgba(230, 240, 255, 0.98);
-            }
-            #verticalTabHeader {
-                background: transparent;
-            }
-            #verticalTabSection[isCurrent="true"] #verticalTabButton {
-                color: rgb(20, 40, 80);
-            }
-            #verticalTabExpandButton {
-                border: none;
-                background: transparent;
-                padding: 0px 1px;
-                margin: 0px;
-                color: rgba(60, 60, 60, 0.7);
-            }
-            #verticalTabExpandButton:hover {
-                background-color: rgba(0, 0, 0, 0.05);
-                border-radius: 6px;
-            }
-            #verticalTabButton {
-                border: none;
-                background: transparent;
-                padding: 6px 0px;
-                margin: 0px;
-                color: rgb(40, 40, 40);
-                text-align: left;
-                font-size: 15px;
-            }
-            #verticalTabButton:checked {
-                font-weight: 600;
-            }
-            #verticalTabBadge,
-            #verticalPaneBadge {
-                border-radius: 12px;
-                background-color: rgba(0, 0, 0, 0.05);
-                color: rgb(50, 50, 50);
-            }
-            #verticalTabSection[isCurrent="true"] #verticalTabBadge {
-                background-color: rgba(83, 143, 255, 0.15);
-            }
-            #verticalPaneList {
-                background: transparent;
-            }
-            #verticalPaneGuide {
-                min-width: 1px;
-                max-width: 1px;
-                background-color: rgba(0, 0, 0, 0.08);
-                margin-top: 2px;
-                margin-bottom: 4px;
-            }
-            #verticalPaneButton {
-                border: none;
-                background: transparent;
-                padding: 5px 0px;
-                margin: 0px;
-                color: rgb(80, 80, 80);
-                text-align: left;
-                font-size: 14px;
-            }
-            #verticalPaneButton[active="true"] {
-                color: rgb(30, 30, 30);
-            }
-            #verticalPaneButton:checked {
-                font-weight: 500;
-            }
-        )"));
-    }
+static QColor blend(const QColor &a, const QColor &b, qreal ratio = 0.5) {
+    return QColor(qMin(255, int(a.red() * (1 - ratio) + b.red() * ratio)),
+                  qMin(255, int(a.green() * (1 - ratio) + b.green() * ratio)),
+                  qMin(255, int(a.blue() * (1 - ratio) + b.blue() * ratio)));
+}
+
+void VerticalTabSidebar::applyStylesheet() {
+    const auto *helper = DGuiApplicationHelper::instance();
+    const QPalette pal = helper->applicationPalette();
+    const bool isDark = helper->themeType() == DGuiApplicationHelper::DarkType;
+
+    const auto c = [](int r, int g, int b, int a) {
+        return QStringLiteral("rgba(%1,%2,%3,%4)").arg(r).arg(g).arg(b).arg(a / 255.0, 0, 'f', 3);
+    };
+    QColor sidebarBg = pal.color(QPalette::Window);
+    QColor sectionBg = pal.color(QPalette::Base);
+    QColor text = pal.color(QPalette::WindowText);
+    QColor highlight = pal.color(QPalette::Highlight);
+    QColor sectionHover = isDark ? sectionBg.lighter(110) : sectionBg.darker(105);
+    QColor sectionCurrent = blend(sectionBg, highlight, isDark ? 0.18 : 0.10);
+
+    int ta = text.alpha();
+
+    setStyleSheet(
+        QStringLiteral(R"(
+        #verticalTabSidebar {
+            background: %1;
+        }
+        #verticalTabSidebarScrollArea {
+            border: none;
+            background: transparent;
+        }
+        #verticalTabSidebarContent {
+            background: transparent;
+        }
+        #verticalTabSection {
+            border: 1px solid %2;
+            border-radius: 12px;
+            background-color: %3;
+        }
+        #verticalTabSection:hover {
+            background-color: %4;
+        }
+        #verticalTabSection[isCurrent="true"] {
+            border: 1px solid %5;
+            background-color: %6;
+        }
+        #verticalTabHeader {
+            background: transparent;
+        }
+        #verticalTabSection[isCurrent="true"] #verticalTabButton {
+            color: %7;
+        }
+        #verticalTabExpandButton {
+            border: none;
+            background: transparent;
+            padding: 0px 1px;
+            margin: 0px;
+            color: %8;
+        }
+        #verticalTabExpandButton:hover {
+            background-color: %9;
+            border-radius: 6px;
+        }
+        #verticalTabButton {
+            border: none;
+            background: transparent;
+            padding: 6px 0px;
+            margin: 0px;
+            color: %10;
+            text-align: left;
+            font-size: 15px;
+        }
+        #verticalTabButton:checked {
+            font-weight: 600;
+        }
+        #verticalTabBadge,
+        #verticalPaneBadge {
+            border-radius: 12px;
+            background-color: %11;
+            color: %12;
+        }
+        #verticalTabSection[isCurrent="true"] #verticalTabBadge {
+            background-color: %13;
+        }
+        #verticalPaneList {
+            background: transparent;
+        }
+        #verticalPaneGuide {
+            min-width: 1px;
+            max-width: 1px;
+            background-color: %14;
+            margin-top: 2px;
+            margin-bottom: 4px;
+        }
+        #verticalPaneButton {
+            border: none;
+            background: transparent;
+            padding: 5px 0px;
+            margin: 0px;
+            color: %15;
+            text-align: left;
+            font-size: 14px;
+        }
+        #verticalPaneButton[active="true"] {
+            color: %16;
+        }
+        #verticalPaneButton:checked {
+            font-weight: 500;
+        }
+    )")
+            .arg(c(sidebarBg.red(), sidebarBg.green(), sidebarBg.blue(), qRound(sidebarBg.alpha() * 0.72)),
+                 c(text.red(), text.green(), text.blue(), qRound(ta * 0.05)),
+                 c(sectionBg.red(), sectionBg.green(), sectionBg.blue(), qRound(sectionBg.alpha() * 0.96)),
+                 c(sectionHover.red(), sectionHover.green(), sectionHover.blue(), qRound(sectionHover.alpha() * 0.98)),
+                 c(highlight.red(), highlight.green(), highlight.blue(), qRound(highlight.alpha() * 0.45)),
+                 c(sectionCurrent.red(), sectionCurrent.green(), sectionCurrent.blue(),
+                   qRound(sectionCurrent.alpha() * 0.98)),
+                 c(text.red(), text.green(), text.blue(), ta),
+                 c(text.red(), text.green(), text.blue(), qRound(ta * 0.7)),
+                 c(text.red(), text.green(), text.blue(), qRound(ta * 0.08)),
+                 c(text.red(), text.green(), text.blue(), ta),
+                 c(text.red(), text.green(), text.blue(), qRound(ta * 0.08)),
+                 c(text.red(), text.green(), text.blue(), ta),
+                 c(highlight.red(), highlight.green(), highlight.blue(), qRound(highlight.alpha() * 0.18)),
+                 c(text.red(), text.green(), text.blue(), qRound(ta * 0.12)),
+                 c(text.red(), text.green(), text.blue(), qRound(ta * 0.75)),
+                 c(text.red(), text.green(), text.blue(), qRound(ta * 0.92))));
 }
 
 void VerticalTabSidebar::setItems(const QList<TabItem> &items) {

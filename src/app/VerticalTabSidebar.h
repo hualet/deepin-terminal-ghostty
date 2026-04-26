@@ -23,8 +23,6 @@ public:
 
     void setItems(const QList<TabItem> &items);
     QList<TabItem> items() const;
-    void setDarkMode(bool dark);
-
 signals:
     void tabActivated(int tabId);
     void tabExpansionToggled(int tabId);
@@ -36,8 +34,8 @@ protected:
 private:
     void rebuild();
     void updateButtonElisions();
+    void applyStylesheet();
 
     QList<TabItem> m_items;
     QVBoxLayout *m_layout = nullptr;
-    bool m_darkMode = true;
 };
