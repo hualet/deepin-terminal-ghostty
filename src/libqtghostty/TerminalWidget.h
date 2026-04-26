@@ -91,7 +91,7 @@ private:
     bool setupRenderState();
     bool setupEncoders();
     bool syncRenderState() const;
-    void ensureBackBuffer();
+    bool ensureBackBuffer();
     void applyPendingResize();
     void updateCachedFonts();
     void updateGridSize();

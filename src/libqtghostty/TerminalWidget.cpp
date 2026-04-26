@@ -507,23 +507,24 @@ bool TerminalWidget::syncRenderState() const {
     return true;
 }
 
-void TerminalWidget::ensureBackBuffer() {
+bool TerminalWidget::ensureBackBuffer() {
     const qreal devicePixelRatio = devicePixelRatioF();
     const QRect contentRect = terminalContentRect();
     const QSize pixelSize(qMax(1, qRound(contentRect.width() * devicePixelRatio)),
                           qMax(1, qRound(contentRect.height() * devicePixelRatio)));
     if (pixelSize.isEmpty()) {
         m_backBuffer = QImage();
-        return;
+        return false;
     }
 
     if (m_backBuffer.size() == pixelSize && qFuzzyCompare(m_backBuffer.devicePixelRatio(), devicePixelRatio)) {
-        return;
+        return false;
     }
 
     m_backBuffer = QImage(pixelSize, QImage::Format_ARGB32_Premultiplied);
     m_backBuffer.setDevicePixelRatio(devicePixelRatio);
     m_backBuffer.fill(Qt::transparent);
+    return true;
 }
 
 void TerminalWidget::renderTerminal(QPainter &painter) {
@@ -544,14 +545,14 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     if (err != GHOSTTY_SUCCESS)
         return;
 
-    ensureBackBuffer();
+    const bool bufferRecreated = ensureBackBuffer();
     if (m_backBuffer.isNull())
         return;
 
     GhosttyRenderStateDirty dirtyState = GHOSTTY_RENDER_STATE_DIRTY_FULL;
     ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_DIRTY, &dirtyState);
 
-    const bool fullRedraw = dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FULL;
+    const bool fullRedraw = bufferRecreated || (dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FULL);
     if (!fullRedraw && dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FALSE) {
         painter.drawImage(contentOrigin, m_backBuffer);
         return;
