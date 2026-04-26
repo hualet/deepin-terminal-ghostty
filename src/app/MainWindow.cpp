@@ -28,6 +28,8 @@
 #include <QTableWidget>
 #include <QVBoxLayout>
 
+#include <algorithm>
+
 MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
     : DMainWindow(parent),
       m_stackWidget(new QStackedWidget(this)),
@@ -219,6 +221,64 @@ void MainWindow::setupTitleBar() {
 
     auto *settingsAction = menu->addAction(tr("Settings"));
     connect(settingsAction, &QAction::triggered, this, &MainWindow::onSettingsTriggered);
+
+    menu->addSeparator();
+    auto *themeMenu = menu->addMenu(tr("Theme"));
+    auto themes = ThemeLoader::loadThemes();
+    QString currentScheme = AppSettings::instance()->colorScheme();
+
+    auto *lightAction = themeMenu->addAction(tr("Light"));
+    lightAction->setCheckable(true);
+    lightAction->setChecked(currentScheme == QStringLiteral("light"));
+    connect(lightAction, &QAction::triggered, this,
+            [this]() { AppSettings::instance()->setColorScheme(QStringLiteral("light")); });
+
+    auto *darkAction = themeMenu->addAction(tr("Dark"));
+    darkAction->setCheckable(true);
+    darkAction->setChecked(currentScheme == QStringLiteral("dark"));
+    connect(darkAction, &QAction::triggered, this,
+            [this]() { AppSettings::instance()->setColorScheme(QStringLiteral("dark")); });
+
+    auto *systemAction = themeMenu->addAction(tr("System"));
+    systemAction->setCheckable(true);
+    systemAction->setChecked(currentScheme == QStringLiteral("system"));
+    connect(systemAction, &QAction::triggered, this,
+            [this]() { AppSettings::instance()->setColorScheme(QStringLiteral("system")); });
+
+    themeMenu->addSeparator();
+
+    QStringList extraNames;
+    for (const auto &t : themes) {
+        if (t.name != QStringLiteral("dark") && t.name != QStringLiteral("light"))
+            extraNames.append(t.name);
+    }
+    std::sort(extraNames.begin(), extraNames.end(), [&themes](const QString &a, const QString &b) {
+        QString dispA, dispB;
+        for (const auto &t : themes) {
+            if (t.name == a)
+                dispA = t.displayName;
+            if (t.name == b)
+                dispB = t.displayName;
+        }
+        return dispA.localeAwareCompare(dispB) < 0;
+    });
+
+    QList<QAction *> extraActions;
+    for (const QString &name : extraNames) {
+        QString displayName;
+        for (const auto &t : themes) {
+            if (t.name == name) {
+                displayName = t.displayName;
+                break;
+            }
+        }
+        auto *act = themeMenu->addAction(displayName);
+        act->setCheckable(true);
+        act->setChecked(currentScheme == name);
+        act->setData(name);
+        extraActions.append(act);
+        connect(act, &QAction::triggered, this, [this, name]() { AppSettings::instance()->setColorScheme(name); });
+    }
 
     m_verticalTabsAction = menu->addAction(tr("Vertical Tabs"));
     m_verticalTabsAction->setObjectName(QStringLiteral("verticalTabsAction"));

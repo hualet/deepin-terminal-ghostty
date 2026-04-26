@@ -23,6 +23,8 @@
 #include <QUuid>
 #include <QVBoxLayout>
 
+#include <algorithm>
+
 namespace {
 
 constexpr int kTerminalContentPadding = 4;
@@ -518,18 +520,52 @@ void TermPane::showTerminalContextMenu(TerminalWidget *term, const QPoint &globa
 
     auto *themeMenu = menu.addMenu(tr("Theme"));
     QString currentScheme = AppSettings::instance()->colorScheme();
-    QAction *systemAction = themeMenu->addAction(tr("System"));
+
+    auto *lightAction = themeMenu->addAction(tr("Light"));
+    lightAction->setCheckable(true);
+    lightAction->setChecked(currentScheme == QStringLiteral("light"));
+
+    auto *darkAction = themeMenu->addAction(tr("Dark"));
+    darkAction->setCheckable(true);
+    darkAction->setChecked(currentScheme == QStringLiteral("dark"));
+
+    auto *systemAction = themeMenu->addAction(tr("System"));
     systemAction->setCheckable(true);
     systemAction->setChecked(currentScheme == QStringLiteral("system"));
+
     themeMenu->addSeparator();
+
     auto themes = ThemeLoader::loadThemes();
-    QList<QAction *> themeActions;
+    QStringList extraNames;
     for (const auto &t : themes) {
-        auto *act = themeMenu->addAction(t.displayName);
+        if (t.name != QStringLiteral("dark") && t.name != QStringLiteral("light"))
+            extraNames.append(t.name);
+    }
+    std::sort(extraNames.begin(), extraNames.end(), [&themes](const QString &a, const QString &b) {
+        QString dispA, dispB;
+        for (const auto &t : themes) {
+            if (t.name == a)
+                dispA = t.displayName;
+            if (t.name == b)
+                dispB = t.displayName;
+        }
+        return dispA.localeAwareCompare(dispB) < 0;
+    });
+
+    QList<QAction *> extraActions;
+    for (const QString &name : extraNames) {
+        QString displayName;
+        for (const auto &t : themes) {
+            if (t.name == name) {
+                displayName = t.displayName;
+                break;
+            }
+        }
+        auto *act = themeMenu->addAction(displayName);
         act->setCheckable(true);
-        act->setChecked(currentScheme == t.name);
-        act->setData(t.name);
-        themeActions.append(act);
+        act->setChecked(currentScheme == name);
+        act->setData(name);
+        extraActions.append(act);
     }
 
     menu.addSeparator();
@@ -544,9 +580,13 @@ void TermPane::showTerminalContextMenu(TerminalWidget *term, const QPoint &globa
         splitCurrent(Qt::Vertical);
     else if (action == closeSplitAction)
         closeCurrentSplit();
+    else if (action == lightAction)
+        AppSettings::instance()->setColorScheme(QStringLiteral("light"));
+    else if (action == darkAction)
+        AppSettings::instance()->setColorScheme(QStringLiteral("dark"));
     else if (action == systemAction)
         AppSettings::instance()->setColorScheme(QStringLiteral("system"));
-    else if (themeActions.contains(action))
+    else if (extraActions.contains(action))
         AppSettings::instance()->setColorScheme(action->data().toString());
     else if (action == settingsAction)
         Q_EMIT requestSettings();
