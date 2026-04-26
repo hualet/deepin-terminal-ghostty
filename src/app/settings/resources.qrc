@@ -26,4 +26,13 @@
         <file alias="htop.svg">../icons/process/htop.svg</file>
         <file alias="terminal.svg">../icons/process/terminal.svg</file>
     </qresource>
+    <qresource prefix="/themes">
+        <file alias="dark.json">../themes/dark.json</file>
+        <file alias="light.json">../themes/light.json</file>
+        <file alias="bim.json">../themes/bim.json</file>
+        <file alias="tomorrow-night-blue.json">../themes/tomorrow-night-blue.json</file>
+        <file alias="ocean-dark.json">../themes/ocean-dark.json</file>
+        <file alias="hybrid.json">../themes/hybrid.json</file>
+        <file alias="one-light.json">../themes/one-light.json</file>
+    </qresource>
 </RCC>
