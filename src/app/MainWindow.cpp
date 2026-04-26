@@ -208,6 +208,7 @@ void MainWindow::setupTitleBar() {
     tb->setTitle("");
     tb->setIcon(QIcon::fromTheme("utilities-terminal"));
     tb->setAutoHideOnFullscreen(true);
+    tb->setSwitchThemeMenuVisible(false);
 
     // Embed the tab bar into the DTK titlebar via a custom widget.
     ensureTabTitlebarWidget();
