@@ -121,8 +121,8 @@ VerticalTabSidebar::VerticalTabSidebar(QWidget *parent) : QWidget(parent) {
     content->setObjectName(QStringLiteral("verticalTabSidebarContent"));
     allowHorizontalShrink(content);
     m_layout = new QVBoxLayout(content);
-    m_layout->setContentsMargins(8, 8, 8, 8);
-    m_layout->setSpacing(8);
+    m_layout->setContentsMargins(6, 6, 6, 6);
+    m_layout->setSpacing(4);
     m_layout->addStretch(1);
 
     scrollArea->setWidget(content);
@@ -172,7 +172,7 @@ void VerticalTabSidebar::applyStylesheet() {
         }
         #verticalTabSection {
             border: 1px solid %2;
-            border-radius: 12px;
+            border-radius: 8px;
             background-color: %3;
         }
         #verticalTabSection:hover {
@@ -309,8 +309,8 @@ void VerticalTabSidebar::rebuild() {
         allowHorizontalShrink(section);
 
         auto *sectionLayout = new QVBoxLayout(section);
-        sectionLayout->setContentsMargins(6, 6, 6, 6);
-        sectionLayout->setSpacing(4);
+        sectionLayout->setContentsMargins(4, 2, 4, 2);
+        sectionLayout->setSpacing(2);
 
         auto *header = new QWidget(section);
         header->setObjectName(QStringLiteral("verticalTabHeader"));
@@ -318,7 +318,7 @@ void VerticalTabSidebar::rebuild() {
         allowHorizontalShrink(header);
 
         auto *headerLayout = new QHBoxLayout(header);
-        headerLayout->setContentsMargins(8, 6, 8, 6);
+        headerLayout->setContentsMargins(6, 4, 6, 4);
         headerLayout->setSpacing(6);
 
         const int paneCount = tab.panes.size();
@@ -381,7 +381,7 @@ void VerticalTabSidebar::rebuild() {
                 auto *paneRow = new QWidget(paneColumn);
                 allowHorizontalShrink(paneRow);
                 auto *paneRowLayout = new QHBoxLayout(paneRow);
-                paneRowLayout->setContentsMargins(8, 2, 4, 2);
+                paneRowLayout->setContentsMargins(6, 3, 4, 3);
                 paneRowLayout->setSpacing(6);
 
                 auto *paneBadge =
