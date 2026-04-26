@@ -863,13 +863,6 @@ void MainWindow::applyThemeToAll() {
             term->applyTheme(theme);
     }
 
-    auto *helper = DGuiApplicationHelper::instance();
-    QString setting = AppSettings::instance()->colorScheme();
-    if (setting == QStringLiteral("system"))
-        helper->setPaletteType(DGuiApplicationHelper::UnknownType);
-    else
-        helper->setPaletteType(theme.isDark ? DGuiApplicationHelper::DarkType : DGuiApplicationHelper::LightType);
-
     if (m_verticalSidebar)
         m_verticalSidebar->setDarkMode(theme.isDark);
 }
