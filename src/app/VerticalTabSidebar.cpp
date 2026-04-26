@@ -106,11 +106,13 @@ void VerticalTabSidebar::applyStylesheet() {
         return QStringLiteral("rgba(%1,%2,%3,%4)").arg(r).arg(g).arg(b).arg(a / 255.0, 0, 'f', 3);
     };
     QColor sidebarBg = pal.color(QPalette::Window);
-    QColor sectionBg = pal.color(QPalette::Base);
+    QColor sectionBg = pal.color(QPalette::Button);
     QColor text = pal.color(QPalette::WindowText);
     QColor highlight = pal.color(QPalette::Highlight);
-    QColor sectionHover = isDark ? sectionBg.lighter(110) : sectionBg.darker(105);
-    QColor sectionCurrent = blend(sectionBg, highlight, isDark ? 0.18 : 0.10);
+    QColor highlightedText = pal.color(QPalette::HighlightedText);
+    QColor sectionHover = isDark ? sectionBg.lighter(110) : sectionBg.darker(110);
+    QColor sectionBorder = isDark ? QColor(text.red(), text.green(), text.blue(), qRound(text.alpha() * 0.10))
+                                  : QColor(text.red(), text.green(), text.blue(), qRound(text.alpha() * 0.05));
 
     int ta = text.alpha();
 
@@ -202,14 +204,13 @@ void VerticalTabSidebar::applyStylesheet() {
             font-weight: 500;
         }
     )")
-            .arg(c(sidebarBg.red(), sidebarBg.green(), sidebarBg.blue(), qRound(sidebarBg.alpha() * 0.72)),
-                 c(text.red(), text.green(), text.blue(), qRound(ta * (isDark ? 0.05 : 0.08))),
-                 c(sectionBg.red(), sectionBg.green(), sectionBg.blue(), qRound(sectionBg.alpha() * 0.96)),
-                 c(sectionHover.red(), sectionHover.green(), sectionHover.blue(), qRound(sectionHover.alpha() * 0.98)),
-                 c(highlight.red(), highlight.green(), highlight.blue(), qRound(highlight.alpha() * 0.45)),
-                 c(sectionCurrent.red(), sectionCurrent.green(), sectionCurrent.blue(),
-                   qRound(sectionCurrent.alpha() * 0.98)),
-                 c(text.red(), text.green(), text.blue(), ta),
+            .arg(c(sidebarBg.red(), sidebarBg.green(), sidebarBg.blue(), sidebarBg.alpha()),
+                 c(sectionBorder.red(), sectionBorder.green(), sectionBorder.blue(), sectionBorder.alpha()),
+                 c(sectionBg.red(), sectionBg.green(), sectionBg.blue(), sectionBg.alpha()),
+                 c(sectionHover.red(), sectionHover.green(), sectionHover.blue(), sectionHover.alpha()),
+                 c(sectionBorder.red(), sectionBorder.green(), sectionBorder.blue(), sectionBorder.alpha()),
+                 c(highlight.red(), highlight.green(), highlight.blue(), highlight.alpha()),
+                 c(highlightedText.red(), highlightedText.green(), highlightedText.blue(), highlightedText.alpha()),
                  c(text.red(), text.green(), text.blue(), qRound(ta * 0.7)),
                  c(text.red(), text.green(), text.blue(), qRound(ta * 0.08)),
                  c(text.red(), text.green(), text.blue(), ta),
