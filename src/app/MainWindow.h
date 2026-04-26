@@ -15,6 +15,7 @@
 class QShortcut;
 class SettingsDialog;
 class QAction;
+class QActionGroup;
 class QSplitter;
 class QWidget;
 
@@ -95,6 +96,7 @@ private:
     VerticalTabSidebar *m_verticalSidebar = nullptr;
     QSplitter *m_mainSplitter = nullptr;
     QAction *m_verticalTabsAction = nullptr;
+    QActionGroup *m_themeGroup = nullptr;
     bool m_verticalTabsEnabled = false;
     int m_nextTabId = 1;
     QList<TabRecord> m_tabs;

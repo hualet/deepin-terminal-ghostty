@@ -7,6 +7,7 @@
 #include "ThemeLoader.h"
 #include "remote/ServerConfig.h"
 
+#include <QActionGroup>
 #include <QClipboard>
 #include <QContextMenuEvent>
 #include <QDebug>
@@ -521,17 +522,26 @@ void TermPane::showTerminalContextMenu(TerminalWidget *term, const QPoint &globa
     auto *themeMenu = menu.addMenu(tr("Theme"));
     QString currentScheme = AppSettings::instance()->colorScheme();
 
+    auto *themeGroup = new QActionGroup(themeMenu);
+    themeGroup->setExclusive(true);
+
     auto *lightAction = themeMenu->addAction(tr("Light"));
     lightAction->setCheckable(true);
     lightAction->setChecked(currentScheme == QStringLiteral("light"));
+    lightAction->setData(QStringLiteral("light"));
+    themeGroup->addAction(lightAction);
 
     auto *darkAction = themeMenu->addAction(tr("Dark"));
     darkAction->setCheckable(true);
     darkAction->setChecked(currentScheme == QStringLiteral("dark"));
+    darkAction->setData(QStringLiteral("dark"));
+    themeGroup->addAction(darkAction);
 
     auto *systemAction = themeMenu->addAction(tr("System"));
     systemAction->setCheckable(true);
     systemAction->setChecked(currentScheme == QStringLiteral("system"));
+    systemAction->setData(QStringLiteral("system"));
+    themeGroup->addAction(systemAction);
 
     themeMenu->addSeparator();
 
@@ -565,6 +575,7 @@ void TermPane::showTerminalContextMenu(TerminalWidget *term, const QPoint &globa
         act->setCheckable(true);
         act->setChecked(currentScheme == name);
         act->setData(name);
+        themeGroup->addAction(act);
         extraActions.append(act);
     }
 

@@ -15,6 +15,7 @@
 #include <DApplication>
 #include <DGuiApplicationHelper>
 #include <DTitlebar>
+#include <QActionGroup>
 #include <QDialog>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -119,7 +120,16 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
             m_verticalTabsAction->setChecked(enabled);
         setVerticalTabsEnabled(enabled);
     });
-    connect(settings, &AppSettings::colorSchemeChanged, this, [this]() { applyThemeToAll(); });
+    connect(settings, &AppSettings::colorSchemeChanged, this, [this]() {
+        applyThemeToAll();
+        if (m_themeGroup) {
+            QString scheme = AppSettings::instance()->colorScheme();
+            for (auto *act : m_themeGroup->actions()) {
+                if (act->data().toString() == scheme)
+                    act->setChecked(true);
+            }
+        }
+    });
     connect(DGuiApplicationHelper::instance(), &DGuiApplicationHelper::themeTypeChanged, this, [this]() {
         if (AppSettings::instance()->colorScheme() == QStringLiteral("system"))
             applyThemeToAll();
@@ -237,21 +247,31 @@ void MainWindow::setupTitleBar() {
     auto themes = ThemeLoader::loadThemes();
     QString currentScheme = AppSettings::instance()->colorScheme();
 
+    auto *themeGroup = new QActionGroup(themeMenu);
+    themeGroup->setExclusive(true);
+    m_themeGroup = themeGroup;
+
     auto *lightAction = themeMenu->addAction(tr("Light"));
     lightAction->setCheckable(true);
     lightAction->setChecked(currentScheme == QStringLiteral("light"));
+    lightAction->setData(QStringLiteral("light"));
+    themeGroup->addAction(lightAction);
     connect(lightAction, &QAction::triggered, this,
             [this]() { AppSettings::instance()->setColorScheme(QStringLiteral("light")); });
 
     auto *darkAction = themeMenu->addAction(tr("Dark"));
     darkAction->setCheckable(true);
     darkAction->setChecked(currentScheme == QStringLiteral("dark"));
+    darkAction->setData(QStringLiteral("dark"));
+    themeGroup->addAction(darkAction);
     connect(darkAction, &QAction::triggered, this,
             [this]() { AppSettings::instance()->setColorScheme(QStringLiteral("dark")); });
 
     auto *systemAction = themeMenu->addAction(tr("System"));
     systemAction->setCheckable(true);
     systemAction->setChecked(currentScheme == QStringLiteral("system"));
+    systemAction->setData(QStringLiteral("system"));
+    themeGroup->addAction(systemAction);
     connect(systemAction, &QAction::triggered, this,
             [this]() { AppSettings::instance()->setColorScheme(QStringLiteral("system")); });
 
@@ -286,6 +306,7 @@ void MainWindow::setupTitleBar() {
         act->setCheckable(true);
         act->setChecked(currentScheme == name);
         act->setData(name);
+        themeGroup->addAction(act);
         extraActions.append(act);
         connect(act, &QAction::triggered, this, [this, name]() { AppSettings::instance()->setColorScheme(name); });
     }
