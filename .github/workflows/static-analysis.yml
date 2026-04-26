@@ -40,6 +40,7 @@ jobs:
             --status-bugs \
             --use-cc=clang \
             --use-c++=clang++ \
+            --exclude /usr/include \
             cmake -S . -B build-analyzer -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=/usr
 
       - name: Run clang static analyzer
@@ -48,6 +49,7 @@ jobs:
             --status-bugs \
             --use-cc=clang \
             --use-c++=clang++ \
+            --exclude /usr/include \
             -o scan-build-reports \
             cmake --build build-analyzer --parallel "$(nproc)"
 
