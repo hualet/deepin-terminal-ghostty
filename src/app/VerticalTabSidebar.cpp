@@ -10,7 +10,6 @@
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
-#include <QStyle>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -41,17 +40,6 @@ void allowHorizontalShrink(QWidget *widget) {
     widget->setSizePolicy(policy);
 }
 
-QLabel *createBadge(const QString &objectName, QWidget *parent, QStyle::StandardPixmap iconType,
-                    const QString &toneProperty) {
-    auto *badge = new QLabel(parent);
-    badge->setObjectName(objectName);
-    badge->setProperty("tone", toneProperty);
-    badge->setFixedSize(kProcessBadgeSize, kProcessBadgeSize);
-    badge->setAlignment(Qt::AlignCenter);
-    badge->setPixmap(qApp->style()->standardIcon(iconType).pixmap(kProcessIconSize, kProcessIconSize));
-    return badge;
-}
-
 QLabel *createProcessBadge(const QString &objectName, QWidget *parent, const QString &iconName,
                            const QString &toneProperty) {
     auto *badge = new QLabel(parent);
@@ -67,17 +55,6 @@ QLabel *createProcessBadge(const QString &objectName, QWidget *parent, const QSt
         icon = QIcon(QStringLiteral(":/icons/process/terminal.svg"));
     badge->setPixmap(icon.pixmap(kProcessIconSize, kProcessIconSize));
     return badge;
-}
-
-QStyle::StandardPixmap tabBadgeIcon(int index) {
-    static const QStyle::StandardPixmap icons[] = {
-        QStyle::SP_ComputerIcon,
-        QStyle::SP_DriveHDIcon,
-        QStyle::SP_FileDialogContentsView,
-        QStyle::SP_DirHomeIcon,
-    };
-
-    return icons[index % (sizeof(icons) / sizeof(icons[0]))];
 }
 
 } // namespace
@@ -232,8 +209,7 @@ void VerticalTabSidebar::rebuild() {
         delete item;
     }
 
-    for (int tabIndex = 0; tabIndex < m_items.size(); ++tabIndex) {
-        const auto &tab = m_items.at(tabIndex);
+    for (const auto &tab : m_items) {
         auto *section = new QFrame(this);
         section->setObjectName(QStringLiteral("verticalTabSection"));
         section->setProperty("tabId", tab.id);
@@ -253,6 +229,9 @@ void VerticalTabSidebar::rebuild() {
         headerLayout->setContentsMargins(8, 6, 8, 6);
         headerLayout->setSpacing(6);
 
+        const int paneCount = tab.panes.size();
+        const bool isMultiPane = paneCount > 1;
+
         auto *expandButton = new QToolButton(header);
         expandButton->setObjectName(QStringLiteral("verticalTabExpandButton"));
         expandButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -261,10 +240,15 @@ void VerticalTabSidebar::rebuild() {
         expandButton->setFixedSize(16, 16);
         expandButton->setProperty("tabId", tab.id);
         expandButton->setProperty("expanded", tab.expanded);
+        expandButton->setVisible(isMultiPane);
         connect(expandButton, &QToolButton::clicked, this, [this, tab]() { emit tabExpansionToggled(tab.id); });
 
-        auto *tabBadge = createBadge(QStringLiteral("verticalTabBadge"), header, tabBadgeIcon(tabIndex),
-                                     tab.isCurrent ? QStringLiteral("bright") : QStringLiteral("muted"));
+        auto *tabBadge =
+            createProcessBadge(QStringLiteral("verticalTabBadge"), header,
+                               isMultiPane ? QString() : (paneCount == 1 ? tab.panes.first().iconName : QString()),
+                               tab.isCurrent ? QStringLiteral("bright") : QStringLiteral("muted"));
+        tabBadge->setVisible(!isMultiPane);
+
         auto *tabButton = createButton(QStringLiteral("verticalTabButton"), tab.title, header);
         tabButton->setCheckable(true);
         tabButton->setChecked(tab.isCurrent);
@@ -278,7 +262,7 @@ void VerticalTabSidebar::rebuild() {
 
         sectionLayout->addWidget(header);
 
-        if (tab.expanded) {
+        if (tab.expanded && isMultiPane) {
             auto *paneList = new QWidget(section);
             paneList->setObjectName(QStringLiteral("verticalPaneList"));
             paneList->setProperty("tabId", tab.id);

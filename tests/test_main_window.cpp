@@ -704,6 +704,12 @@ void TestMainWindow::testVerticalSidebarElidesLabelsWhenNarrow() {
     pane.isActive = true;
     item.panes.append(pane);
 
+    TermPane::PaneInfo pane2;
+    pane2.id = QUuid::createUuid();
+    pane2.title = QStringLiteral("Second pane");
+    pane2.isActive = false;
+    item.panes.append(pane2);
+
     sidebar.setItems({item});
     sidebar.show();
     QVERIFY(QTest::qWaitForWindowExposed(&sidebar));
