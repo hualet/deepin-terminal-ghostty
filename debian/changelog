@@ -1,3 +1,24 @@
+deepin-terminal-ghostty (0.5.0-1) unstable; urgency=medium
+
+  * Add terminal color scheme support with built-in dark, light, and custom
+    theme JSON files. Theme can be switched from the context menu or
+    titlebar menu, or set to follow the system color scheme automatically.
+  * Synchronize sidebar styling with DTK palette so the vertical tab bar
+    matches the horizontal DTabBar across light, dark, and custom themes.
+  * Add Theme submenu to both the terminal context menu and titlebar menu,
+    with Light / Dark / System options and translations in zh_CN and es.
+  * Reorder titlebar menu entries and add About and Exit from DTK defaults.
+  * Fix terminal content disappearing and flickering during window resize
+    by forcing a full redraw when the back buffer is recreated.
+  * Fix split pane terminals rendering with default colors instead of the
+    active theme by applying theme in TermPane::createTerminal().
+  * Fix invisible splitter handles and sidebar section borders caused by
+    DTK palette integration overriding default style colors.
+  * Disable DTK built-in switch-theme menu to avoid duplication with the
+    new Theme submenu.
+
+ -- Deepin Packages <packages@deepin.org>  Sun, 26 Apr 2026 00:00:00 +0800
+
 deepin-terminal-ghostty (0.4.0-1) unstable; urgency=medium
 
   * Add shell integration that reports running commands via OSC sequences and

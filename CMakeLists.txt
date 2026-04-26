@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(deepin-terminal-ghostty
-  VERSION 0.4.0
+  VERSION 0.5.0
   LANGUAGES CXX
 )
 
