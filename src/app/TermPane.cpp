@@ -12,7 +12,9 @@
 #include <QFile>
 #include <QGuiApplication>
 #include <QKeyEvent>
+#include <QMap>
 #include <QMenu>
+#include <QProcess>
 #include <QRandomGenerator>
 #include <QResizeEvent>
 #include <QSplitter>
@@ -58,6 +60,66 @@ QUuid ensurePaneId(TerminalWidget *term) {
 
 QString paneTitle(TerminalWidget *term) {
     return term->property("currentTitle").toString();
+}
+
+QString commandIconName(const QString &command) {
+    if (command.isEmpty())
+        return {};
+
+    static const QMap<QString, QString> kIconNames = {
+        {QStringLiteral("claude-code"), QStringLiteral("claude")},
+        {QStringLiteral("github-copilot"), QStringLiteral("github-copilot")},
+        {QStringLiteral("qwen-code"), QStringLiteral("qwen")},
+        {QStringLiteral("codex"), QStringLiteral("codex")},
+        {QStringLiteral("claude"), QStringLiteral("claude")},
+        {QStringLiteral("gemini"), QStringLiteral("gemini")},
+        {QStringLiteral("aider"), QStringLiteral("aider")},
+        {QStringLiteral("opencode"), QStringLiteral("opencode")},
+        {QStringLiteral("goose"), QStringLiteral("goose")},
+        {QStringLiteral("qwen"), QStringLiteral("qwen")},
+        {QStringLiteral("ssh"), QStringLiteral("shell")},
+        {QStringLiteral("mosh"), QStringLiteral("shell")},
+        {QStringLiteral("docker"), QStringLiteral("docker")},
+        {QStringLiteral("podman"), QStringLiteral("podman")},
+        {QStringLiteral("kubectl"), QStringLiteral("kubernetes")},
+        {QStringLiteral("helm"), QStringLiteral("helm")},
+        {QStringLiteral("nvim"), QStringLiteral("nvim")},
+        {QStringLiteral("vim"), QStringLiteral("vim")},
+        {QStringLiteral("nano"), QStringLiteral("nano")},
+        {QStringLiteral("emacs"), QStringLiteral("emacs")},
+        {QStringLiteral("htop"), QStringLiteral("htop")},
+        {QStringLiteral("btop"), QStringLiteral("htop")},
+        {QStringLiteral("top"), QStringLiteral("htop")},
+    };
+
+    const QString normalizedCommand = command.toLower();
+    for (auto it = kIconNames.constBegin(); it != kIconNames.constEnd(); ++it) {
+        if (normalizedCommand.contains(it.key()))
+            return it.value();
+    }
+
+    const QStringList tokens = QProcess::splitCommand(command);
+    for (const QString &token : tokens) {
+        const QString normalizedToken = token.toLower();
+        for (auto it = kIconNames.constBegin(); it != kIconNames.constEnd(); ++it) {
+            if (normalizedToken.contains(it.key()))
+                return it.value();
+        }
+    }
+
+    return {};
+}
+
+QString iconNameForPane(TerminalWidget *term) {
+    if (!term)
+        return QStringLiteral("terminal");
+
+    const QString shellCommand = term->property("shellCommand").toString();
+    const QString shellIcon = commandIconName(shellCommand);
+    if (!shellIcon.isEmpty())
+        return shellIcon;
+
+    return QStringLiteral("terminal");
 }
 
 TerminalWidget *firstTerminalWidget(QWidget *widget) {
@@ -120,6 +182,7 @@ QList<TermPane::PaneInfo> TermPane::paneInfos() const {
         PaneInfo info;
         info.id = term->property("paneId").toUuid();
         info.title = paneTitle(term);
+        info.iconName = iconNameForPane(term);
         info.isActive = (term == m_currentTerm);
         infos.append(info);
     }
@@ -187,6 +250,8 @@ void TermPane::setupTerminalConnections(TerminalWidget *term) {
             Q_EMIT startupSessionExited(exitCode);
         }
     });
+    connect(term, &TerminalWidget::shellCommandChanged, this,
+            [this, term](const QString &) { Q_EMIT paneTitleChanged(ensurePaneId(term), paneTitle(term)); });
     connect(term, &TerminalWidget::sessionClosed, this, [this, term]() { removeTerminal(term); });
     connect(term, &TerminalWidget::focusGained, this, [this, term]() { setCurrentTerminal(term); });
 }

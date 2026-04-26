@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QString>
+#include <QStringList>
 
 #include <sys/types.h>
 
@@ -54,6 +55,7 @@ private:
     void reapChildNonBlocking();
     bool setMasterNonBlocking();
     bool setMasterCloseOnExec();
+    void removeShellIntegrationTempDirs();
 
     int m_masterFd{-1};
     pid_t m_childPid{-1};
@@ -68,4 +70,5 @@ private:
     bool m_childHupSent{false};
     bool m_childKillSent{false};
     int m_childShutdownElapsedMs{0};
+    QStringList m_shellIntegrationTempDirs;
 };

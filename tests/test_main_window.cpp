@@ -15,7 +15,9 @@
 #include <QAbstractButton>
 #include <QAction>
 #include <QFile>
+#include <QIcon>
 #include <QPointer>
+#include <QScrollArea>
 #include <QSignalSpy>
 #include <QStackedWidget>
 #include <QStandardPaths>
@@ -47,6 +49,7 @@ private slots:
     void testTermPaneReportsPaneSnapshotsAfterSplit();
     void testClosingRepeatedSameDirectionSplitsPreservesSiblings();
     void testCloseOtherTerminalsPublishesSingleStructureChange();
+    void testTermPaneReportsProcessIconNames();
     void testAppTerminalsSetTerminalContentMargins();
     void testVerticalTabsActionReflectsAndUpdatesSettings();
     void testVerticalTabsActionTracksExternalSettingChanges();
@@ -57,6 +60,8 @@ private slots:
     void testHorizontalTitlebarTabsSurviveModeSwitch();
     void testVerticalSidebarTabClickSwitchesCurrentTab();
     void testVerticalSidebarIncludesDecorativeHierarchyElements();
+    void testVerticalSidebarElidesLabelsWhenNarrow();
+    void testProcessIconsAreAvailable();
     void testLoggingCategoriesExposeExpectedNames();
     void testApplicationMetadataIsConfigured();
     void testStartupSessionFinishedEmitsExitCode();
@@ -419,6 +424,33 @@ void TestMainWindow::testCloseOtherTerminalsPublishesSingleStructureChange() {
     QCOMPARE(structureSpy.count(), 1);
 }
 
+void TestMainWindow::testTermPaneReportsProcessIconNames() {
+    ExposedTermPane pane;
+    pane.resize(1200, 800);
+    pane.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&pane));
+
+    auto *terminal = pane.currentTerminal();
+    QVERIFY(terminal);
+    terminal->setProperty("shellCommand", QStringLiteral("bash -lc 'npx codex'"));
+
+    const auto infos = pane.paneInfos();
+    QCOMPARE(infos.size(), 1);
+    QCOMPARE(infos.first().iconName, QStringLiteral("codex"));
+
+    terminal->setProperty("shellCommand", QStringLiteral("bash -lc 'python -m aider'"));
+    QCOMPARE(pane.paneInfos().first().iconName, QStringLiteral("aider"));
+
+    terminal->setProperty("shellCommand", QStringLiteral("bash -lc 'docker compose up'"));
+    QCOMPARE(pane.paneInfos().first().iconName, QStringLiteral("docker"));
+
+    terminal->setProperty("shellCommand", QStringLiteral("claude --dangerously-skip-permissions"));
+    QCOMPARE(pane.paneInfos().first().iconName, QStringLiteral("claude"));
+
+    terminal->setProperty("shellCommand", QString());
+    QCOMPARE(pane.paneInfos().first().iconName, QStringLiteral("terminal"));
+}
+
 void TestMainWindow::testAppTerminalsSetTerminalContentMargins() {
     ExposedTermPane pane;
     pane.resize(1200, 800);
@@ -654,6 +686,57 @@ void TestMainWindow::testVerticalSidebarIncludesDecorativeHierarchyElements() {
     QTRY_VERIFY(verticalSidebar->findChild<QWidget *>(QStringLiteral("verticalTabBadge")));
     QTRY_VERIFY(verticalSidebar->findChild<QWidget *>(QStringLiteral("verticalPaneGuide")));
     QTRY_VERIFY(verticalSidebar->findChild<QWidget *>(QStringLiteral("verticalPaneBadge")));
+}
+
+void TestMainWindow::testVerticalSidebarElidesLabelsWhenNarrow() {
+    VerticalTabSidebar sidebar;
+    sidebar.resize(110, 400);
+
+    VerticalTabSidebar::TabItem item;
+    item.id = 1;
+    item.title = QStringLiteral("Very long terminal tab label that must be elided");
+    item.isCurrent = true;
+    item.expanded = true;
+
+    TermPane::PaneInfo pane;
+    pane.id = QUuid::createUuid();
+    pane.title = QStringLiteral("Very long pane title that must not overflow the sidebar");
+    pane.isActive = true;
+    item.panes.append(pane);
+
+    sidebar.setItems({item});
+    sidebar.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&sidebar));
+    QCoreApplication::processEvents();
+
+    auto *scrollArea = sidebar.findChild<QScrollArea *>(QStringLiteral("verticalTabSidebarScrollArea"));
+    QVERIFY(scrollArea);
+    QVERIFY(scrollArea->widget());
+    QVERIFY(scrollArea->widget()->width() <= scrollArea->viewport()->width());
+
+    auto *tabButton = sidebar.findChild<QAbstractButton *>(QStringLiteral("verticalTabButton"));
+    auto *paneButton = sidebar.findChild<QAbstractButton *>(QStringLiteral("verticalPaneButton"));
+    QVERIFY(tabButton);
+    QVERIFY(paneButton);
+    QVERIFY(tabButton->text().contains(QChar(0x2026)));
+    QVERIFY(paneButton->text().contains(QChar(0x2026)));
+}
+
+void TestMainWindow::testProcessIconsAreAvailable() {
+    const QStringList iconNames = {
+        QStringLiteral("codex"),          QStringLiteral("claude"),   QStringLiteral("gemini"),
+        QStringLiteral("aider"),          QStringLiteral("opencode"), QStringLiteral("goose"),
+        QStringLiteral("github-copilot"), QStringLiteral("qwen"),     QStringLiteral("shell"),
+        QStringLiteral("docker"),         QStringLiteral("podman"),   QStringLiteral("kubernetes"),
+        QStringLiteral("helm"),           QStringLiteral("vim"),      QStringLiteral("nvim"),
+        QStringLiteral("nano"),           QStringLiteral("emacs"),    QStringLiteral("htop"),
+        QStringLiteral("terminal"),
+    };
+
+    for (const QString &iconName : iconNames) {
+        const QString path = QStringLiteral(":/icons/process/%1.svg").arg(iconName);
+        QVERIFY2(!QIcon(path).isNull(), qPrintable(path));
+    }
 }
 
 int main(int argc, char *argv[]) {

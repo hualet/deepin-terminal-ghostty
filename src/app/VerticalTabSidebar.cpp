@@ -5,6 +5,7 @@
 #include <QFontMetrics>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QPushButton>
 #include <QResizeEvent>
@@ -16,14 +17,28 @@
 
 namespace {
 
+constexpr int kProcessBadgeSize = 24;
+constexpr int kProcessIconSize = 16;
+
 QPushButton *createButton(const QString &objectName, const QString &text, QWidget *parent) {
     auto *button = new QPushButton(parent);
     button->setObjectName(objectName);
     button->setText(text);
     button->setFlat(true);
-    button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    button->setMinimumWidth(0);
+    button->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     button->setProperty("_fullText", text);
     return button;
+}
+
+void allowHorizontalShrink(QWidget *widget) {
+    if (!widget)
+        return;
+
+    widget->setMinimumWidth(0);
+    QSizePolicy policy = widget->sizePolicy();
+    policy.setHorizontalPolicy(QSizePolicy::Ignored);
+    widget->setSizePolicy(policy);
 }
 
 QLabel *createBadge(const QString &objectName, QWidget *parent, QStyle::StandardPixmap iconType,
@@ -31,9 +46,26 @@ QLabel *createBadge(const QString &objectName, QWidget *parent, QStyle::Standard
     auto *badge = new QLabel(parent);
     badge->setObjectName(objectName);
     badge->setProperty("tone", toneProperty);
-    badge->setFixedSize(24, 24);
+    badge->setFixedSize(kProcessBadgeSize, kProcessBadgeSize);
     badge->setAlignment(Qt::AlignCenter);
-    badge->setPixmap(qApp->style()->standardIcon(iconType).pixmap(14, 14));
+    badge->setPixmap(qApp->style()->standardIcon(iconType).pixmap(kProcessIconSize, kProcessIconSize));
+    return badge;
+}
+
+QLabel *createProcessBadge(const QString &objectName, QWidget *parent, const QString &iconName,
+                           const QString &toneProperty) {
+    auto *badge = new QLabel(parent);
+    badge->setObjectName(objectName);
+    badge->setProperty("tone", toneProperty);
+    badge->setFixedSize(kProcessBadgeSize, kProcessBadgeSize);
+    badge->setAlignment(Qt::AlignCenter);
+
+    const QString resourcePath =
+        QStringLiteral(":/icons/process/%1.svg").arg(iconName.isEmpty() ? QStringLiteral("terminal") : iconName);
+    QIcon icon(resourcePath);
+    if (icon.isNull())
+        icon = QIcon(QStringLiteral(":/icons/process/terminal.svg"));
+    badge->setPixmap(icon.pixmap(kProcessIconSize, kProcessIconSize));
     return badge;
 }
 
@@ -43,17 +75,6 @@ QStyle::StandardPixmap tabBadgeIcon(int index) {
         QStyle::SP_DriveHDIcon,
         QStyle::SP_FileDialogContentsView,
         QStyle::SP_DirHomeIcon,
-    };
-
-    return icons[index % (sizeof(icons) / sizeof(icons[0]))];
-}
-
-QStyle::StandardPixmap paneBadgeIcon(int index) {
-    static const QStyle::StandardPixmap icons[] = {
-        QStyle::SP_FileIcon,
-        QStyle::SP_DialogResetButton,
-        QStyle::SP_CommandLink,
-        QStyle::SP_BrowserReload,
     };
 
     return icons[index % (sizeof(icons) / sizeof(icons[0]))];
@@ -72,9 +93,11 @@ VerticalTabSidebar::VerticalTabSidebar(QWidget *parent) : QWidget(parent) {
     scrollArea->setObjectName(QStringLiteral("verticalTabSidebarScrollArea"));
     scrollArea->setFrameShape(QFrame::NoFrame);
     scrollArea->setWidgetResizable(true);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
     auto *content = new QWidget(scrollArea);
     content->setObjectName(QStringLiteral("verticalTabSidebarContent"));
+    allowHorizontalShrink(content);
     m_layout = new QVBoxLayout(content);
     m_layout->setContentsMargins(8, 8, 8, 8);
     m_layout->setSpacing(8);
@@ -195,7 +218,7 @@ void VerticalTabSidebar::updateButtonElisions() {
 
 void VerticalTabSidebar::resizeEvent(QResizeEvent *event) {
     QWidget::resizeEvent(event);
-    updateButtonElisions();
+    QTimer::singleShot(0, this, &VerticalTabSidebar::updateButtonElisions);
 }
 
 void VerticalTabSidebar::rebuild() {
@@ -215,6 +238,7 @@ void VerticalTabSidebar::rebuild() {
         section->setObjectName(QStringLiteral("verticalTabSection"));
         section->setProperty("tabId", tab.id);
         section->setProperty("isCurrent", tab.isCurrent);
+        allowHorizontalShrink(section);
 
         auto *sectionLayout = new QVBoxLayout(section);
         sectionLayout->setContentsMargins(6, 6, 6, 6);
@@ -223,6 +247,7 @@ void VerticalTabSidebar::rebuild() {
         auto *header = new QWidget(section);
         header->setObjectName(QStringLiteral("verticalTabHeader"));
         header->setProperty("tabId", tab.id);
+        allowHorizontalShrink(header);
 
         auto *headerLayout = new QHBoxLayout(header);
         headerLayout->setContentsMargins(8, 6, 8, 6);
@@ -257,6 +282,7 @@ void VerticalTabSidebar::rebuild() {
             auto *paneList = new QWidget(section);
             paneList->setObjectName(QStringLiteral("verticalPaneList"));
             paneList->setProperty("tabId", tab.id);
+            allowHorizontalShrink(paneList);
 
             auto *paneListLayout = new QHBoxLayout(paneList);
             paneListLayout->setContentsMargins(10, 0, 4, 0);
@@ -268,6 +294,7 @@ void VerticalTabSidebar::rebuild() {
             paneListLayout->addWidget(paneGuide);
 
             auto *paneColumn = new QWidget(paneList);
+            allowHorizontalShrink(paneColumn);
             auto *paneLayout = new QVBoxLayout(paneColumn);
             paneLayout->setContentsMargins(0, 0, 0, 0);
             paneLayout->setSpacing(2);
@@ -276,12 +303,14 @@ void VerticalTabSidebar::rebuild() {
                 const auto &pane = tab.panes.at(paneIndex);
                 const QString paneTitle = pane.title.isEmpty() ? tr("Terminal") : pane.title;
                 auto *paneRow = new QWidget(paneColumn);
+                allowHorizontalShrink(paneRow);
                 auto *paneRowLayout = new QHBoxLayout(paneRow);
                 paneRowLayout->setContentsMargins(8, 2, 4, 2);
                 paneRowLayout->setSpacing(6);
 
-                auto *paneBadge = createBadge(QStringLiteral("verticalPaneBadge"), paneRow, paneBadgeIcon(paneIndex),
-                                              pane.isActive ? QStringLiteral("bright") : QStringLiteral("muted"));
+                auto *paneBadge =
+                    createProcessBadge(QStringLiteral("verticalPaneBadge"), paneRow, pane.iconName,
+                                       pane.isActive ? QStringLiteral("bright") : QStringLiteral("muted"));
                 auto *paneButton = createButton(QStringLiteral("verticalPaneButton"), paneTitle, paneRow);
                 paneButton->setCheckable(true);
                 paneButton->setChecked(pane.isActive);

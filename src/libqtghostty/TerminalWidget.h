@@ -54,6 +54,7 @@ public:
 
 signals:
     void terminalTitleChanged(const QString &title);
+    void shellCommandChanged(const QString &command);
     void sessionExited(int exitCode);
     void sessionClosed();
     void focusGained();
@@ -101,6 +102,8 @@ private:
     void notifyInputMethodCursorChange();
     void scheduleTerminalRepaint();
     void flushPendingPtyData();
+    void scanShellIntegrationSequences(const QByteArray &data);
+    void setShellCommand(const QString &command);
 
     void updateSearchHighlight();
     QString textForScreenRow(int row) const;
@@ -130,6 +133,7 @@ private:
     PtySession *m_ptySession = nullptr;
     PtySession::StartOptions m_startOptions;
     bool m_hasStartOptions = false;
+    QByteArray m_oscScanBuffer;
     QByteArray m_pendingPtyData;
     QTimer *m_renderTimer = nullptr;
     QTimer *m_resizeTimer = nullptr;

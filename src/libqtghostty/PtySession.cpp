@@ -3,6 +3,9 @@
 #include "logging/Logging.h"
 
 #include <QDebug>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QSocketNotifier>
 #include <QTimer>
 #include <QtGlobal>
@@ -16,6 +19,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -32,6 +36,12 @@ constexpr int kChildDestructionGraceMs = 300;
 constexpr int kMaxPendingWriteBytes = 1024 * 1024;
 constexpr int kReadChunkBytes = 64 * 1024;
 constexpr const char kTermEnv[] = "TERM=xterm-256color";
+
+struct ShellIntegration {
+    std::vector<std::string> shellArgs;
+    std::vector<std::string> extraEnv;
+    QString tempDir;
+};
 
 int normalizedExitCode(int status) {
     if (WIFEXITED(status))
@@ -56,6 +66,128 @@ std::string resolveShellPath() {
 
     qCWarning(ptyLog) << "Falling back to /bin/sh because no user shell was available";
     return "/bin/sh";
+}
+
+QString createTempDir() {
+    QByteArray templ = QFile::encodeName(QDir::tempPath() + QStringLiteral("/deepin-terminal-ghostty-shell-XXXXXX"));
+    if (::mkdtemp(templ.data()) == nullptr) {
+        qCWarning(ptyLog) << "Failed to create shell integration temp dir with errno" << errno;
+        return {};
+    }
+
+    return QFile::decodeName(templ.constData());
+}
+
+bool writeTextFile(const QString &path, const QByteArray &content) {
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        qCWarning(ptyLog) << "Failed to open shell integration file" << path << file.errorString();
+        return false;
+    }
+
+    if (file.write(content) != content.size()) {
+        qCWarning(ptyLog) << "Failed to write shell integration file" << path << file.errorString();
+        return false;
+    }
+
+    return true;
+}
+
+QByteArray shellIntegrationPrelude() {
+    return R"SH(
+__deepin_terminal_ghostty_emit_command() {
+    printf '\033]777;ShellCommand=%s\033\\' "$(printf '%s' "$1" | base64 | tr -d '\n')"
+}
+__deepin_terminal_ghostty_clear_command() {
+    printf '\033]777;ShellCommand=\033\\'
+}
+)SH";
+}
+
+ShellIntegration shellIntegrationFor(const std::string &shellPath) {
+    ShellIntegration integration;
+    integration.shellArgs.push_back(shellPath);
+
+    const QString shell = QFileInfo(QString::fromStdString(shellPath)).fileName();
+    if (shell == QStringLiteral("bash")) {
+        const QString tempDir = createTempDir();
+        if (tempDir.isEmpty())
+            return integration;
+
+        const QString rcPath = tempDir + QStringLiteral("/bashrc");
+        const QByteArray content = QByteArray(R"SH(
+if [ -r "$HOME/.bashrc" ]; then
+    . "$HOME/.bashrc"
+fi
+)SH") + shellIntegrationPrelude() + QByteArray(R"SH(
+__deepin_terminal_ghostty_inside_preexec=0
+__deepin_terminal_ghostty_preexec() {
+    local command="${BASH_COMMAND:-}"
+    if [ "$__deepin_terminal_ghostty_inside_preexec" = 1 ] || [ -z "$command" ]; then
+        return
+    fi
+    case "$command" in
+        __deepin_terminal_ghostty_*|trap\ * )
+            return
+            ;;
+    esac
+    __deepin_terminal_ghostty_inside_preexec=1
+    __deepin_terminal_ghostty_emit_command "$command"
+    __deepin_terminal_ghostty_inside_preexec=0
+}
+trap '__deepin_terminal_ghostty_preexec' DEBUG
+PROMPT_COMMAND="__deepin_terminal_ghostty_clear_command${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+)SH");
+
+        integration.tempDir = tempDir;
+
+        if (!writeTextFile(rcPath, content))
+            return integration;
+
+        integration.shellArgs = {shellPath, "--rcfile", QFile::encodeName(rcPath).constData(), "-i"};
+        return integration;
+    }
+
+    if (shell == QStringLiteral("zsh")) {
+        const QString tempDir = createTempDir();
+        if (tempDir.isEmpty())
+            return integration;
+
+        const QString rcPath = tempDir + QStringLiteral("/.zshrc");
+        const QByteArray content = QByteArray(R"SH(
+if [ -r "$HOME/.zshrc" ]; then
+    source "$HOME/.zshrc"
+fi
+)SH") + shellIntegrationPrelude() + QByteArray(R"SH(
+__deepin_terminal_ghostty_preexec() {
+    emulate -L zsh
+    __deepin_terminal_ghostty_emit_command "$1"
+}
+__deepin_terminal_ghostty_precmd() {
+    emulate -L zsh
+    __deepin_terminal_ghostty_clear_command
+}
+autoload -Uz add-zsh-hook 2>/dev/null
+if (( $+functions[add-zsh-hook] )); then
+    add-zsh-hook preexec __deepin_terminal_ghostty_preexec
+    add-zsh-hook precmd __deepin_terminal_ghostty_precmd
+else
+    preexec_functions+=(__deepin_terminal_ghostty_preexec)
+    precmd_functions+=(__deepin_terminal_ghostty_precmd)
+fi
+)SH");
+
+        integration.tempDir = tempDir;
+
+        if (!writeTextFile(rcPath, content))
+            return integration;
+
+        integration.shellArgs = {shellPath, "-i"};
+        integration.extraEnv.push_back(("ZDOTDIR=" + QFile::encodeName(tempDir)).constData());
+        return integration;
+    }
+
+    return integration;
 }
 
 void applyWindowSize(int fd, int cols, int rows, int cellWidthPx, int cellHeightPx) {
@@ -308,15 +440,22 @@ bool PtySession::spawn(int cols, int rows, const StartOptions &options) {
     const std::string shellPath = resolveShellPath();
     const QByteArray command = options.command.toUtf8();
     const QByteArray workingDirectory = options.workingDirectory.toUtf8();
+    ShellIntegration shellIntegration;
+    if (command.isEmpty())
+        shellIntegration = shellIntegrationFor(shellPath);
     std::vector<std::string> envStorage;
     std::vector<char *> envp;
 
     for (char **entry = environ; entry != nullptr && *entry != nullptr; ++entry) {
         if (std::strncmp(*entry, "TERM=", 5) == 0)
             continue;
+        if (!shellIntegration.extraEnv.empty() && std::strncmp(*entry, "ZDOTDIR=", 7) == 0)
+            continue;
         envStorage.emplace_back(*entry);
     }
     envStorage.emplace_back(kTermEnv);
+    for (const std::string &entry : shellIntegration.extraEnv)
+        envStorage.emplace_back(entry);
 
     envp.reserve(static_cast<size_t>(envStorage.size()) + 1);
     for (std::string &entry : envStorage)
@@ -349,11 +488,13 @@ bool PtySession::spawn(int cols, int rows, const StartOptions &options) {
             _exit(127);
         }
 
-        char *const argv[] = {
-            const_cast<char *>(shellPath.c_str()),
-            nullptr,
-        };
-        ::execve(shellPath.c_str(), argv, envp.data());
+        std::vector<char *> argv;
+        argv.reserve(shellIntegration.shellArgs.size() + 1);
+        for (std::string &arg : shellIntegration.shellArgs)
+            argv.push_back(arg.data());
+        argv.push_back(nullptr);
+
+        ::execve(shellPath.c_str(), argv.data(), envp.data());
         _exit(127);
     }
 
@@ -367,6 +508,8 @@ bool PtySession::spawn(int cols, int rows, const StartOptions &options) {
     m_childHupSent = false;
     m_childKillSent = false;
     m_childShutdownElapsedMs = 0;
+    if (!shellIntegration.tempDir.isEmpty())
+        m_shellIntegrationTempDirs.append(shellIntegration.tempDir);
 
     if (!setMasterNonBlocking()) {
         qCWarning(ptyLog) << "Failed to enable non-blocking mode on PTY master";
@@ -395,6 +538,7 @@ void PtySession::cleanup(bool signalChild) {
     destroyNotifiers();
     m_writeBuffer.clear();
     m_writeBufferOffset = 0;
+    removeShellIntegrationTempDirs();
 
     if (!closeMaster()) {
         return;
@@ -414,6 +558,7 @@ void PtySession::cleanupSynchronously(bool signalChild) {
     }
     m_writeBuffer.clear();
     m_writeBufferOffset = 0;
+    removeShellIntegrationTempDirs();
 
     if (m_masterFd >= 0) {
         ::close(m_masterFd);
@@ -427,6 +572,7 @@ bool PtySession::closeMaster() {
     destroyNotifiers();
     m_writeBuffer.clear();
     m_writeBufferOffset = 0;
+    removeShellIntegrationTempDirs();
 
     if (m_masterFd >= 0) {
         ::close(m_masterFd);
@@ -446,6 +592,12 @@ void PtySession::destroyNotifiers() {
         delete m_writeNotifier;
         m_writeNotifier = nullptr;
     }
+}
+
+void PtySession::removeShellIntegrationTempDirs() {
+    for (const QString &path : std::as_const(m_shellIntegrationTempDirs))
+        QDir(path).removeRecursively();
+    m_shellIntegrationTempDirs.clear();
 }
 
 bool PtySession::maybeEmitSessionClosed() {

@@ -21,6 +21,7 @@ public:
     struct PaneInfo {
         QUuid id;
         QString title;
+        QString iconName;
         bool isActive = false;
     };
 

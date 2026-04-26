@@ -10,10 +10,12 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QUrl>
 #include <QWheelEvent>
 
 #include <algorithm>
 #include <cstdio>
+#include <optional>
 
 namespace {
 
@@ -21,6 +23,8 @@ constexpr int kInitialPtyCoalesceIntervalMs = 1;
 constexpr int kBurstRenderIntervalMs = 8;
 constexpr int kResizeCoalesceIntervalMs = 8;
 constexpr int kImmediatePtyFlushBytes = 32 * 1024;
+constexpr int kMaxOscScanBufferBytes = 16 * 1024;
+
 void appendCodepoint(QString &text, uint32_t codepoint) {
     if (codepoint <= 0xFFFF) {
         text.append(QChar(static_cast<ushort>(codepoint)));
@@ -33,6 +37,115 @@ void appendCodepoint(QString &text, uint32_t codepoint) {
     }
 
     text.append(QChar::ReplacementCharacter);
+}
+
+QString decodeVscodeOsc633Value(const QByteArray &encoded) {
+    QString decoded;
+    decoded.reserve(encoded.size());
+
+    for (int i = 0; i < encoded.size(); ++i) {
+        const char ch = encoded.at(i);
+        if (ch != '\\') {
+            decoded.append(QChar::fromLatin1(ch));
+            continue;
+        }
+
+        if (i + 1 >= encoded.size()) {
+            decoded.append(QChar::fromLatin1(ch));
+            continue;
+        }
+
+        const char next = encoded.at(i + 1);
+        if (next == '\\') {
+            decoded.append(QChar::fromLatin1('\\'));
+            ++i;
+            continue;
+        }
+
+        if (next == 'x' && i + 3 < encoded.size()) {
+            bool ok = false;
+            const int code = encoded.mid(i + 2, 2).toInt(&ok, 16);
+            if (ok) {
+                decoded.append(QChar(static_cast<ushort>(code)));
+                i += 3;
+                continue;
+            }
+        }
+
+        decoded.append(QChar::fromLatin1(ch));
+    }
+
+    return decoded;
+}
+
+QString commandFromVscodeOsc633(const QByteArray &payload) {
+    static constexpr QByteArrayView kPrefix("633;E;");
+    if (!payload.startsWith(kPrefix))
+        return {};
+
+    const QByteArray parameters = payload.mid(kPrefix.size());
+    const int nonceSeparator = parameters.indexOf(';');
+    const QByteArray encodedCommand = nonceSeparator < 0 ? parameters : parameters.left(nonceSeparator);
+    return decodeVscodeOsc633Value(encodedCommand).trimmed();
+}
+
+QString commandFromWezTermUserVar(const QByteArray &payload) {
+    static constexpr QByteArrayView kPrefix("1337;SetUserVar=WEZTERM_PROG=");
+    if (!payload.startsWith(kPrefix))
+        return {};
+
+    return QString::fromUtf8(QByteArray::fromBase64(payload.mid(kPrefix.size()))).trimmed();
+}
+
+QString commandFromFinalTermOsc133(const QByteArray &payload) {
+    if (!payload.startsWith("133;"))
+        return {};
+
+    const QList<QByteArray> parameters = payload.split(';');
+    for (const QByteArray &parameter : parameters) {
+        static constexpr QByteArrayView kPrefix("cmdline_url=");
+        if (!parameter.startsWith(kPrefix))
+            continue;
+
+        const QByteArray encodedCommand = parameter.mid(kPrefix.size());
+        const QUrl url(QString::fromUtf8(encodedCommand));
+        if (url.isValid() && !url.scheme().isEmpty()) {
+            const QString decodedUrl = url.toString(QUrl::FullyDecoded);
+            return decodedUrl.isEmpty() ? QUrl::fromPercentEncoding(encodedCommand).trimmed() : decodedUrl.trimmed();
+        }
+
+        return QUrl::fromPercentEncoding(encodedCommand).trimmed();
+    }
+
+    return {};
+}
+
+std::optional<QString> commandFromQtGhosttyShellCommand(const QByteArray &payload) {
+    static constexpr QByteArrayView kPrefix("777;ShellCommand=");
+    if (!payload.startsWith(kPrefix))
+        return std::nullopt;
+
+    return QString::fromUtf8(QByteArray::fromBase64(payload.mid(kPrefix.size()))).trimmed();
+}
+
+std::optional<QString> shellCommandFromOscPayload(const QByteArray &payload) {
+    const std::optional<QString> qtGhosttyCommand = commandFromQtGhosttyShellCommand(payload);
+    if (qtGhosttyCommand.has_value())
+        return qtGhosttyCommand;
+
+    const QString vscodeCommand = commandFromVscodeOsc633(payload);
+    if (!vscodeCommand.isEmpty())
+        return vscodeCommand;
+
+    const QString wezTermCommand = commandFromWezTermUserVar(payload);
+    if (!wezTermCommand.isEmpty())
+        return wezTermCommand;
+
+    const QString finalTermCommand = commandFromFinalTermOsc133(payload);
+    if (!finalTermCommand.isEmpty())
+        return finalTermCommand;
+
+    return std::nullopt;
 }
 
 } // namespace
@@ -1160,12 +1273,55 @@ void TerminalWidget::onPtyDataReceived(const QByteArray &data) {
     if (!m_terminal || data.isEmpty())
         return;
 
+    scanShellIntegrationSequences(data);
     m_pendingPtyData.append(data);
     scheduleTerminalRepaint();
 }
 
+void TerminalWidget::scanShellIntegrationSequences(const QByteArray &data) {
+    m_oscScanBuffer.append(data);
+    if (m_oscScanBuffer.size() > kMaxOscScanBufferBytes)
+        m_oscScanBuffer = m_oscScanBuffer.right(kMaxOscScanBufferBytes);
+
+    while (true) {
+        const int oscStart = m_oscScanBuffer.indexOf("\033]");
+        if (oscStart < 0) {
+            m_oscScanBuffer = m_oscScanBuffer.endsWith('\033') ? QByteArray("\033") : QByteArray();
+            return;
+        }
+
+        if (oscStart > 0)
+            m_oscScanBuffer.remove(0, oscStart);
+
+        const int belEnd = m_oscScanBuffer.indexOf('\a', 2);
+        const int stEnd = m_oscScanBuffer.indexOf("\033\\", 2);
+        if (belEnd < 0 && stEnd < 0)
+            return;
+
+        const bool useBel = belEnd >= 0 && (stEnd < 0 || belEnd < stEnd);
+        const int payloadEnd = useBel ? belEnd : stEnd;
+        const int sequenceEnd = useBel ? belEnd + 1 : stEnd + 2;
+        const QByteArray payload = m_oscScanBuffer.mid(2, payloadEnd - 2);
+        const std::optional<QString> command = shellCommandFromOscPayload(payload);
+        if (command.has_value())
+            setShellCommand(command.value());
+
+        m_oscScanBuffer.remove(0, sequenceEnd);
+    }
+}
+
+void TerminalWidget::setShellCommand(const QString &command) {
+    const QString trimmed = command.trimmed();
+    if (property("shellCommand").toString() == trimmed)
+        return;
+
+    setProperty("shellCommand", trimmed);
+    Q_EMIT shellCommandChanged(trimmed);
+}
+
 void TerminalWidget::onPtySessionClosed() {
     flushPendingPtyData();
+    m_oscScanBuffer.clear();
     if (m_renderTimer)
         m_renderTimer->stop();
     Q_EMIT sessionClosed();

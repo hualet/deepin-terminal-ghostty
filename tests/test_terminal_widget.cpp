@@ -30,6 +30,7 @@ private slots:
     void testNoAppSpecificSignals();
     void testSizeReport();
     void testTitleChanged();
+    void testShellIntegrationCommandDetection();
     void testGridSize();
     void testIgnoresTransientTinyResize();
     void testSetTerminalFont();
@@ -239,6 +240,44 @@ void TestTerminalWidget::testTitleChanged() {
 
     QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 100);
     QCOMPARE(spy.at(0).at(0).toString(), QString("MyTestTitle"));
+}
+
+void TestTerminalWidget::testShellIntegrationCommandDetection() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    QSignalSpy spy(&widget, &TerminalWidget::shellCommandChanged);
+    QVERIFY(spy.isValid());
+
+    const QByteArray vscodeCommand = "\033]633;E;python -m aider\\x3b echo done\007";
+    bool invoked =
+        QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, vscodeCommand));
+    QVERIFY(invoked);
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 100);
+    QCOMPARE(widget.property("shellCommand").toString(), QStringLiteral("python -m aider; echo done"));
+
+    const QByteArray weztermCommand = QByteArray("\033]1337;SetUserVar=WEZTERM_PROG=")
+                                      + QByteArray("Y29kZXggLiAteSAtLW1vZGVsIGc1Cg==") + QByteArray("\033\\");
+    invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                        Q_ARG(QByteArray, weztermCommand));
+    QVERIFY(invoked);
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 2, 100);
+    QCOMPARE(widget.property("shellCommand").toString(), QStringLiteral("codex . -y --model g5"));
+
+    const QByteArray qtGhosttyCommand = QByteArray("\033]777;ShellCommand=")
+                                        + QByteArray("Y2xhdWRlIC0tc2tpcC1wZXJtaXNzaW9ucw==") + QByteArray("\033\\");
+    invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                        Q_ARG(QByteArray, qtGhosttyCommand));
+    QVERIFY(invoked);
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 3, 100);
+    QCOMPARE(widget.property("shellCommand").toString(), QStringLiteral("claude --skip-permissions"));
+
+    const QByteArray qtGhosttyClearCommand = "\033]777;ShellCommand=\033\\";
+    invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                        Q_ARG(QByteArray, qtGhosttyClearCommand));
+    QVERIFY(invoked);
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 4, 100);
+    QCOMPARE(widget.property("shellCommand").toString(), QString());
 }
 
 void TestTerminalWidget::testGridSize() {

@@ -19,6 +19,8 @@ private slots:
     void testStartCommand();
     void testStartCommandInWorkingDirectory();
     void testReportsChildExitCode();
+    void testBashShellIntegrationHookReportsCommands();
+    void testZshShellIntegrationHookReportsCommands();
     void testResize();
     void testSessionClose();
     void testPreservesUtf8Locale();
@@ -122,6 +124,52 @@ void TestPtySession::testReportsChildExitCode() {
     QVERIFY2(exitSpy.wait(3000), "Expected childExited signal within 3 seconds");
     QCOMPARE(exitSpy.count(), 1);
     QCOMPARE(exitSpy.at(0).at(0).toInt(), 23);
+}
+
+void verifyShellIntegrationHookReportsCommands(const QString &shellPath) {
+    const QByteArray previousShell = qgetenv("SHELL");
+    qputenv("SHELL", QFile::encodeName(shellPath));
+
+    PtySession session;
+    QVERIFY(session.start(80, 24));
+
+    if (previousShell.isEmpty())
+        qunsetenv("SHELL");
+    else
+        qputenv("SHELL", previousShell);
+
+    QSignalSpy spy(&session, &PtySession::dataReceived);
+    QVERIFY(spy.isValid());
+
+    session.write("printf 'qtghostty_hook_ok'\n");
+
+    QByteArray output;
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 3000 && output.count("]777;ShellCommand=") < 2) {
+        spy.wait(100);
+        for (const auto &args : spy)
+            output.append(args.at(0).toByteArray());
+        spy.clear();
+    }
+
+    QVERIFY2(output.count("]777;ShellCommand=") >= 2,
+             qPrintable(
+                 QString::fromLatin1("Expected command start and clear OSC, got: %1").arg(QString::fromUtf8(output))));
+}
+
+void TestPtySession::testBashShellIntegrationHookReportsCommands() {
+    if (!QFile::exists(QStringLiteral("/bin/bash")))
+        QSKIP("bash is not available");
+
+    verifyShellIntegrationHookReportsCommands(QStringLiteral("/bin/bash"));
+}
+
+void TestPtySession::testZshShellIntegrationHookReportsCommands() {
+    if (!QFile::exists(QStringLiteral("/bin/zsh")))
+        QSKIP("zsh is not available");
+
+    verifyShellIntegrationHookReportsCommands(QStringLiteral("/bin/zsh"));
 }
 
 void TestPtySession::testResize() {
