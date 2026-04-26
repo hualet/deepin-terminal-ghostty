@@ -929,9 +929,6 @@ void MainWindow::applyThemeToAll() {
         helper->setPaletteType(DGuiApplicationHelper::UnknownType);
     else
         helper->setPaletteType(theme.isDark ? DGuiApplicationHelper::DarkType : DGuiApplicationHelper::LightType);
-
-    if (m_verticalSidebar)
-        m_verticalSidebar->setDarkMode(theme.isDark);
 }
 
 void MainWindow::resizeEvent(QResizeEvent *event) {
