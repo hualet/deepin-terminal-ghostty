@@ -4,202 +4,227 @@
 <context>
     <name>AppSettings</name>
     <message>
-        <location filename="../src/app/AppSettings.cpp" line="88"/>
+        <location filename="../src/app/AppSettings.cpp" line="90"/>
         <source>Block</source>
         <translation>Bloque</translation>
     </message>
     <message>
-        <location filename="../src/app/AppSettings.cpp" line="88"/>
+        <location filename="../src/app/AppSettings.cpp" line="90"/>
         <source>Bar</source>
         <translation>Barra</translation>
     </message>
     <message>
-        <location filename="../src/app/AppSettings.cpp" line="88"/>
+        <location filename="../src/app/AppSettings.cpp" line="90"/>
         <source>Underline</source>
         <translation>Subrayado</translation>
+    </message>
+    <message>
+        <location filename="../src/app/AppSettings.cpp" line="100"/>
+        <source>System</source>
+        <translation>Sistema</translation>
     </message>
 </context>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="188"/>
+        <location filename="../src/app/MainWindow.cpp" line="231"/>
         <source>Settings</source>
         <translation>Configuración</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="191"/>
+        <location filename="../src/app/MainWindow.cpp" line="219"/>
         <source>Vertical Tabs</source>
         <translation>Pestañas verticales</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="229"/>
-        <location filename="../src/app/MainWindow.cpp" line="232"/>
-        <location filename="../src/app/MainWindow.cpp" line="312"/>
-        <location filename="../src/app/MainWindow.cpp" line="384"/>
-        <location filename="../src/app/MainWindow.cpp" line="391"/>
-        <location filename="../src/app/MainWindow.cpp" line="396"/>
-        <location filename="../src/app/MainWindow.cpp" line="427"/>
+        <location filename="../src/app/MainWindow.cpp" line="236"/>
+        <source>Theme</source>
+        <translation>Tema</translation>
+    </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="240"/>
+        <source>Light</source>
+        <translation>Claro</translation>
+    </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="246"/>
+        <source>Dark</source>
+        <translation>Oscuro</translation>
+    </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="252"/>
+        <source>System</source>
+        <translation>Sistema</translation>
+    </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="332"/>
+        <location filename="../src/app/MainWindow.cpp" line="335"/>
+        <location filename="../src/app/MainWindow.cpp" line="421"/>
+        <location filename="../src/app/MainWindow.cpp" line="493"/>
+        <location filename="../src/app/MainWindow.cpp" line="500"/>
+        <location filename="../src/app/MainWindow.cpp" line="505"/>
+        <location filename="../src/app/MainWindow.cpp" line="536"/>
         <source>Terminal</source>
         <translation>Terminal</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="703"/>
-        <location filename="../src/app/MainWindow.cpp" line="752"/>
+        <location filename="../src/app/MainWindow.cpp" line="812"/>
+        <location filename="../src/app/MainWindow.cpp" line="861"/>
         <source>Rename title</source>
         <translation>Renombrar título</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="703"/>
+        <location filename="../src/app/MainWindow.cpp" line="812"/>
         <source>New title:</source>
         <translation>Nuevo título:</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="710"/>
+        <location filename="../src/app/MainWindow.cpp" line="819"/>
         <source>Keyboard Shortcuts</source>
         <translation>Atajos de teclado</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="716"/>
+        <location filename="../src/app/MainWindow.cpp" line="825"/>
         <source>Action</source>
         <translation>Acción</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="716"/>
+        <location filename="../src/app/MainWindow.cpp" line="825"/>
         <source>Shortcut</source>
         <translation>Atajo</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="729"/>
+        <location filename="../src/app/MainWindow.cpp" line="838"/>
         <source>Copy</source>
         <translation>Copiar</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="730"/>
+        <location filename="../src/app/MainWindow.cpp" line="839"/>
         <source>Paste</source>
         <translation>Pegar</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="731"/>
+        <location filename="../src/app/MainWindow.cpp" line="840"/>
         <source>Find</source>
         <translation>Buscar</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="732"/>
+        <location filename="../src/app/MainWindow.cpp" line="841"/>
         <source>Zoom in</source>
         <translation>Ampliar</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="733"/>
+        <location filename="../src/app/MainWindow.cpp" line="842"/>
         <source>Zoom out</source>
         <translation>Reducir</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="734"/>
+        <location filename="../src/app/MainWindow.cpp" line="843"/>
         <source>Default size</source>
         <translation>Tamaño predeterminado</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="735"/>
+        <location filename="../src/app/MainWindow.cpp" line="844"/>
         <source>Select all</source>
         <translation>Seleccionar todo</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="736"/>
+        <location filename="../src/app/MainWindow.cpp" line="845"/>
         <source>New tab</source>
         <translation>Nueva pestaña</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="737"/>
+        <location filename="../src/app/MainWindow.cpp" line="846"/>
         <source>Close tab</source>
         <translation>Cerrar pestaña</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="738"/>
+        <location filename="../src/app/MainWindow.cpp" line="847"/>
         <source>Close other tabs</source>
         <translation>Cerrar otras pestañas</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="739"/>
+        <location filename="../src/app/MainWindow.cpp" line="848"/>
         <source>Previous tab</source>
         <translation>Pestaña anterior</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="740"/>
+        <location filename="../src/app/MainWindow.cpp" line="849"/>
         <source>Next tab</source>
         <translation>Pestaña siguiente</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="741"/>
+        <location filename="../src/app/MainWindow.cpp" line="850"/>
         <source>Vertical split</source>
         <translation>División vertical</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="742"/>
+        <location filename="../src/app/MainWindow.cpp" line="851"/>
         <source>Horizontal split</source>
         <translation>División horizontal</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="743"/>
+        <location filename="../src/app/MainWindow.cpp" line="852"/>
         <source>Select upper workspace</source>
         <translation>Seleccionar panel superior</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="744"/>
+        <location filename="../src/app/MainWindow.cpp" line="853"/>
         <source>Select lower workspace</source>
         <translation>Seleccionar panel inferior</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="745"/>
+        <location filename="../src/app/MainWindow.cpp" line="854"/>
         <source>Select left workspace</source>
         <translation>Seleccionar panel izquierdo</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="746"/>
+        <location filename="../src/app/MainWindow.cpp" line="855"/>
         <source>Select right workspace</source>
         <translation>Seleccionar panel derecho</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="747"/>
+        <location filename="../src/app/MainWindow.cpp" line="856"/>
         <source>Close workspace</source>
         <translation>Cerrar panel</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="748"/>
+        <location filename="../src/app/MainWindow.cpp" line="857"/>
         <source>Close other workspaces</source>
         <translation>Cerrar otros paneles</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="750"/>
+        <location filename="../src/app/MainWindow.cpp" line="859"/>
         <source>Go to tab %1</source>
         <translation>Ir a la pestaña %1</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="751"/>
+        <location filename="../src/app/MainWindow.cpp" line="860"/>
         <source>Fullscreen</source>
         <translation>Pantalla completa</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="753"/>
+        <location filename="../src/app/MainWindow.cpp" line="862"/>
         <source>Custom command</source>
         <translation>Comando personalizado</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="754"/>
+        <location filename="../src/app/MainWindow.cpp" line="863"/>
         <source>Remote management</source>
         <translation>Administración remota</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="775"/>
+        <location filename="../src/app/MainWindow.cpp" line="884"/>
         <source>Custom Command</source>
         <translation>Comando personalizado</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="775"/>
+        <location filename="../src/app/MainWindow.cpp" line="884"/>
         <source>Enter command:</source>
         <translation>Introducir comando:</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="183"/>
+        <location filename="../src/app/MainWindow.cpp" line="228"/>
         <source>Remote Management</source>
         <translation>Administración remota</translation>
     </message>
@@ -454,27 +479,27 @@
 <context>
     <name>RemoteManagementPanel</name>
     <message>
-        <location filename="../src/app/remote/RemoteManagementPanel.cpp" line="59"/>
+        <location filename="../src/app/remote/RemoteManagementPanel.cpp" line="62"/>
         <source>No servers yet</source>
         <translation>Aún no hay servidores</translation>
     </message>
     <message>
-        <location filename="../src/app/remote/RemoteManagementPanel.cpp" line="69"/>
+        <location filename="../src/app/remote/RemoteManagementPanel.cpp" line="72"/>
         <source>Add Server</source>
         <translation>Añadir servidor</translation>
     </message>
     <message>
-        <location filename="../src/app/remote/RemoteManagementPanel.cpp" line="200"/>
+        <location filename="../src/app/remote/RemoteManagementPanel.cpp" line="207"/>
         <source>Connect</source>
         <translation>Conectar</translation>
     </message>
     <message>
-        <location filename="../src/app/remote/RemoteManagementPanel.cpp" line="201"/>
+        <location filename="../src/app/remote/RemoteManagementPanel.cpp" line="208"/>
         <source>Edit</source>
         <translation>Editar</translation>
     </message>
     <message>
-        <location filename="../src/app/remote/RemoteManagementPanel.cpp" line="202"/>
+        <location filename="../src/app/remote/RemoteManagementPanel.cpp" line="209"/>
         <source>Delete</source>
         <translation>Eliminar</translation>
     </message>
@@ -620,37 +645,57 @@
 <context>
     <name>TermPane</name>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="409"/>
+        <location filename="../src/app/TermPane.cpp" line="507"/>
         <source>Copy</source>
         <translation>Copiar</translation>
     </message>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="411"/>
+        <location filename="../src/app/TermPane.cpp" line="509"/>
         <source>Paste</source>
         <translation>Pegar</translation>
     </message>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="415"/>
+        <location filename="../src/app/TermPane.cpp" line="513"/>
         <source>Search</source>
         <translation>Buscar</translation>
     </message>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="417"/>
+        <location filename="../src/app/TermPane.cpp" line="515"/>
         <source>Horizontal Split</source>
         <translation>División horizontal</translation>
     </message>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="418"/>
+        <location filename="../src/app/TermPane.cpp" line="516"/>
         <source>Vertical Split</source>
         <translation>División vertical</translation>
     </message>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="420"/>
+        <location filename="../src/app/TermPane.cpp" line="518"/>
         <source>Close Split</source>
         <translation>Cerrar división</translation>
     </message>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="422"/>
+        <location filename="../src/app/TermPane.cpp" line="521"/>
+        <source>Theme</source>
+        <translation>Tema</translation>
+    </message>
+    <message>
+        <location filename="../src/app/TermPane.cpp" line="524"/>
+        <source>Light</source>
+        <translation>Claro</translation>
+    </message>
+    <message>
+        <location filename="../src/app/TermPane.cpp" line="528"/>
+        <source>Dark</source>
+        <translation>Oscuro</translation>
+    </message>
+    <message>
+        <location filename="../src/app/TermPane.cpp" line="532"/>
+        <source>System</source>
+        <translation>Sistema</translation>
+    </message>
+    <message>
+        <location filename="../src/app/TermPane.cpp" line="572"/>
         <source>Settings</source>
         <translation>Configuración</translation>
     </message>
@@ -689,7 +734,7 @@
 <context>
     <name>VerticalTabSidebar</name>
     <message>
-        <location filename="../src/app/VerticalTabSidebar.cpp" line="277"/>
+        <location filename="../src/app/VerticalTabSidebar.cpp" line="337"/>
         <source>Terminal</source>
         <translation>Terminal</translation>
     </message>
