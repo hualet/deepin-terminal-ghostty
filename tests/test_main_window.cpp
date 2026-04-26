@@ -786,7 +786,7 @@ void TestMainWindow::testThemeLoaderFindsThemeByName() {
 
 void TestMainWindow::testThemeSettingDefaultIsSystem() {
     auto *settings = AppSettings::instance();
-    QCOMPARE(settings->theme(), QStringLiteral("system"));
+    QCOMPARE(settings->colorScheme(), QStringLiteral("system"));
 }
 
 void TestMainWindow::testThemeChangeAppliesToAllTerminals() {
@@ -795,20 +795,20 @@ void TestMainWindow::testThemeChangeAppliesToAllTerminals() {
     QVERIFY(QTest::qWaitForWindowExposed(&window));
 
     auto *settings = AppSettings::instance();
-    QSignalSpy spy(settings, &AppSettings::themeChanged);
+    QSignalSpy spy(settings, &AppSettings::colorSchemeChanged);
     QVERIFY(spy.isValid());
 
-    settings->setTheme(QStringLiteral("bim"));
+    settings->setColorScheme(QStringLiteral("bim"));
     QTRY_COMPARE(spy.count(), 1);
-    QCOMPARE(settings->theme(), QStringLiteral("bim"));
+    QCOMPARE(settings->colorScheme(), QStringLiteral("bim"));
 
     auto *terminal = currentTerminal(window);
     QVERIFY(terminal);
     QTRY_COMPARE(terminal->debugAppliedForeground(), QColor(255, 213, 0));
     QTRY_COMPARE(terminal->debugAppliedBackground(), QColor(1, 40, 73));
 
-    settings->setTheme(QStringLiteral("system"));
-    QTRY_COMPARE(settings->theme(), QStringLiteral("system"));
+    settings->setColorScheme(QStringLiteral("system"));
+    QTRY_COMPARE(settings->colorScheme(), QStringLiteral("system"));
 }
 
 int main(int argc, char *argv[]) {

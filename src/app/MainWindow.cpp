@@ -117,9 +117,9 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
             m_verticalTabsAction->setChecked(enabled);
         setVerticalTabsEnabled(enabled);
     });
-    connect(settings, &AppSettings::themeChanged, this, [this]() { applyThemeToAll(); });
+    connect(settings, &AppSettings::colorSchemeChanged, this, [this]() { applyThemeToAll(); });
     connect(DGuiApplicationHelper::instance(), &DGuiApplicationHelper::themeTypeChanged, this, [this]() {
-        if (AppSettings::instance()->theme() == QStringLiteral("system"))
+        if (AppSettings::instance()->colorScheme() == QStringLiteral("system"))
             applyThemeToAll();
     });
 
@@ -844,11 +844,11 @@ void MainWindow::onConnectRemoteServer(const ServerConfig &config) {
 TerminalTheme MainWindow::resolveTheme() const {
     if (m_themes.isEmpty())
         const_cast<MainWindow *>(this)->m_themes = ThemeLoader::loadThemes();
-    QString setting = AppSettings::instance()->theme();
+    QString setting = AppSettings::instance()->colorScheme();
     if (setting == QStringLiteral("system")) {
-        auto type = DGuiApplicationHelper::instance()->themeType();
-        return ThemeLoader::findTheme(m_themes, type == DGuiApplicationHelper::DarkType ? QStringLiteral("dark")
-                                                                                        : QStringLiteral("light"));
+        auto colorType = DGuiApplicationHelper::instance()->themeType();
+        return ThemeLoader::findTheme(m_themes, colorType == DGuiApplicationHelper::DarkType ? QStringLiteral("dark")
+                                                                                             : QStringLiteral("light"));
     }
     return ThemeLoader::findTheme(m_themes, setting);
 }
@@ -864,7 +864,7 @@ void MainWindow::applyThemeToAll() {
     }
 
     auto *helper = DGuiApplicationHelper::instance();
-    QString setting = AppSettings::instance()->theme();
+    QString setting = AppSettings::instance()->colorScheme();
     if (setting == QStringLiteral("system"))
         helper->setPaletteType(DGuiApplicationHelper::UnknownType);
     else

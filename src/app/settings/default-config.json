@@ -51,8 +51,8 @@
                             "default": false
                         },
                         {
-                            "key": "theme",
-                            "name": "Theme",
+                            "key": "colorScheme",
+                            "name": "Color Scheme",
                             "type": "combobox",
                             "default": "system"
                         }

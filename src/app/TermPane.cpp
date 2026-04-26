@@ -517,17 +517,17 @@ void TermPane::showTerminalContextMenu(TerminalWidget *term, const QPoint &globa
     menu.addSeparator();
 
     auto *themeMenu = menu.addMenu(tr("Theme"));
-    QString currentTheme = AppSettings::instance()->theme();
+    QString currentScheme = AppSettings::instance()->colorScheme();
     QAction *systemAction = themeMenu->addAction(tr("System"));
     systemAction->setCheckable(true);
-    systemAction->setChecked(currentTheme == QStringLiteral("system"));
+    systemAction->setChecked(currentScheme == QStringLiteral("system"));
     themeMenu->addSeparator();
     auto themes = ThemeLoader::loadThemes();
     QList<QAction *> themeActions;
     for (const auto &t : themes) {
         auto *act = themeMenu->addAction(t.displayName);
         act->setCheckable(true);
-        act->setChecked(currentTheme == t.name);
+        act->setChecked(currentScheme == t.name);
         act->setData(t.name);
         themeActions.append(act);
     }
@@ -545,9 +545,9 @@ void TermPane::showTerminalContextMenu(TerminalWidget *term, const QPoint &globa
     else if (action == closeSplitAction)
         closeCurrentSplit();
     else if (action == systemAction)
-        AppSettings::instance()->setTheme(QStringLiteral("system"));
+        AppSettings::instance()->setColorScheme(QStringLiteral("system"));
     else if (themeActions.contains(action))
-        AppSettings::instance()->setTheme(action->data().toString());
+        AppSettings::instance()->setColorScheme(action->data().toString());
     else if (action == settingsAction)
         Q_EMIT requestSettings();
 }

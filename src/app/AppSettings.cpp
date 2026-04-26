@@ -91,7 +91,7 @@ void AppSettings::init() {
         shapeOption->setData("items", items);
     }
 
-    auto themeOption = m_dsettings->option("basic.interface.theme");
+    auto themeOption = m_dsettings->option("basic.interface.colorScheme");
     if (themeOption) {
         QMap<QString, QVariant> items;
         QStringList keys;
@@ -119,8 +119,8 @@ void AppSettings::init() {
             emit scrollbackLinesChanged(scrollbackLines());
         else if (key == "basic.interface.verticalTabs")
             emit verticalTabsEnabledChanged(verticalTabsEnabled());
-        else if (key == "basic.interface.theme")
-            emit themeChanged(theme());
+        else if (key == "basic.interface.colorScheme")
+            emit colorSchemeChanged(colorScheme());
     });
 }
 
@@ -189,10 +189,10 @@ void AppSettings::setShortcut(const QString &name, const QKeySequence &seq) {
     m_dsettings->setOption(shortcutPath(m_dsettings, name), seq.toString());
 }
 
-QString AppSettings::theme() const {
-    return m_dsettings->value("basic.interface.theme").toString();
+QString AppSettings::colorScheme() const {
+    return m_dsettings->value("basic.interface.colorScheme").toString();
 }
 
-void AppSettings::setTheme(const QString &theme) {
-    m_dsettings->setOption("basic.interface.theme", theme);
+void AppSettings::setColorScheme(const QString &scheme) {
+    m_dsettings->setOption("basic.interface.colorScheme", scheme);
 }
