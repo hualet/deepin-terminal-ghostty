@@ -3,14 +3,18 @@
 #include <DGuiApplicationHelper>
 #include <QAbstractButton>
 #include <QApplication>
+#include <QBitmap>
 #include <QFontMetrics>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
+#include <QPainter>
+#include <QPainterPath>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
+#include <QSet>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -43,6 +47,45 @@ void allowHorizontalShrink(QWidget *widget) {
     widget->setSizePolicy(policy);
 }
 
+QString resolveBadgeName(const QString &iconName) {
+    if (iconName == QStringLiteral("github-copilot"))
+        return QStringLiteral("copilot");
+    return iconName;
+}
+
+QString resolveBadgeResourcePath(const QString &rawName) {
+    static const QSet<QString> kWebpIcons = {
+        QStringLiteral("claude"),   QStringLiteral("gemini"), QStringLiteral("codex"),   QStringLiteral("qwen"),
+        QStringLiteral("opencode"), QStringLiteral("goose"),  QStringLiteral("copilot"),
+    };
+    const QString name = rawName.isEmpty() ? QStringLiteral("terminal") : resolveBadgeName(rawName);
+    const QString ext = kWebpIcons.contains(name) ? QStringLiteral("webp") : QStringLiteral("svg");
+    return QStringLiteral(":/badges/process/%1.%2").arg(name, ext);
+}
+
+QPixmap applyCircleMask(const QPixmap &src, int size) {
+    if (src.isNull())
+        return src;
+
+    const qreal dpr = src.devicePixelRatio();
+    QSize sz(size, size);
+    QPixmap dst(sz * dpr);
+    dst.setDevicePixelRatio(dpr);
+    dst.fill(Qt::transparent);
+
+    QPainter p(&dst);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+
+    QPainterPath clip;
+    clip.addEllipse(0, 0, size, size);
+    p.setClipPath(clip);
+    p.drawPixmap(0, 0, size, size, src);
+    p.end();
+
+    return dst;
+}
+
 QLabel *createProcessBadge(const QString &objectName, QWidget *parent, const QString &iconName,
                            const QString &toneProperty) {
     auto *badge = new QLabel(parent);
@@ -51,12 +94,11 @@ QLabel *createProcessBadge(const QString &objectName, QWidget *parent, const QSt
     badge->setFixedSize(kProcessBadgeSize, kProcessBadgeSize);
     badge->setAlignment(Qt::AlignCenter);
 
-    const QString resourcePath =
-        QStringLiteral(":/icons/process/%1.svg").arg(iconName.isEmpty() ? QStringLiteral("terminal") : iconName);
+    const QString resourcePath = resolveBadgeResourcePath(iconName);
     QIcon icon(resourcePath);
     if (icon.isNull())
-        icon = QIcon(QStringLiteral(":/icons/process/terminal.svg"));
-    badge->setPixmap(icon.pixmap(kProcessIconSize, kProcessIconSize));
+        icon = QIcon(QStringLiteral(":/badges/process/terminal.svg"));
+    badge->setPixmap(applyCircleMask(icon.pixmap(kProcessIconSize, kProcessIconSize), kProcessIconSize));
     return badge;
 }
 
