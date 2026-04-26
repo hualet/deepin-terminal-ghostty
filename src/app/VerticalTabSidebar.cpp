@@ -83,93 +83,190 @@ VerticalTabSidebar::VerticalTabSidebar(QWidget *parent) : QWidget(parent) {
     scrollArea->setWidget(content);
     outerLayout->addWidget(scrollArea);
 
-    setStyleSheet(QStringLiteral(R"(
-        #verticalTabSidebar {
-            background: rgba(12, 15, 22, 0.72);
-        }
-        #verticalTabSidebarScrollArea {
-            border: none;
-            background: transparent;
-        }
-        #verticalTabSidebarContent {
-            background: transparent;
-        }
-        #verticalTabSection {
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
-            background-color: rgba(29, 32, 40, 0.96);
-        }
-        #verticalTabSection:hover {
-            background-color: rgba(37, 41, 51, 0.98);
-        }
-        #verticalTabSection[isCurrent="true"] {
-            border: 1px solid rgba(83, 143, 255, 0.45);
-            background-color: rgba(30, 45, 74, 0.98);
-        }
-        #verticalTabHeader {
-            background: transparent;
-        }
-        #verticalTabSection[isCurrent="true"] #verticalTabButton {
-            color: rgb(242, 247, 255);
-        }
-        #verticalTabExpandButton {
-            border: none;
-            background: transparent;
-            padding: 0px 1px;
-            margin: 0px;
-            color: rgba(210, 218, 232, 0.7);
-        }
-        #verticalTabExpandButton:hover {
-            background-color: rgba(255, 255, 255, 0.08);
-            border-radius: 6px;
-        }
-        #verticalTabButton {
-            border: none;
-            background: transparent;
-            padding: 6px 0px;
-            margin: 0px;
-            color: rgb(220, 225, 236);
-            text-align: left;
-            font-size: 15px;
-        }
-        #verticalTabButton:checked {
-            font-weight: 600;
-        }
-        #verticalTabBadge,
-        #verticalPaneBadge {
-            border-radius: 12px;
-            background-color: rgba(255, 255, 255, 0.08);
-            color: rgb(220, 225, 236);
-        }
-        #verticalTabSection[isCurrent="true"] #verticalTabBadge {
-            background-color: rgba(83, 143, 255, 0.18);
-        }
-        #verticalPaneList {
-            background: transparent;
-        }
-        #verticalPaneGuide {
-            min-width: 1px;
-            max-width: 1px;
-            background-color: rgba(255, 255, 255, 0.12);
-            margin-top: 2px;
-            margin-bottom: 4px;
-        }
-        #verticalPaneButton {
-            border: none;
-            background: transparent;
-            padding: 5px 0px;
-            margin: 0px;
-            color: rgb(183, 191, 204);
-            text-align: left;
-            font-size: 14px;
-        }
-        #verticalPaneButton[active="true"] {
-            color: rgb(229, 235, 245);
-        }
-        #verticalPaneButton:checked {
-            font-weight: 500;
-        }
-    )"));
+    setDarkMode(true);
+}
+
+void VerticalTabSidebar::setDarkMode(bool dark) {
+    if (m_darkMode == dark)
+        return;
+    m_darkMode = dark;
+    if (dark) {
+        setStyleSheet(QStringLiteral(R"(
+            #verticalTabSidebar {
+                background: rgba(12, 15, 22, 0.72);
+            }
+            #verticalTabSidebarScrollArea {
+                border: none;
+                background: transparent;
+            }
+            #verticalTabSidebarContent {
+                background: transparent;
+            }
+            #verticalTabSection {
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                border-radius: 12px;
+                background-color: rgba(29, 32, 40, 0.96);
+            }
+            #verticalTabSection:hover {
+                background-color: rgba(37, 41, 51, 0.98);
+            }
+            #verticalTabSection[isCurrent="true"] {
+                border: 1px solid rgba(83, 143, 255, 0.45);
+                background-color: rgba(30, 45, 74, 0.98);
+            }
+            #verticalTabHeader {
+                background: transparent;
+            }
+            #verticalTabSection[isCurrent="true"] #verticalTabButton {
+                color: rgb(242, 247, 255);
+            }
+            #verticalTabExpandButton {
+                border: none;
+                background: transparent;
+                padding: 0px 1px;
+                margin: 0px;
+                color: rgba(210, 218, 232, 0.7);
+            }
+            #verticalTabExpandButton:hover {
+                background-color: rgba(255, 255, 255, 0.08);
+                border-radius: 6px;
+            }
+            #verticalTabButton {
+                border: none;
+                background: transparent;
+                padding: 6px 0px;
+                margin: 0px;
+                color: rgb(220, 225, 236);
+                text-align: left;
+                font-size: 15px;
+            }
+            #verticalTabButton:checked {
+                font-weight: 600;
+            }
+            #verticalTabBadge,
+            #verticalPaneBadge {
+                border-radius: 12px;
+                background-color: rgba(255, 255, 255, 0.08);
+                color: rgb(220, 225, 236);
+            }
+            #verticalTabSection[isCurrent="true"] #verticalTabBadge {
+                background-color: rgba(83, 143, 255, 0.18);
+            }
+            #verticalPaneList {
+                background: transparent;
+            }
+            #verticalPaneGuide {
+                min-width: 1px;
+                max-width: 1px;
+                background-color: rgba(255, 255, 255, 0.12);
+                margin-top: 2px;
+                margin-bottom: 4px;
+            }
+            #verticalPaneButton {
+                border: none;
+                background: transparent;
+                padding: 5px 0px;
+                margin: 0px;
+                color: rgb(183, 191, 204);
+                text-align: left;
+                font-size: 14px;
+            }
+            #verticalPaneButton[active="true"] {
+                color: rgb(229, 235, 245);
+            }
+            #verticalPaneButton:checked {
+                font-weight: 500;
+            }
+        )"));
+    } else {
+        setStyleSheet(QStringLiteral(R"(
+            #verticalTabSidebar {
+                background: rgba(235, 235, 235, 0.9);
+            }
+            #verticalTabSidebarScrollArea {
+                border: none;
+                background: transparent;
+            }
+            #verticalTabSidebarContent {
+                background: transparent;
+            }
+            #verticalTabSection {
+                border: 1px solid rgba(0, 0, 0, 0.06);
+                border-radius: 12px;
+                background-color: rgba(255, 255, 255, 0.96);
+            }
+            #verticalTabSection:hover {
+                background-color: rgba(245, 245, 245, 0.98);
+            }
+            #verticalTabSection[isCurrent="true"] {
+                border: 1px solid rgba(83, 143, 255, 0.4);
+                background-color: rgba(230, 240, 255, 0.98);
+            }
+            #verticalTabHeader {
+                background: transparent;
+            }
+            #verticalTabSection[isCurrent="true"] #verticalTabButton {
+                color: rgb(20, 40, 80);
+            }
+            #verticalTabExpandButton {
+                border: none;
+                background: transparent;
+                padding: 0px 1px;
+                margin: 0px;
+                color: rgba(60, 60, 60, 0.7);
+            }
+            #verticalTabExpandButton:hover {
+                background-color: rgba(0, 0, 0, 0.05);
+                border-radius: 6px;
+            }
+            #verticalTabButton {
+                border: none;
+                background: transparent;
+                padding: 6px 0px;
+                margin: 0px;
+                color: rgb(40, 40, 40);
+                text-align: left;
+                font-size: 15px;
+            }
+            #verticalTabButton:checked {
+                font-weight: 600;
+            }
+            #verticalTabBadge,
+            #verticalPaneBadge {
+                border-radius: 12px;
+                background-color: rgba(0, 0, 0, 0.05);
+                color: rgb(50, 50, 50);
+            }
+            #verticalTabSection[isCurrent="true"] #verticalTabBadge {
+                background-color: rgba(83, 143, 255, 0.15);
+            }
+            #verticalPaneList {
+                background: transparent;
+            }
+            #verticalPaneGuide {
+                min-width: 1px;
+                max-width: 1px;
+                background-color: rgba(0, 0, 0, 0.08);
+                margin-top: 2px;
+                margin-bottom: 4px;
+            }
+            #verticalPaneButton {
+                border: none;
+                background: transparent;
+                padding: 5px 0px;
+                margin: 0px;
+                color: rgb(80, 80, 80);
+                text-align: left;
+                font-size: 14px;
+            }
+            #verticalPaneButton[active="true"] {
+                color: rgb(30, 30, 30);
+            }
+            #verticalPaneButton:checked {
+                font-weight: 500;
+            }
+        )"));
+    }
 }
 
 void VerticalTabSidebar::setItems(const QList<TabItem> &items) {

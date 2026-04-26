@@ -870,9 +870,8 @@ void MainWindow::applyThemeToAll() {
     else
         helper->setPaletteType(theme.isDark ? DGuiApplicationHelper::DarkType : DGuiApplicationHelper::LightType);
 
-    // TODO: uncomment after VerticalTabSidebar::setDarkMode is added (Task 7)
-    // if (m_verticalSidebar)
-    //     m_verticalSidebar->setDarkMode(theme.isDark);
+    if (m_verticalSidebar)
+        m_verticalSidebar->setDarkMode(theme.isDark);
 }
 
 void MainWindow::resizeEvent(QResizeEvent *event) {
