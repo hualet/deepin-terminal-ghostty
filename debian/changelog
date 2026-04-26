@@ -1,3 +1,15 @@
+deepin-terminal-ghostty (0.6.0-1) unstable; urgency=medium
+
+  * Replace coding agent icons with lobehub avatar webp versions and apply
+    circle mask with antialiasing for badge display in the vertical sidebar.
+  * Reduce vertical sidebar tab and pane heights to match the horizontal
+    DTabBar, making the sidebar more compact.
+  * Show exit confirmation dialog when closing a tab or window that has
+    running child processes, with text distinguishing single vs multiple
+    processes and tab vs window scenarios.
+
+ -- Deepin Packages <packages@deepin.org>  Sun, 26 Apr 2026 23:00:00 +0800
+
 deepin-terminal-ghostty (0.5.0-1) unstable; urgency=medium
 
   * Add terminal color scheme support with built-in dark, light, and custom
