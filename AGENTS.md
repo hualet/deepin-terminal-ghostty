@@ -87,8 +87,17 @@ Built `.deb` files will appear in the parent directory.
 When bumping the version (e.g. `0.3.0` → `0.4.0`), update two files:
 
 1. **`CMakeLists.txt`** — change the `VERSION` in the `project()` call
-2. **`debian/changelog`** — prepend a new entry with real release notes. Use `git log <previous-version-tag>..HEAD --oneline` to collect changes.
+2. **`debian/changelog`** — prepend a new entry. Follow the rules below.
 3. Rebuild and verify: `cmake -B build && cmake --build build && cd build && ctest --output-on-failure`
+
+### Changelog Rules
+
+- Use `git log <previous-version-tag>..HEAD --oneline` to collect all changes.
+- Group changes by significance: features first, then improvements, then fixes.
+- Lead with the most impactful user-visible changes, not the most recent commits.
+- Each bullet is one concise sentence describing the *what* and *why*, not the commit hash.
+- Do not list every commit — merge related changes into single bullets.
+- Avoid implementation details (file names, function names) — describe the user-visible result.
 
 ## Test Commands
 
