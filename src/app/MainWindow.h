@@ -10,6 +10,7 @@
 #include <QPointer>
 #include <QString>
 
+#include <functional>
 #include <optional>
 
 class QShortcut;
@@ -44,7 +45,7 @@ protected:
 
 private slots:
     void onTabAddRequested();
-    void onTabCloseRequested(int index);
+    void onTabCloseRequested(int index, bool hasConfirmed = false);
     void onTabCurrentChanged(int index);
     void onTerminalTitleChanged(const QString &title);
     void onTerminalSessionClosed();
@@ -88,6 +89,7 @@ private:
     void onConnectRemoteServer(const ServerConfig &config);
     TerminalTheme resolveTheme() const;
     void applyThemeToAll();
+    void showExitConfirmDialog(const QString &title, const QString &body, std::function<void()> onConfirm);
 
     QPointer<DTabBar> m_tabBar;
     QStackedWidget *m_stackWidget = nullptr;
@@ -105,6 +107,7 @@ private:
     QPointer<RemoteManagementPanel> m_remotePanel;
     StartupOptions m_startupOptions;
     bool m_startupSessionHandled = false;
+    bool m_hasConfirmedClose = false;
     QList<TerminalTheme> m_themes;
 
     QShortcut *m_scNewTab = nullptr;

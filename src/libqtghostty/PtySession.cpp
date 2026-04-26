@@ -264,6 +264,17 @@ bool PtySession::start(int cols, int rows, const StartOptions &options) {
     return spawn(cols, rows, options);
 }
 
+bool PtySession::hasRunningProcess() const {
+    if (m_masterFd < 0 || m_childPid <= 0)
+        return false;
+
+    const pid_t fgPgid = ::tcgetpgrp(m_masterFd);
+    if (fgPgid <= 0)
+        return false;
+
+    return fgPgid != m_childPid;
+}
+
 void PtySession::write(const QByteArray &data) {
     if (m_masterFd < 0 || data.isEmpty()) {
         return;

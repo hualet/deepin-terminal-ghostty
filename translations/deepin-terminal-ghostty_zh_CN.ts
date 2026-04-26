@@ -232,6 +232,51 @@
         <source>SSH address (user@host):</source>
         <translation type="vanished">SSH 地址（user@host）：</translation>
     </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="980"/>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="981"/>
+        <source>Close</source>
+        <translation>关闭</translation>
+    </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="1000"/>
+        <source>Close this terminal?</source>
+        <translation>关闭此终端？</translation>
+    </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="1001"/>
+        <source>Close this window?</source>
+        <translation>关闭此窗口？</translation>
+    </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="1004"/>
+        <source>There is still a process running in this terminal. Closing the terminal will kill it.</source>
+        <translation>此终端中仍有进程正在运行。关闭终端将终止该进程。</translation>
+    </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="1008"/>
+        <source>There are still %1 processes running in this terminal. Closing the terminal will kill all of them.</source>
+        <translation>此终端中仍有 %1 个进程正在运行。关闭终端将终止所有进程。</translation>
+    </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="1012"/>
+        <source>There are still processes running in this window. Closing the window will kill all of them.</source>
+        <translation>此窗口中仍有进程正在运行。关闭窗口将终止所有进程。</translation>
+    </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="392"/>
+        <source>There is still a process running in this terminal. Closing the terminal will kill it.</source>
+        <translation>此终端中仍有进程正在运行。关闭终端将终止该进程。</translation>
+    </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="396"/>
+        <source>There are still %1 processes running in this terminal. Closing the terminal will kill all of them.</source>
+        <translation>此终端中仍有 %1 个进程正在运行。关闭终端将终止所有进程。</translation>
+    </message>
 </context>
 <context>
     <name>QObject</name>

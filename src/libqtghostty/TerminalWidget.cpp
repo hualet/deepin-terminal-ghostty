@@ -305,6 +305,10 @@ int TerminalWidget::terminalRows() const {
     return m_rows;
 }
 
+bool TerminalWidget::hasRunningProcess() const {
+    return m_ptySession && m_ptySession->hasRunningProcess();
+}
+
 void TerminalWidget::updateCachedFonts() {
     m_fontBold = m_font;
     m_fontBold.setBold(true);

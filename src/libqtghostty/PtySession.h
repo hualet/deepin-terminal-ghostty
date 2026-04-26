@@ -26,6 +26,7 @@ public:
     bool start(int cols, int rows, const StartOptions &options = {});
     void write(const QByteArray &data);
     void resize(int cols, int rows, int cellWidthPx, int cellHeightPx);
+    bool hasRunningProcess() const;
 
 signals:
     void dataReceived(const QByteArray &data);

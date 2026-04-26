@@ -211,6 +211,15 @@ bool TermPane::focusPane(const QUuid &paneId) {
     return false;
 }
 
+int TermPane::runningTerminalCount() const {
+    int count = 0;
+    for (TerminalWidget *term : findChildren<TerminalWidget *>()) {
+        if (term->hasRunningProcess())
+            ++count;
+    }
+    return count;
+}
+
 TerminalWidget *TermPane::currentTerminal() const {
     return m_currentTerm;
 }

@@ -27,6 +27,7 @@ public:
     bool initialize();
     int terminalColumns() const;
     int terminalRows() const;
+    bool hasRunningProcess() const;
 
     void setTerminalFont(const QFont &font);
     void setCursorShape(int shape);

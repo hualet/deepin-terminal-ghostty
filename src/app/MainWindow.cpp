@@ -13,6 +13,7 @@
 
 #include <DAboutDialog>
 #include <DApplication>
+#include <DDialog>
 #include <DGuiApplicationHelper>
 #include <DTitlebar>
 #include <QActionGroup>
@@ -167,7 +168,7 @@ DTabBar *MainWindow::ensureTabBar() {
     m_tabBar->setFocusPolicy(Qt::NoFocus);
 
     connect(m_tabBar, &DTabBar::tabAddRequested, this, &MainWindow::onTabAddRequested);
-    connect(m_tabBar, &DTabBar::tabCloseRequested, this, &MainWindow::onTabCloseRequested);
+    connect(m_tabBar, &DTabBar::tabCloseRequested, this, [this](int index) { onTabCloseRequested(index, false); });
     connect(m_tabBar, &DTabBar::currentChanged, this, &MainWindow::onTabCurrentChanged);
 
     return m_tabBar;
@@ -377,11 +378,26 @@ void MainWindow::onTabAddRequested() {
     addTab(true);
 }
 
-void MainWindow::onTabCloseRequested(int index) {
+void MainWindow::onTabCloseRequested(int index, bool hasConfirmed) {
     int stackIndex = m_tabBar->tabData(index).toInt();
     QWidget *page = m_stackWidget->widget(stackIndex);
     if (!page)
         return;
+
+    if (!hasConfirmed) {
+        auto *pane = qobject_cast<TermPane *>(page);
+        if (pane && pane->runningTerminalCount() > 0) {
+            const int count = pane->runningTerminalCount();
+            const QString body = count == 1 ? tr("There is still a process running in this terminal. "
+                                                 "Closing the terminal will kill it.")
+                                            : tr("There are still %1 processes running in this terminal. "
+                                                 "Closing the terminal will kill all of them.")
+                                                  .arg(count);
+            showExitConfirmDialog(tr("Close this terminal?"), body,
+                                  [this, index]() { onTabCloseRequested(index, true); });
+            return;
+        }
+    }
 
     qCInfo(appLog) << "Closing terminal tab at index" << index;
 
@@ -965,12 +981,55 @@ void MainWindow::resizeEvent(QResizeEvent *event) {
     }
 }
 
+void MainWindow::showExitConfirmDialog(const QString &title, const QString &body, std::function<void()> onConfirm) {
+    auto *dlg = new DDialog(title, body, this);
+    dlg->setWindowModality(Qt::WindowModal);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->addButton(QObject::tr("Cancel", "ExitConfirmDialog"), false, DDialog::ButtonNormal);
+    dlg->addButton(QObject::tr("Close", "ExitConfirmDialog"), true, DDialog::ButtonWarning);
+    QObject::connect(dlg, &DDialog::buttonClicked, dlg, [onConfirm = std::move(onConfirm)](int index) {
+        if (index == 1)
+            onConfirm();
+    });
+    dlg->show();
+}
+
 void MainWindow::closeEvent(QCloseEvent *event) {
     auto *app = qobject_cast<DApplication *>(qApp);
     if (app) {
         if (auto *aboutDialog = app->aboutDialog()) {
             disconnect(aboutDialog, &QObject::destroyed, nullptr, nullptr);
             connect(aboutDialog, &QObject::destroyed, this, [app]() { app->setAboutDialog(nullptr); });
+        }
+    }
+
+    if (!m_hasConfirmedClose) {
+        int runningCount = 0;
+        for (const auto &rec : m_tabs) {
+            if (rec.pane)
+                runningCount += rec.pane->runningTerminalCount();
+        }
+        if (runningCount > 0) {
+            event->ignore();
+            if (isMinimized())
+                setWindowState((windowState() & ~Qt::WindowMinimized) | Qt::WindowActive);
+
+            const bool singleTab = m_tabs.size() == 1;
+            const QString dialogTitle = singleTab ? tr("Close this terminal?") : tr("Close this window?");
+            const QString dialogBody =
+                singleTab ? (runningCount == 1 ? tr("There is still a process running in this terminal. "
+                                                    "Closing the terminal will kill it.")
+                                               : tr("There are still %1 processes running in this terminal. "
+                                                    "Closing the terminal will kill all of them.")
+                                                     .arg(runningCount))
+                          : tr("There are still processes running in this window. "
+                               "Closing the window will kill all of them.");
+
+            showExitConfirmDialog(dialogTitle, dialogBody, [this]() {
+                m_hasConfirmedClose = true;
+                close();
+            });
+            return;
         }
     }
 

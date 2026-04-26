@@ -31,6 +31,7 @@ public:
     QList<PaneInfo> paneInfos() const;
     QUuid activePaneId() const;
     bool focusPane(const QUuid &paneId);
+    int runningTerminalCount() const;
 
     TerminalWidget *currentTerminal() const;
     void splitCurrent(Qt::Orientation orientation);
