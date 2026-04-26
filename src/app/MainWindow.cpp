@@ -4,6 +4,7 @@
 #include "SettingsDialog.h"
 #include "TermPane.h"
 #include "TerminalWidget.h"
+#include "ThemeLoader.h"
 #include "VerticalTabSidebar.h"
 #include "logging/Logging.h"
 #include "remote/RemoteManagementPanel.h"
@@ -12,6 +13,7 @@
 
 #include <DAboutDialog>
 #include <DApplication>
+#include <DGuiApplicationHelper>
 #include <DTitlebar>
 #include <QDialog>
 #include <QHBoxLayout>
@@ -115,6 +117,11 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
             m_verticalTabsAction->setChecked(enabled);
         setVerticalTabsEnabled(enabled);
     });
+    connect(settings, &AppSettings::themeChanged, this, [this]() { applyThemeToAll(); });
+    connect(DGuiApplicationHelper::instance(), &DGuiApplicationHelper::themeTypeChanged, this, [this]() {
+        if (AppSettings::instance()->theme() == QStringLiteral("system"))
+            applyThemeToAll();
+    });
 
     // Tab bar configuration
     ensureTabBar();
@@ -128,6 +135,9 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
         };
     }
     addTab(true, initialSessionOptions);
+
+    m_themes = ThemeLoader::loadThemes();
+    applyThemeToAll();
 
     setupShortcuts();
 }
@@ -270,6 +280,12 @@ void MainWindow::addTab(bool activate, const std::optional<PtySession::StartOpti
         m_tabBar->setCurrentIndex(tabIndex);
         if (auto *term = pane->currentTerminal())
             term->setFocus();
+    }
+
+    if (!m_themes.isEmpty()) {
+        auto theme = resolveTheme();
+        for (auto *term : pane->findChildren<TerminalWidget *>())
+            term->applyTheme(theme);
     }
 }
 
@@ -823,6 +839,40 @@ void MainWindow::onConnectRemoteServer(const ServerConfig &config) {
         return;
 
     pane->connectToRemoteServer(config);
+}
+
+TerminalTheme MainWindow::resolveTheme() const {
+    if (m_themes.isEmpty())
+        const_cast<MainWindow *>(this)->m_themes = ThemeLoader::loadThemes();
+    QString setting = AppSettings::instance()->theme();
+    if (setting == QStringLiteral("system")) {
+        auto type = DGuiApplicationHelper::instance()->themeType();
+        return ThemeLoader::findTheme(m_themes, type == DGuiApplicationHelper::DarkType ? QStringLiteral("dark")
+                                                                                        : QStringLiteral("light"));
+    }
+    return ThemeLoader::findTheme(m_themes, setting);
+}
+
+void MainWindow::applyThemeToAll() {
+    auto theme = resolveTheme();
+    for (int i = 0; i < m_stackWidget->count(); ++i) {
+        auto *pane = qobject_cast<TermPane *>(m_stackWidget->widget(i));
+        if (!pane)
+            continue;
+        for (auto *term : pane->findChildren<TerminalWidget *>())
+            term->applyTheme(theme);
+    }
+
+    auto *helper = DGuiApplicationHelper::instance();
+    QString setting = AppSettings::instance()->theme();
+    if (setting == QStringLiteral("system"))
+        helper->setPaletteType(DGuiApplicationHelper::UnknownType);
+    else
+        helper->setPaletteType(theme.isDark ? DGuiApplicationHelper::DarkType : DGuiApplicationHelper::LightType);
+
+    // TODO: uncomment after VerticalTabSidebar::setDarkMode is added (Task 7)
+    // if (m_verticalSidebar)
+    //     m_verticalSidebar->setDarkMode(theme.isDark);
 }
 
 void MainWindow::resizeEvent(QResizeEvent *event) {

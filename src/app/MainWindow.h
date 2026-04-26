@@ -2,6 +2,7 @@
 
 #include "PtySession.h"
 #include "StartupOptions.h"
+#include "TerminalTheme.h"
 
 #include <DMainWindow>
 #include <DTabBar>
@@ -84,6 +85,8 @@ private:
     void onShortcutCustomCommand();
     void onShortcutRemoteManagement();
     void onConnectRemoteServer(const ServerConfig &config);
+    TerminalTheme resolveTheme() const;
+    void applyThemeToAll();
 
     QPointer<DTabBar> m_tabBar;
     QStackedWidget *m_stackWidget = nullptr;
@@ -100,6 +103,7 @@ private:
     QPointer<RemoteManagementPanel> m_remotePanel;
     StartupOptions m_startupOptions;
     bool m_startupSessionHandled = false;
+    QList<TerminalTheme> m_themes;
 
     QShortcut *m_scNewTab = nullptr;
     QShortcut *m_scCloseTab = nullptr;
