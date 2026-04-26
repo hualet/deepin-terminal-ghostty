@@ -49,6 +49,12 @@
                             "text": "Vertical Tabs",
                             "type": "checkbox",
                             "default": false
+                        },
+                        {
+                            "key": "theme",
+                            "name": "Theme",
+                            "type": "combobox",
+                            "default": "system"
                         }
                     ]
                 }

@@ -34,6 +34,9 @@ public:
     bool verticalTabsEnabled() const;
     void setVerticalTabsEnabled(bool enabled);
 
+    QString theme() const;
+    void setTheme(const QString &theme);
+
     QKeySequence shortcut(const QString &name) const;
     void setShortcut(const QString &name, const QKeySequence &seq);
 
@@ -43,6 +46,7 @@ signals:
     void cursorBlinkChanged(bool blink);
     void scrollbackLinesChanged(int lines);
     void verticalTabsEnabledChanged(bool enabled);
+    void themeChanged(const QString &theme);
 
 private:
     explicit AppSettings(QObject *parent = nullptr);

@@ -13,6 +13,7 @@ include_directories(
 add_executable(test_appsettings
   test_appsettings.cpp
   ${CMAKE_SOURCE_DIR}/src/app/AppSettings.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/ThemeLoader.cpp
   ${CMAKE_SOURCE_DIR}/src/app/settings/resources.qrc
 )
 
@@ -102,6 +103,7 @@ add_executable(test_main_window
   ${CMAKE_SOURCE_DIR}/src/logging/Logging.cpp
   ${CMAKE_SOURCE_DIR}/src/app/MainWindow.cpp
   ${CMAKE_SOURCE_DIR}/src/app/AppSettings.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/ThemeLoader.cpp
   ${CMAKE_SOURCE_DIR}/src/app/SettingsDialog.cpp
   ${CMAKE_SOURCE_DIR}/src/app/TermPane.cpp
   ${CMAKE_SOURCE_DIR}/src/app/VerticalTabSidebar.cpp

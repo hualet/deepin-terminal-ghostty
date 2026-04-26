@@ -1,5 +1,7 @@
 #include "AppSettings.h"
 
+#include "ThemeLoader.h"
+
 #include <DSettings>
 #include <DSettingsOption>
 #include <QFile>
@@ -89,6 +91,23 @@ void AppSettings::init() {
         shapeOption->setData("items", items);
     }
 
+    auto themeOption = m_dsettings->option("basic.interface.theme");
+    if (themeOption) {
+        QMap<QString, QVariant> items;
+        QStringList keys;
+        QStringList values;
+        keys.append(QStringLiteral("system"));
+        values.append(tr("System"));
+        auto themes = ThemeLoader::loadThemes();
+        for (const auto &t : themes) {
+            keys.append(t.name);
+            values.append(t.displayName);
+        }
+        items.insert(QStringLiteral("keys"), keys);
+        items.insert(QStringLiteral("values"), values);
+        themeOption->setData(QStringLiteral("items"), items);
+    }
+
     connect(m_dsettings, &Dtk::Core::DSettings::valueChanged, this, [this](const QString &key, const QVariant &) {
         if (key == "basic.interface.fontFamily" || key == "basic.interface.fontSize")
             emit terminalFontChanged(terminalFont());
@@ -100,6 +119,8 @@ void AppSettings::init() {
             emit scrollbackLinesChanged(scrollbackLines());
         else if (key == "basic.interface.verticalTabs")
             emit verticalTabsEnabledChanged(verticalTabsEnabled());
+        else if (key == "basic.interface.theme")
+            emit themeChanged(theme());
     });
 }
 
@@ -166,4 +187,12 @@ QKeySequence AppSettings::shortcut(const QString &name) const {
 
 void AppSettings::setShortcut(const QString &name, const QKeySequence &seq) {
     m_dsettings->setOption(shortcutPath(m_dsettings, name), seq.toString());
+}
+
+QString AppSettings::theme() const {
+    return m_dsettings->value("basic.interface.theme").toString();
+}
+
+void AppSettings::setTheme(const QString &theme) {
+    m_dsettings->setOption("basic.interface.theme", theme);
 }

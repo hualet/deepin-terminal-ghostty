@@ -223,6 +223,7 @@ add_executable(deepin-terminal-ghostty
   src/app/main.cpp
   src/app/MainWindow.cpp
   src/app/AppSettings.cpp
+  src/app/ThemeLoader.cpp
   src/app/SettingsDialog.cpp
   src/app/TermPane.cpp
   src/app/VerticalTabSidebar.cpp
