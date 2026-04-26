@@ -82,7 +82,13 @@ dpkg-buildpackage -us -uc -b
 
 Built `.deb` files will appear in the parent directory.
 
-When bumping the packaged version, update `debian/changelog` with real release notes for that version. Do not submit a version-only changelog entry.
+## Version Bumping
+
+When bumping the version (e.g. `0.3.0` → `0.4.0`), update two files:
+
+1. **`CMakeLists.txt`** — change the `VERSION` in the `project()` call
+2. **`debian/changelog`** — prepend a new entry with real release notes. Use `git log <previous-version-tag>..HEAD --oneline` to collect changes.
+3. Rebuild and verify: `cmake -B build && cmake --build build && cd build && ctest --output-on-failure`
 
 ## Test Commands
 
