@@ -7,6 +7,7 @@
 #include "ThemeLoader.h"
 #include "remote/ServerConfig.h"
 
+#include <DGuiApplicationHelper>
 #include <QActionGroup>
 #include <QClipboard>
 #include <QContextMenuEvent>
@@ -232,6 +233,14 @@ TerminalWidget *TermPane::createTerminal() {
     term->setCursorShape(settings->cursorShape());
     term->setCursorBlinkEnabled(settings->cursorBlink());
     term->setScrollbackLines(settings->scrollbackLines());
+
+    auto themes = ThemeLoader::loadThemes();
+    QString scheme = settings->colorScheme();
+    if (scheme == QStringLiteral("system")) {
+        auto colorType = DGuiApplicationHelper::instance()->themeType();
+        scheme = colorType == DGuiApplicationHelper::DarkType ? QStringLiteral("dark") : QStringLiteral("light");
+    }
+    term->applyTheme(ThemeLoader::findTheme(themes, scheme));
 
     term->installEventFilter(this);
     setupTerminalConnections(term);
