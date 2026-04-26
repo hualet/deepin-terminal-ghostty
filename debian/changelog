@@ -1,3 +1,19 @@
+deepin-terminal-ghostty (0.4.0-1) unstable; urgency=medium
+
+  * Add shell integration that reports running commands via OSC sequences and
+    displays process-specific icons in the vertical tab sidebar.
+  * Support X10/SGR/UTF-8/URxVT mouse tracking with scroll events.
+  * Add startup command execution options (--command, --working-directory).
+  * Install desktop file and application icon.
+  * Fix CJK character stretching distortion and supplementary-plane rendering.
+  * Fix transient terminal resizes that dropped visible pane content.
+  * Fix text selection when dragging from bottom-right to top-left.
+  * Preserve split pane layout when closing individual terminals.
+  * Add app-configured terminal content padding.
+  * Add CI static analysis workflow and esctest smoke coverage.
+
+ -- Deepin Packages <packages@deepin.org>  Sat, 26 Apr 2026 00:00:00 +0800
+
 deepin-terminal-ghostty (0.3.0-1) unstable; urgency=medium
 
   * Fix multiple crash scenarios around terminal repaint and resize handling.
