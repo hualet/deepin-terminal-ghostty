@@ -1,3 +1,5 @@
+#include "TerminalTheme.h"
+
 #include <QApplication>
 #include <QElapsedTimer>
 #include <QImage>
@@ -57,6 +59,7 @@ private slots:
     void testCellInSelectionBottomLeftToTopRight();
     void testSelectedTextTopLeftToBottomRight();
     void testSelectedTextBottomRightToTopLeft();
+    void testApplyThemeSetsColors();
 };
 
 namespace {
@@ -845,6 +848,32 @@ void TestTerminalWidget::testSelectedTextBottomRightToTopLeft() {
     const QString reverseText = widget.debugSelectedText();
 
     QCOMPARE(reverseText, forwardText);
+}
+
+void TestTerminalWidget::testApplyThemeSetsColors() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    TerminalTheme theme;
+    theme.name = QStringLiteral("test");
+    theme.displayName = QStringLiteral("Test");
+    theme.isDark = true;
+    theme.foreground = QColor(255, 0, 0);
+    theme.background = QColor(0, 0, 255);
+    theme.cursor = QColor(0, 255, 0);
+    for (int i = 0; i < 16; ++i)
+        theme.ansi[i] = QColor(i * 15, i * 15, i * 15);
+
+    widget.applyTheme(theme);
+    QApplication::processEvents();
+
+    QVERIFY(widget.debugAppliedIsDark());
+    QCOMPARE(widget.debugAppliedForeground(), QColor(255, 0, 0));
+    QCOMPARE(widget.debugAppliedBackground(), QColor(0, 0, 255));
 }
 
 // We need QApplication for QWidget tests

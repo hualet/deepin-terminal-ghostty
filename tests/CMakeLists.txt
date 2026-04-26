@@ -117,6 +117,8 @@ add_executable(test_main_window
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalWidget.cpp
 )
 
+target_compile_definitions(test_main_window PRIVATE QTGHOSTTY_TESTING)
+
 target_include_directories(test_main_window PRIVATE
   ${CMAKE_SOURCE_DIR}/src/app
 )

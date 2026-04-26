@@ -5,6 +5,7 @@
 #include "StartupOptions.h"
 #include "TermPane.h"
 #include "TerminalWidget.h"
+#include "ThemeLoader.h"
 #include "VerticalTabSidebar.h"
 #include "logging/Logging.h"
 
@@ -65,6 +66,10 @@ private slots:
     void testLoggingCategoriesExposeExpectedNames();
     void testApplicationMetadataIsConfigured();
     void testStartupSessionFinishedEmitsExitCode();
+    void testThemeLoaderLoadsAllThemes();
+    void testThemeLoaderFindsThemeByName();
+    void testThemeSettingDefaultIsSystem();
+    void testThemeChangeAppliesToAllTerminals();
 };
 
 namespace {
@@ -743,6 +748,67 @@ void TestMainWindow::testProcessIconsAreAvailable() {
         const QString path = QStringLiteral(":/icons/process/%1.svg").arg(iconName);
         QVERIFY2(!QIcon(path).isNull(), qPrintable(path));
     }
+}
+
+void TestMainWindow::testThemeLoaderLoadsAllThemes() {
+    auto themes = ThemeLoader::loadThemes();
+    QCOMPARE(themes.size(), 7);
+
+    QStringList names;
+    for (const auto &t : themes)
+        names.append(t.name);
+
+    QVERIFY(names.contains(QStringLiteral("dark")));
+    QVERIFY(names.contains(QStringLiteral("light")));
+    QVERIFY(names.contains(QStringLiteral("bim")));
+    QVERIFY(names.contains(QStringLiteral("tomorrow-night-blue")));
+    QVERIFY(names.contains(QStringLiteral("ocean-dark")));
+    QVERIFY(names.contains(QStringLiteral("hybrid")));
+    QVERIFY(names.contains(QStringLiteral("one-light")));
+}
+
+void TestMainWindow::testThemeLoaderFindsThemeByName() {
+    auto themes = ThemeLoader::loadThemes();
+
+    auto bim = ThemeLoader::findTheme(themes, QStringLiteral("bim"));
+    QCOMPARE(bim.name, QStringLiteral("bim"));
+    QCOMPARE(bim.displayName, QStringLiteral("Bim"));
+    QVERIFY(bim.isDark);
+    QCOMPARE(bim.foreground, QColor(255, 213, 0));
+    QCOMPARE(bim.background, QColor(1, 40, 73));
+
+    auto light = ThemeLoader::findTheme(themes, QStringLiteral("one-light"));
+    QVERIFY(!light.isDark);
+
+    auto fallback = ThemeLoader::findTheme(themes, QStringLiteral("nonexistent"));
+    QCOMPARE(fallback.name, QStringLiteral("dark"));
+}
+
+void TestMainWindow::testThemeSettingDefaultIsSystem() {
+    auto *settings = AppSettings::instance();
+    QCOMPARE(settings->theme(), QStringLiteral("system"));
+}
+
+void TestMainWindow::testThemeChangeAppliesToAllTerminals() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *settings = AppSettings::instance();
+    QSignalSpy spy(settings, &AppSettings::themeChanged);
+    QVERIFY(spy.isValid());
+
+    settings->setTheme(QStringLiteral("bim"));
+    QTRY_COMPARE(spy.count(), 1);
+    QCOMPARE(settings->theme(), QStringLiteral("bim"));
+
+    auto *terminal = currentTerminal(window);
+    QVERIFY(terminal);
+    QTRY_COMPARE(terminal->debugAppliedForeground(), QColor(255, 213, 0));
+    QTRY_COMPARE(terminal->debugAppliedBackground(), QColor(1, 40, 73));
+
+    settings->setTheme(QStringLiteral("system"));
+    QTRY_COMPARE(settings->theme(), QStringLiteral("system"));
 }
 
 int main(int argc, char *argv[]) {
