@@ -203,7 +203,7 @@ void VerticalTabSidebar::applyStylesheet() {
         }
     )")
             .arg(c(sidebarBg.red(), sidebarBg.green(), sidebarBg.blue(), qRound(sidebarBg.alpha() * 0.72)),
-                 c(text.red(), text.green(), text.blue(), qRound(ta * 0.05)),
+                 c(text.red(), text.green(), text.blue(), qRound(ta * (isDark ? 0.05 : 0.08))),
                  c(sectionBg.red(), sectionBg.green(), sectionBg.blue(), qRound(sectionBg.alpha() * 0.96)),
                  c(sectionHover.red(), sectionHover.green(), sectionHover.blue(), qRound(sectionHover.alpha() * 0.98)),
                  c(highlight.red(), highlight.green(), highlight.blue(), qRound(highlight.alpha() * 0.45)),
@@ -216,7 +216,7 @@ void VerticalTabSidebar::applyStylesheet() {
                  c(text.red(), text.green(), text.blue(), qRound(ta * 0.08)),
                  c(text.red(), text.green(), text.blue(), ta),
                  c(highlight.red(), highlight.green(), highlight.blue(), qRound(highlight.alpha() * 0.18)),
-                 c(text.red(), text.green(), text.blue(), qRound(ta * 0.12)),
+                 c(text.red(), text.green(), text.blue(), qRound(ta * (isDark ? 0.12 : 0.18))),
                  c(text.red(), text.green(), text.blue(), qRound(ta * 0.75)),
                  c(text.red(), text.green(), text.blue(), qRound(ta * 0.92))));
 }

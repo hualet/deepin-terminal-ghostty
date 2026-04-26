@@ -358,6 +358,7 @@ QSplitter *TermPane::createPaneSplitter(Qt::Orientation orientation) {
     auto *splitter = new QSplitter(orientation, this);
     splitter->setChildrenCollapsible(false);
     splitter->setHandleWidth(1);
+    splitter->setStyleSheet(QStringLiteral("QSplitter::handle { background-color: rgba(128,128,128,0.25); }"));
     return splitter;
 }
 

@@ -631,6 +631,8 @@ void MainWindow::rebuildCentralLayout() {
             m_mainSplitter = new QSplitter(Qt::Horizontal, this);
             m_mainSplitter->setChildrenCollapsible(false);
             m_mainSplitter->setHandleWidth(1);
+            m_mainSplitter->setStyleSheet(
+                QStringLiteral("QSplitter::handle { background-color: rgba(128,128,128,0.25); }"));
             m_mainSplitter->setObjectName(QStringLiteral("verticalTabsSplitter"));
         }
         if (m_verticalSidebar->parentWidget() != m_mainSplitter)
