@@ -16,6 +16,7 @@
 #include <DDialog>
 #include <DGuiApplicationHelper>
 #include <DTitlebar>
+#include <DWindowManagerHelper>
 #include <QActionGroup>
 #include <QDialog>
 #include <QHBoxLayout>
@@ -154,6 +155,7 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
     applyThemeToAll();
 
     setupShortcuts();
+    initWindowEffects();
 }
 
 MainWindow::~MainWindow() = default;
@@ -372,6 +374,10 @@ void MainWindow::addTab(bool activate, const std::optional<PtySession::StartOpti
         auto theme = resolveTheme();
         for (auto *term : pane->findChildren<TerminalWidget *>())
             term->applyTheme(theme);
+    }
+
+    if (m_compositorHasBlur) {
+        pane->setOpacity(AppSettings::instance()->opacity());
     }
 }
 
@@ -942,6 +948,54 @@ void MainWindow::onConnectRemoteServer(const ServerConfig &config) {
         return;
 
     pane->connectToRemoteServer(config);
+}
+
+void MainWindow::initWindowEffects() {
+    auto *wmHelper = DWindowManagerHelper::instance();
+    m_compositorHasBlur = wmHelper->hasBlurWindow();
+
+    connect(wmHelper, &DWindowManagerHelper::hasBlurWindowChanged, this, &MainWindow::onCompositorCapabilitiesChanged);
+
+    auto *settings = AppSettings::instance();
+    connect(settings, &AppSettings::opacityChanged, this, &MainWindow::applyOpacityToAll);
+    connect(settings, &AppSettings::backgroundBlurChanged, this, &MainWindow::setWindowBlurEnabled);
+
+    applyOpacityToAll();
+    setWindowBlurEnabled(settings->backgroundBlur());
+}
+
+void MainWindow::applyOpacityToAll() {
+    qreal opacity = AppSettings::instance()->opacity();
+    if (!m_compositorHasBlur)
+        opacity = 1.0;
+
+    for (int i = 0; i < m_stackWidget->count(); ++i) {
+        if (auto *pane = qobject_cast<TermPane *>(m_stackWidget->widget(i)))
+            pane->setOpacity(opacity);
+    }
+}
+
+void MainWindow::setWindowBlurEnabled(bool enabled) {
+    if (!m_compositorHasBlur)
+        enabled = false;
+
+    setEnableBlurWindow(enabled);
+
+    bool needsTranslucent = enabled || AppSettings::instance()->opacity() < 1.0;
+    setAttribute(Qt::WA_TranslucentBackground, needsTranslucent && m_compositorHasBlur);
+}
+
+void MainWindow::onCompositorCapabilitiesChanged() {
+    m_compositorHasBlur = DWindowManagerHelper::instance()->hasBlurWindow();
+
+    if (!m_compositorHasBlur) {
+        setWindowBlurEnabled(false);
+    }
+
+    applyOpacityToAll();
+
+    auto *settings = AppSettings::instance();
+    setWindowBlurEnabled(settings->backgroundBlur());
 }
 
 TerminalTheme MainWindow::resolveTheme() const {

@@ -108,6 +108,11 @@ private:
     StartupOptions m_startupOptions;
     bool m_startupSessionHandled = false;
     bool m_hasConfirmedClose = false;
+    bool m_compositorHasBlur = false;
+    void initWindowEffects();
+    void applyOpacityToAll();
+    void setWindowBlurEnabled(bool enabled);
+    void onCompositorCapabilitiesChanged();
     QList<TerminalTheme> m_themes;
 
     QShortcut *m_scNewTab = nullptr;
