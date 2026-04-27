@@ -631,6 +631,7 @@ void MainWindow::rebuildCentralLayout() {
     if (m_verticalTabsEnabled) {
         if (!m_verticalSidebar) {
             m_verticalSidebar = new VerticalTabSidebar(this);
+            m_verticalSidebar->setAutoFillBackground(true);
             connect(m_verticalSidebar, &VerticalTabSidebar::tabActivated, this,
                     [this](int tabId) { gotoTab(indexOfTabId(tabId)); });
             connect(m_verticalSidebar, &VerticalTabSidebar::tabExpansionToggled, this, [this](int tabId) {

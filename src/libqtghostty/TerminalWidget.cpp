@@ -541,8 +541,12 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     if (err != GHOSTTY_SUCCESS)
         return;
 
-    painter.fillRect(rect(), QColor(colors.background.r, colors.background.g, colors.background.b,
-                                    qRound(m_opacity * 255)));
+    const QColor bgWithAlpha(colors.background.r, colors.background.g, colors.background.b, qRound(m_opacity * 255));
+
+    painter.setCompositionMode(QPainter::CompositionMode_Source);
+    painter.fillRect(rect(), bgWithAlpha);
+    painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+
     const QRect contentRect = terminalContentRect();
     const QPoint contentOrigin = contentRect.topLeft();
 
@@ -559,16 +563,18 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
 
     const bool fullRedraw = bufferRecreated || (dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FULL);
     if (!fullRedraw && dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FALSE) {
+        painter.setCompositionMode(QPainter::CompositionMode_Source);
         painter.drawImage(contentOrigin, m_backBuffer);
+        painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
         return;
     }
 
     QPainter backPainter(&m_backBuffer);
     backPainter.setFont(m_font);
     if (fullRedraw) {
-        backPainter.fillRect(QRect(QPoint(0, 0), contentRect.size()),
-                             QColor(colors.background.r, colors.background.g, colors.background.b,
-                                    qRound(m_opacity * 255)));
+        backPainter.setCompositionMode(QPainter::CompositionMode_Source);
+        backPainter.fillRect(QRect(QPoint(0, 0), contentRect.size()), bgWithAlpha);
+        backPainter.setCompositionMode(QPainter::CompositionMode_SourceOver);
     }
 
 #ifdef QTGHOSTTY_TESTING
@@ -600,7 +606,9 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     }
     GhosttyRenderStateDirty cleanState = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
     ghostty_render_state_set(m_renderState, GHOSTTY_RENDER_STATE_OPTION_DIRTY, &cleanState);
+    painter.setCompositionMode(QPainter::CompositionMode_Source);
     painter.drawImage(contentOrigin, m_backBuffer);
+    painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
 }
 
 void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStateColors &colors) {
@@ -610,7 +618,9 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
     const QColor defaultBackground(colors.background.r, colors.background.g, colors.background.b,
                                    qRound(m_opacity * 255));
     const QColor defaultForeground(colors.foreground.r, colors.foreground.g, colors.foreground.b);
+    painter.setCompositionMode(QPainter::CompositionMode_Source);
     painter.fillRect(0, y, terminalContentRect().width(), m_cellHeight, defaultBackground);
+    painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
 
     constexpr GhosttyRenderStateRowCellsData kCellDataKeys[] = {
         GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW,
