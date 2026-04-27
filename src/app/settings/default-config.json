@@ -55,6 +55,20 @@
                             "name": "Color Scheme",
                             "type": "combobox",
                             "default": "system"
+                        },
+                        {
+                            "key": "opacity",
+                            "name": "Opacity",
+                            "type": "slider",
+                            "default": 100,
+                            "min": 20,
+                            "max": 100
+                        },
+                        {
+                            "key": "blurred_background",
+                            "text": "Blur background",
+                            "type": "checkbox",
+                            "default": false
                         }
                     ]
                 }
