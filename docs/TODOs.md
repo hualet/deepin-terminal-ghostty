@@ -7,6 +7,7 @@
   - [x] 主题配色
     - [ ] 更多主题
     - [ ] 自定义主题
+  - [ ] 背景透明 & 背景模糊
   - [x] 字体
 - [x] 屏幕拆分
 - [x] 查找
@@ -14,13 +15,14 @@
 - [ ] 现代扩展协议
   - [ ] kitty image protocol
 - [ ] 面向多 Agent 优化
-  - [ ] pane 状态点: 接入 shell 集成或命令退出码通路，再区分运行中/成功/失败状态；当前 UI 已先移除状态点，避免误导
+  - [x] shell integration
+  - [ ] 执行状态点的通知
 - [ ] SE
   - [x] 添加单元测试
   - [x] 添加日志系统
   - [x] 添加自动化构建和打包
-  - [ ] CI
-    - [ ] clang-static-analyzer
+  - [x] CI
+    - [x] clang-static-analyzer
 - [ ] 兼容性和性能测试
   - [ ] 兼容性: vttest + ucs-detect
   - [ ] 兼容性: esctest
