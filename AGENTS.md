@@ -117,6 +117,14 @@ Run individual binaries:
 ./build/tests/test_main_window
 ```
 
+Tests that create widgets must run under the Qt offscreen platform to
+avoid requiring a display. Pass `-platform offscreen` to individual test
+binaries, or set `QT_QPA_PLATFORM=offscreen` when running via `ctest`:
+
+```bash
+QT_QPA_PLATFORM=offscreen ctest --output-on-failure
+```
+
 When changing PTY, input, tab, or window-close behavior, prefer running the most specific affected test binary first, then the full relevant set.
 
 ## Architecture Notes
@@ -236,6 +244,7 @@ CI will reject changes that do not match the enforced style.
   - `docs: ...`
   - `chore: ...`
 - Keep the subject line short, imperative, and scoped to the actual change.
+- Wrap commit message body lines at 80 characters.
 - If amending a commit, preserve the same convention-compliant format.
 
 ## Useful References
