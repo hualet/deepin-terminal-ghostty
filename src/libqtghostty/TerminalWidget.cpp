@@ -541,7 +541,8 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     if (err != GHOSTTY_SUCCESS)
         return;
 
-    painter.fillRect(rect(), QColor(colors.background.r, colors.background.g, colors.background.b));
+    painter.fillRect(rect(), QColor(colors.background.r, colors.background.g, colors.background.b,
+                                    qRound(m_opacity * 255)));
     const QRect contentRect = terminalContentRect();
     const QPoint contentOrigin = contentRect.topLeft();
 
@@ -566,7 +567,8 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     backPainter.setFont(m_font);
     if (fullRedraw) {
         backPainter.fillRect(QRect(QPoint(0, 0), contentRect.size()),
-                             QColor(colors.background.r, colors.background.g, colors.background.b));
+                             QColor(colors.background.r, colors.background.g, colors.background.b,
+                                    qRound(m_opacity * 255)));
     }
 
 #ifdef QTGHOSTTY_TESTING
@@ -605,7 +607,8 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
     if (ghostty_render_state_row_get(m_rowIter, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &m_rowCells) != GHOSTTY_SUCCESS)
         return;
 
-    const QColor defaultBackground(colors.background.r, colors.background.g, colors.background.b);
+    const QColor defaultBackground(colors.background.r, colors.background.g, colors.background.b,
+                                   qRound(m_opacity * 255));
     const QColor defaultForeground(colors.foreground.r, colors.foreground.g, colors.foreground.b);
     painter.fillRect(0, y, terminalContentRect().width(), m_cellHeight, defaultBackground);
 
@@ -1223,6 +1226,12 @@ void TerminalWidget::setStartOptions(const PtySession::StartOptions &options) {
 
 void TerminalWidget::setScrollbackLines(int lines) {
     m_scrollbackLines = lines;
+}
+
+void TerminalWidget::setOpacity(qreal opacity) {
+    m_opacity = opacity;
+    setAttribute(Qt::WA_TranslucentBackground, m_opacity < 1.0);
+    update();
 }
 
 void TerminalWidget::applyTheme(const TerminalTheme &theme) {

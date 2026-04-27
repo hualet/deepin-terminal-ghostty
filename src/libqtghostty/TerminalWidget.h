@@ -34,6 +34,7 @@ public:
     void setCursorShape(int shape);
     void setCursorBlinkEnabled(bool blink);
     void setScrollbackLines(int lines);
+    void setOpacity(qreal opacity);
     void applyTheme(const TerminalTheme &theme);
     void setStartOptions(const PtySession::StartOptions &options);
 
@@ -177,6 +178,7 @@ private:
     // Scrollback
     int m_scrollbackLines = 1000;
     bool m_isDark = true;
+    qreal m_opacity = 1.0;
 
     // Selection colors (from theme)
     QColor m_selectionBackground;
