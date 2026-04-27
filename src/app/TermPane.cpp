@@ -517,6 +517,19 @@ bool TermPane::eventFilter(QObject *watched, QEvent *event) {
         closeOtherTerminals();
         return true;
     }
+    if (keyEvent->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier)) {
+        auto *settings = AppSettings::instance();
+        if (keyEvent->key() == Qt::Key_Up) {
+            qreal current = settings->opacity();
+            settings->setOpacity(qMin(1.0, current + 0.05));
+            return true;
+        }
+        if (keyEvent->key() == Qt::Key_Down) {
+            qreal current = settings->opacity();
+            settings->setOpacity(qMax(0.2, current - 0.05));
+            return true;
+        }
+    }
 
     return false;
 }
