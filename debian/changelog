@@ -1,3 +1,12 @@
+deepin-terminal-ghostty (0.7.0-1) unstable; urgency=medium
+
+  * Update application logo and regenerate 128x128 and 256x256 sizes.
+  * Derive terminal selection highlight color from the active theme foreground
+    instead of hardcoding a fixed blue, so selection appearance follows theme
+    changes automatically.
+
+ -- Deepin Packages <packages@deepin.org>  Sun, 27 Apr 2026 23:00:00 +0800
+
 deepin-terminal-ghostty (0.6.0-1) unstable; urgency=medium
 
   * Replace coding agent icons with lobehub avatar webp versions and apply
