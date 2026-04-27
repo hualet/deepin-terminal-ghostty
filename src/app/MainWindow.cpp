@@ -54,7 +54,8 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
     }
 
     // Window basics
-    resize(960, 640);
+    QSize savedSize = AppSettings::instance()->windowSize();
+    resize(savedSize.isValid() ? savedSize : QSize(960, 640));
     setWindowTitle("deepin-terminal-ghostty");
 
     // Central widget host keeps layout switching local to MainWindow.
@@ -975,6 +976,7 @@ void MainWindow::applyThemeToAll() {
 
 void MainWindow::resizeEvent(QResizeEvent *event) {
     DMainWindow::resizeEvent(event);
+    AppSettings::instance()->saveWindowSize(event->size());
     if (m_remotePanel && m_remotePanel->isPanelVisible() && m_contentHost) {
         QRect hostRect = m_contentHost->rect();
         m_remotePanel->setGeometry(hostRect.width() - 260, 0, 260, hostRect.height());
@@ -1033,7 +1035,6 @@ void MainWindow::closeEvent(QCloseEvent *event) {
         }
     }
 
-    // Clean up all pages so PtySession destructors run gracefully
     while (m_stackWidget->count() > 0) {
         QWidget *w = m_stackWidget->widget(0);
         m_stackWidget->removeWidget(w);

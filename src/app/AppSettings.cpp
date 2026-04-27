@@ -7,7 +7,9 @@
 #include <QFile>
 #include <QFontDatabase>
 #include <QJsonDocument>
+#include <QSettings>
 #include <QStandardPaths>
+#include <QTimer>
 #include <qsettingbackend.h>
 
 AppSettings *AppSettings::s_instance = nullptr;
@@ -179,6 +181,32 @@ void AppSettings::setVerticalTabsEnabled(bool enabled) {
 
     m_dsettings->setOption("basic.interface.verticalTabs", enabled);
     m_dsettings->sync();
+}
+
+QSize AppSettings::windowSize() const {
+    QSettings s(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
+                    + "/deepin/deepin-terminal-ghostty-state.conf",
+                QSettings::IniFormat);
+    int w = s.value("MainWindow/width", 0).toInt();
+    int h = s.value("MainWindow/height", 0).toInt();
+    return (w > 0 && h > 0) ? QSize(w, h) : QSize();
+}
+
+void AppSettings::saveWindowSize(const QSize &sz) {
+    if (!m_windowSizeTimer) {
+        m_windowSizeTimer = new QTimer(this);
+        m_windowSizeTimer->setSingleShot(true);
+        m_windowSizeTimer->setInterval(500);
+        connect(m_windowSizeTimer, &QTimer::timeout, this, [this]() {
+            QSettings s(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
+                            + "/deepin/deepin-terminal-ghostty-state.conf",
+                        QSettings::IniFormat);
+            s.setValue("MainWindow/width", m_pendingWindowSize.width());
+            s.setValue("MainWindow/height", m_pendingWindowSize.height());
+        });
+    }
+    m_pendingWindowSize = sz;
+    m_windowSizeTimer->start();
 }
 
 QKeySequence AppSettings::shortcut(const QString &name) const {

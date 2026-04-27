@@ -3,7 +3,10 @@
 #include <QFont>
 #include <QKeySequence>
 #include <QObject>
+#include <QSize>
 #include <QString>
+
+class QTimer;
 
 namespace Dtk::Core {
 class DSettings;
@@ -37,6 +40,9 @@ public:
     QString colorScheme() const;
     void setColorScheme(const QString &scheme);
 
+    QSize windowSize() const;
+    void saveWindowSize(const QSize &size);
+
     QKeySequence shortcut(const QString &name) const;
     void setShortcut(const QString &name, const QKeySequence &seq);
 
@@ -55,5 +61,7 @@ private:
     Dtk::Core::DSettings *m_dsettings = nullptr;
     Dtk::Core::QSettingBackend *m_backend = nullptr;
     QString m_configPath;
+    QTimer *m_windowSizeTimer = nullptr;
+    QSize m_pendingWindowSize;
     static AppSettings *s_instance;
 };
