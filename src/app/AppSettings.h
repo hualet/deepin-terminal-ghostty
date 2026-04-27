@@ -42,6 +42,10 @@ public:
     QString colorScheme() const;
     void setColorScheme(const QString &scheme);
 
+    qreal opacity() const;
+    bool backgroundBlur() const;
+    void setOpacity(qreal opacity);
+
     QSize windowSize() const;
     void saveWindowSize(const QSize &size);
 
@@ -55,6 +59,8 @@ signals:
     void scrollbackLinesChanged(int lines);
     void verticalTabsEnabledChanged(bool enabled);
     void colorSchemeChanged(const QString &scheme);
+    void opacityChanged(qreal opacity);
+    void backgroundBlurChanged(bool enabled);
 
 private:
     explicit AppSettings(QObject *parent = nullptr);

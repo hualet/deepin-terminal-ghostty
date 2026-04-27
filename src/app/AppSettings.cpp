@@ -123,6 +123,10 @@ void AppSettings::init() {
             emit verticalTabsEnabledChanged(verticalTabsEnabled());
         else if (key == "basic.interface.colorScheme")
             emit colorSchemeChanged(colorScheme());
+        else if (key == "basic.interface.opacity")
+            emit opacityChanged(opacity());
+        else if (key == "basic.interface.blurred_background")
+            emit backgroundBlurChanged(backgroundBlur());
     });
 }
 
@@ -236,4 +240,17 @@ QString AppSettings::colorScheme() const {
 
 void AppSettings::setColorScheme(const QString &scheme) {
     m_dsettings->setOption("basic.interface.colorScheme", scheme);
+}
+
+qreal AppSettings::opacity() const {
+    return m_dsettings->value("basic.interface.opacity").toInt() / 100.0;
+}
+
+bool AppSettings::backgroundBlur() const {
+    return m_dsettings->value("basic.interface.blurred_background").toBool();
+}
+
+void AppSettings::setOpacity(qreal opacity) {
+    int val = qBound(20, qRound(opacity * 100.0), 100);
+    m_dsettings->setOption("basic.interface.opacity", val);
 }
