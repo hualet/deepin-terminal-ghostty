@@ -969,6 +969,9 @@ void MainWindow::applyOpacityToAll() {
     if (!m_compositorHasBlur)
         opacity = 1.0;
 
+    bool needsTranslucent = opacity < 1.0 || AppSettings::instance()->backgroundBlur();
+    setAttribute(Qt::WA_TranslucentBackground, needsTranslucent && m_compositorHasBlur);
+
     for (int i = 0; i < m_stackWidget->count(); ++i) {
         if (auto *pane = qobject_cast<TermPane *>(m_stackWidget->widget(i)))
             pane->setOpacity(opacity);
