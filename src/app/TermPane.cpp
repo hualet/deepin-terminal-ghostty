@@ -29,7 +29,7 @@
 
 namespace {
 
-constexpr int kTerminalContentPadding = 4;
+constexpr int kTerminalContentPadding = 12;
 
 Qt::KeyboardModifiers normalizedModifiers(Qt::KeyboardModifiers modifiers) {
     return modifiers & (Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier);
