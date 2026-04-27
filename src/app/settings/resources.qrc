@@ -30,6 +30,7 @@
     <qresource prefix="/themes">
         <file alias="dark.json">../themes/dark.json</file>
         <file alias="light.json">../themes/light.json</file>
+        <file alias="classic-dark.json">../themes/classic-dark.json</file>
         <file alias="bim.json">../themes/bim.json</file>
         <file alias="tomorrow-night-blue.json">../themes/tomorrow-night-blue.json</file>
         <file alias="ocean-dark.json">../themes/ocean-dark.json</file>
