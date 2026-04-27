@@ -40,6 +40,7 @@ public:
     void closeOtherTerminals();
     void executeCommand(const QString &command);
     void setCustomTitle(const QString &title);
+    void setOpacity(qreal opacity);
     void connectToRemoteServer(const ServerConfig &config);
 
 protected:

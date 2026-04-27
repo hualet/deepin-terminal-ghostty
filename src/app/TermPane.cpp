@@ -745,6 +745,11 @@ void TermPane::setCustomTitle(const QString &title) {
     Q_EMIT terminalTitleChanged(title);
 }
 
+void TermPane::setOpacity(qreal opacity) {
+    for (auto *term : findChildren<TerminalWidget *>())
+        term->setOpacity(opacity);
+}
+
 void TermPane::connectToRemoteServer(const ServerConfig &config) {
     if (!m_currentTerm)
         return;
