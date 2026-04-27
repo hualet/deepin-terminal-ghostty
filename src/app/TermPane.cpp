@@ -486,9 +486,9 @@ bool TermPane::eventFilter(QObject *watched, QEvent *event) {
         return true;
     }
     if (matchesShortcut(keyEvent, settings->shortcut("default_size"))) {
-        const QFont defaultFont = settings->terminalFont();
+        const QFont defaultFont = settings->defaultTerminalFont();
         term->setTerminalFont(defaultFont);
-        settings->setTerminalFont(defaultFont);
+        settings->resetFontSize();
         return true;
     }
 

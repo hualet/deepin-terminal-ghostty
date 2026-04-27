@@ -23,6 +23,8 @@ public:
     Dtk::Core::DSettings *dsettings() const;
 
     QFont terminalFont() const;
+    QFont defaultTerminalFont() const;
+    void resetFontSize();
     void setTerminalFont(const QFont &font);
 
     int cursorShape() const;

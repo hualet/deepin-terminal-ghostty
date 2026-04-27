@@ -139,6 +139,19 @@ QFont AppSettings::terminalFont() const {
     return font;
 }
 
+QFont AppSettings::defaultTerminalFont() const {
+    QFont font = terminalFont();
+    auto sizeOpt = m_dsettings->option("basic.interface.fontSize");
+    font.setPointSize(sizeOpt ? sizeOpt->defaultValue().toInt() : 11);
+    return font;
+}
+
+void AppSettings::resetFontSize() {
+    auto sizeOpt = m_dsettings->option("basic.interface.fontSize");
+    int defaultSize = sizeOpt ? sizeOpt->defaultValue().toInt() : 11;
+    m_dsettings->setOption("basic.interface.fontSize", defaultSize);
+}
+
 void AppSettings::setTerminalFont(const QFont &font) {
     m_dsettings->blockSignals(true);
     m_dsettings->setOption("basic.interface.fontFamily", font.family());
