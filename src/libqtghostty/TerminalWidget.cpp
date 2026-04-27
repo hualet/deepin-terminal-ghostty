@@ -745,6 +745,9 @@ void TerminalWidget::renderOverlays(QPainter &painter) const {
         if (ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &scrollbar) == GHOSTTY_SUCCESS)
             scrollOffset = scrollbar.offset;
     }
+    GhosttyColorRgb defaultFg = {};
+    ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_COLOR_FOREGROUND, &defaultFg);
+    QColor defaultForeground(defaultFg.r, defaultFg.g, defaultFg.b);
 
     if (!m_searchMatches.isEmpty() || m_selection.active) {
         for (int viewportRow = 0; viewportRow < static_cast<int>(m_rows); ++viewportRow) {
@@ -764,8 +767,13 @@ void TerminalWidget::renderOverlays(QPainter &painter) const {
                     }
                 }
 
-                if (cellInSelection(screenRow, col))
-                    painter.fillRect(x, y, m_cellWidth, m_cellHeight, QColor(0, 120, 215, 180));
+                if (cellInSelection(screenRow, col)) {
+                    QColor selBg = m_selectionBackground.isValid()
+                                       ? m_selectionBackground
+                                       : QColor(defaultForeground.red(), defaultForeground.green(),
+                                                defaultForeground.blue(), m_isDark ? 60 : 50);
+                    painter.fillRect(x, y, m_cellWidth, m_cellHeight, selBg);
+                }
             }
         }
     }
@@ -1237,6 +1245,7 @@ void TerminalWidget::applyTheme(const TerminalTheme &theme) {
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_COLOR_PALETTE, palette);
 
     m_isDark = theme.isDark;
+    m_selectionBackground = theme.selectionBackground;
     m_renderStateDirty = true;
     update();
 }

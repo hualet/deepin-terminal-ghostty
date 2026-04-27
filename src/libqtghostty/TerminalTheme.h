@@ -10,5 +10,7 @@ struct TerminalTheme {
     QColor foreground;
     QColor background;
     QColor cursor;
+    QColor selectionBackground;
+    QColor selectionForeground;
     QColor ansi[16];
 };

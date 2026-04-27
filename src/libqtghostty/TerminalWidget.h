@@ -177,6 +177,9 @@ private:
     int m_scrollbackLines = 1000;
     bool m_isDark = true;
 
+    // Selection colors (from theme)
+    QColor m_selectionBackground;
+
     // Input method composition
     QString m_preeditText;
 

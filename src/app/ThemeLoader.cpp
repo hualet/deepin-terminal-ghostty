@@ -34,6 +34,13 @@ QList<TerminalTheme> loadThemes() {
         theme.foreground = parseColor(obj[QStringLiteral("foreground")].toArray());
         theme.background = parseColor(obj[QStringLiteral("background")].toArray());
         theme.cursor = parseColor(obj[QStringLiteral("cursor")].toArray());
+        if (obj.contains(QStringLiteral("selectionBackground")))
+            theme.selectionBackground = parseColor(obj[QStringLiteral("selectionBackground")].toArray());
+        else
+            theme.selectionBackground = QColor(theme.foreground.red(), theme.foreground.green(),
+                                               theme.foreground.blue(), theme.isDark ? 60 : 50);
+        if (obj.contains(QStringLiteral("selectionForeground")))
+            theme.selectionForeground = parseColor(obj[QStringLiteral("selectionForeground")].toArray());
 
         QJsonArray ansiArr = obj[QStringLiteral("ansi")].toArray();
         for (int i = 0; i < 16 && i < ansiArr.size(); ++i)
