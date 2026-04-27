@@ -30,6 +30,7 @@ public:
     bool hasRunningProcess() const;
 
     void setTerminalFont(const QFont &font);
+    QFont terminalFont() const;
     void setCursorShape(int shape);
     void setCursorBlinkEnabled(bool blink);
     void setScrollbackLines(int lines);

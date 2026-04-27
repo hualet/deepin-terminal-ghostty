@@ -477,14 +477,18 @@ bool TermPane::eventFilter(QObject *watched, QEvent *event) {
     }
     if (matchesShortcut(keyEvent, settings->shortcut("zoom_in"))) {
         term->zoomIn();
+        settings->setTerminalFont(term->terminalFont());
         return true;
     }
     if (matchesShortcut(keyEvent, settings->shortcut("zoom_out"))) {
         term->zoomOut();
+        settings->setTerminalFont(term->terminalFont());
         return true;
     }
     if (matchesShortcut(keyEvent, settings->shortcut("default_size"))) {
-        term->setTerminalFont(settings->terminalFont());
+        const QFont defaultFont = settings->terminalFont();
+        term->setTerminalFont(defaultFont);
+        settings->setTerminalFont(defaultFont);
         return true;
     }
 

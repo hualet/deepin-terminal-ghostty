@@ -1195,6 +1195,10 @@ void TerminalWidget::setTerminalFont(const QFont &font) {
     update();
 }
 
+QFont TerminalWidget::terminalFont() const {
+    return m_font;
+}
+
 void TerminalWidget::setCursorShape(int shape) {
     m_cursorShape = shape;
     update();
