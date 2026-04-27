@@ -128,6 +128,19 @@ std::optional<QString> commandFromQtGhosttyShellCommand(const QByteArray &payloa
     return QString::fromUtf8(QByteArray::fromBase64(payload.mid(kPrefix.size()))).trimmed();
 }
 
+std::optional<int> commandResultFromQtGhosttyShellCommandResult(const QByteArray &payload) {
+    static constexpr QByteArrayView kPrefix("777;ShellCommandResult=");
+    if (!payload.startsWith(kPrefix))
+        return std::nullopt;
+
+    const QByteArray value = payload.mid(kPrefix.size());
+    bool ok = false;
+    const int exitCode = value.toInt(&ok);
+    if (!ok)
+        return std::nullopt;
+    return exitCode;
+}
+
 std::optional<QString> shellCommandFromOscPayload(const QByteArray &payload) {
     const std::optional<QString> qtGhosttyCommand = commandFromQtGhosttyShellCommand(payload);
     if (qtGhosttyCommand.has_value())
@@ -1383,9 +1396,15 @@ void TerminalWidget::scanShellIntegrationSequences(const QByteArray &data) {
         const int payloadEnd = useBel ? belEnd : stEnd;
         const int sequenceEnd = useBel ? belEnd + 1 : stEnd + 2;
         const QByteArray payload = m_oscScanBuffer.mid(2, payloadEnd - 2);
-        const std::optional<QString> command = shellCommandFromOscPayload(payload);
-        if (command.has_value())
-            setShellCommand(command.value());
+
+        const std::optional<int> result = commandResultFromQtGhosttyShellCommandResult(payload);
+        if (result.has_value()) {
+            setShellCommandResult(result.value());
+        } else {
+            const std::optional<QString> command = shellCommandFromOscPayload(payload);
+            if (command.has_value())
+                setShellCommand(command.value());
+        }
 
         m_oscScanBuffer.remove(0, sequenceEnd);
     }
@@ -1397,7 +1416,33 @@ void TerminalWidget::setShellCommand(const QString &command) {
         return;
 
     setProperty("shellCommand", trimmed);
+
+    if (!trimmed.isEmpty()) {
+        m_pendingExitCode = -1;
+        updateCommandState(CommandState::Running);
+    } else {
+        if (m_pendingExitCode >= 0) {
+            updateCommandState(m_pendingExitCode == 0 ? CommandState::Succeeded : CommandState::Failed);
+            m_pendingExitCode = -1;
+        } else {
+            updateCommandState(CommandState::Idle);
+        }
+    }
+
     Q_EMIT shellCommandChanged(trimmed);
+}
+
+void TerminalWidget::setShellCommandResult(int exitCode) {
+    m_pendingExitCode = exitCode;
+}
+
+void TerminalWidget::updateCommandState(CommandState newState) {
+    if (m_commandState == newState)
+        return;
+
+    m_commandState = newState;
+    setProperty("commandState", static_cast<int>(newState));
+    Q_EMIT commandStateChanged(newState);
 }
 
 void TerminalWidget::onPtySessionClosed() {

@@ -101,6 +101,9 @@ __deepin_terminal_ghostty_emit_command() {
 __deepin_terminal_ghostty_clear_command() {
     printf '\033]777;ShellCommand=\033\\'
 }
+__deepin_terminal_ghostty_report_result() {
+    printf '\033]777;ShellCommandResult=%s\033\\' "$?"
+}
 )SH";
 }
 
@@ -136,7 +139,7 @@ __deepin_terminal_ghostty_preexec() {
     __deepin_terminal_ghostty_inside_preexec=0
 }
 trap '__deepin_terminal_ghostty_preexec' DEBUG
-PROMPT_COMMAND="__deepin_terminal_ghostty_clear_command${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+PROMPT_COMMAND="__deepin_terminal_ghostty_report_result;__deepin_terminal_ghostty_clear_command${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
 )SH");
 
         integration.tempDir = tempDir;
@@ -165,6 +168,7 @@ __deepin_terminal_ghostty_preexec() {
 }
 __deepin_terminal_ghostty_precmd() {
     emulate -L zsh
+    __deepin_terminal_ghostty_report_result
     __deepin_terminal_ghostty_clear_command
 }
 autoload -Uz add-zsh-hook 2>/dev/null

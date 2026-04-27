@@ -17,10 +17,13 @@
 #endif
 
 #include <ghostty/vt.h>
+
 class TerminalWidget : public QWidget {
     Q_OBJECT
 
 public:
+    enum class CommandState { Idle = 0, Running = 1, Succeeded = 2, Failed = 3 };
+
     explicit TerminalWidget(QWidget *parent = nullptr);
     ~TerminalWidget() override;
 
@@ -69,6 +72,7 @@ signals:
     void sessionExited(int exitCode);
     void sessionClosed();
     void focusGained();
+    void commandStateChanged(CommandState state);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -115,6 +119,8 @@ private:
     void flushPendingPtyData();
     void scanShellIntegrationSequences(const QByteArray &data);
     void setShellCommand(const QString &command);
+    void setShellCommandResult(int exitCode);
+    void updateCommandState(CommandState newState);
 
     void updateSearchHighlight();
     QString textForScreenRow(int row) const;
@@ -145,6 +151,8 @@ private:
     PtySession::StartOptions m_startOptions;
     bool m_hasStartOptions = false;
     QByteArray m_oscScanBuffer;
+    int m_pendingExitCode = -1;
+    CommandState m_commandState = CommandState::Idle;
     QByteArray m_pendingPtyData;
     QTimer *m_renderTimer = nullptr;
     QTimer *m_resizeTimer = nullptr;

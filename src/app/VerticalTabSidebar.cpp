@@ -25,6 +25,7 @@ namespace {
 
 constexpr int kProcessBadgeSize = 24;
 constexpr int kProcessIconSize = 16;
+constexpr int kStatusDotSize = 8;
 
 QPushButton *createButton(const QString &objectName, const QString &text, QWidget *parent) {
     auto *button = new QPushButton(parent);
@@ -100,6 +101,51 @@ QLabel *createProcessBadge(const QString &objectName, QWidget *parent, const QSt
         icon = QIcon(QStringLiteral(":/badges/process/terminal.svg"));
     badge->setPixmap(applyCircleMask(icon.pixmap(kProcessIconSize, kProcessIconSize), kProcessIconSize));
     return badge;
+}
+
+QLabel *createCommandStatusDot(QWidget *parent, TerminalWidget::CommandState state, bool isActive) {
+    auto *dot = new QLabel(parent);
+    dot->setObjectName(QStringLiteral("commandStatusDot"));
+    dot->setFixedSize(kStatusDotSize, kStatusDotSize);
+
+    if (isActive || state == TerminalWidget::CommandState::Idle) {
+        dot->setVisible(false);
+        return dot;
+    }
+
+    const auto *helper = DGuiApplicationHelper::instance();
+    const bool isDark = helper->themeType() == DGuiApplicationHelper::DarkType;
+
+    QColor color;
+    switch (state) {
+        case TerminalWidget::CommandState::Running:
+            color = isDark ? QColor(255, 184, 0) : QColor(210, 150, 0);
+            break;
+        case TerminalWidget::CommandState::Succeeded:
+            color = isDark ? QColor(46, 213, 115) : QColor(34, 170, 91);
+            break;
+        case TerminalWidget::CommandState::Failed:
+            color = isDark ? QColor(255, 71, 87) : QColor(210, 55, 70);
+            break;
+        default:
+            dot->setVisible(false);
+            return dot;
+    }
+
+    const qreal dpr = dot->devicePixelRatioF();
+    QPixmap pixmap(static_cast<int>(kStatusDotSize * dpr), static_cast<int>(kStatusDotSize * dpr));
+    pixmap.setDevicePixelRatio(dpr);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setBrush(color);
+    painter.setPen(Qt::NoPen);
+    painter.drawEllipse(0, 0, kStatusDotSize, kStatusDotSize);
+    painter.end();
+
+    dot->setPixmap(pixmap);
+    return dot;
 }
 
 } // namespace
@@ -333,7 +379,7 @@ void VerticalTabSidebar::rebuild() {
         expandButton->setProperty("tabId", tab.id);
         expandButton->setProperty("expanded", tab.expanded);
         expandButton->setVisible(isMultiPane);
-        connect(expandButton, &QToolButton::clicked, this, [this, tab]() { emit tabExpansionToggled(tab.id); });
+        connect(expandButton, &QToolButton::clicked, this, [this, tab]() { Q_EMIT tabExpansionToggled(tab.id); });
 
         auto *tabBadge =
             createProcessBadge(QStringLiteral("verticalTabBadge"), header,
@@ -341,16 +387,24 @@ void VerticalTabSidebar::rebuild() {
                                tab.isCurrent ? QStringLiteral("bright") : QStringLiteral("muted"));
         tabBadge->setVisible(!isMultiPane);
 
+        TerminalWidget::CommandState tabCommandState = TerminalWidget::CommandState::Idle;
+        if (paneCount == 1)
+            tabCommandState = tab.panes.first().commandState;
+        auto *tabStatusDot = createCommandStatusDot(header, tabCommandState, tab.isCurrent);
+        if (isMultiPane)
+            tabStatusDot->setVisible(false);
+
         auto *tabButton = createButton(QStringLiteral("verticalTabButton"), tab.title, header);
         tabButton->setCheckable(true);
         tabButton->setChecked(tab.isCurrent);
         tabButton->setProperty("tabId", tab.id);
         tabButton->setProperty("active", tab.isCurrent);
-        connect(tabButton, &QPushButton::clicked, this, [this, tab]() { emit tabActivated(tab.id); });
+        connect(tabButton, &QPushButton::clicked, this, [this, tab]() { Q_EMIT tabActivated(tab.id); });
 
         headerLayout->addWidget(expandButton, 0, Qt::AlignVCenter);
         headerLayout->addWidget(tabBadge, 0, Qt::AlignVCenter);
         headerLayout->addWidget(tabButton, 1);
+        headerLayout->addWidget(tabStatusDot, 0, Qt::AlignVCenter);
 
         sectionLayout->addWidget(header);
 
@@ -394,10 +448,13 @@ void VerticalTabSidebar::rebuild() {
                 paneButton->setProperty("paneId", pane.id);
                 paneButton->setProperty("active", pane.isActive);
                 connect(paneButton, &QPushButton::clicked, this,
-                        [this, tabId = tab.id, paneId = pane.id]() { emit paneActivated(tabId, paneId); });
+                        [this, tabId = tab.id, paneId = pane.id]() { Q_EMIT paneActivated(tabId, paneId); });
+
+                auto *paneStatusDot = createCommandStatusDot(paneRow, pane.commandState, pane.isActive);
 
                 paneRowLayout->addWidget(paneBadge, 0, Qt::AlignVCenter);
                 paneRowLayout->addWidget(paneButton, 1);
+                paneRowLayout->addWidget(paneStatusDot, 0, Qt::AlignVCenter);
                 paneLayout->addWidget(paneRow);
             }
 

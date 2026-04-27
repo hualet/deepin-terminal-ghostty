@@ -189,6 +189,7 @@ QList<TermPane::PaneInfo> TermPane::paneInfos() const {
         info.title = paneTitle(term);
         info.iconName = iconNameForPane(term);
         info.isActive = (term == m_currentTerm);
+        info.commandState = static_cast<TerminalWidget::CommandState>(term->property("commandState").toInt());
         infos.append(info);
     }
     return infos;
@@ -274,8 +275,16 @@ void TermPane::setupTerminalConnections(TerminalWidget *term) {
     });
     connect(term, &TerminalWidget::shellCommandChanged, this,
             [this, term](const QString &) { Q_EMIT paneTitleChanged(ensurePaneId(term), paneTitle(term)); });
+    connect(term, &TerminalWidget::commandStateChanged, this, [this, term](TerminalWidget::CommandState state) {
+        Q_EMIT paneCommandStateChanged(ensurePaneId(term), state);
+    });
     connect(term, &TerminalWidget::sessionClosed, this, [this, term]() { removeTerminal(term); });
-    connect(term, &TerminalWidget::focusGained, this, [this, term]() { setCurrentTerminal(term); });
+    connect(term, &TerminalWidget::focusGained, this, [this, term]() {
+        setCurrentTerminal(term);
+        if (term->m_commandState == TerminalWidget::CommandState::Succeeded
+            || term->m_commandState == TerminalWidget::CommandState::Failed)
+            term->updateCommandState(TerminalWidget::CommandState::Idle);
+    });
 }
 
 void TermPane::setCurrentTerminal(TerminalWidget *term) {

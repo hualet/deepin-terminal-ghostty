@@ -60,6 +60,12 @@ private slots:
     void testSelectedTextTopLeftToBottomRight();
     void testSelectedTextBottomRightToTopLeft();
     void testApplyThemeSetsColors();
+
+    void testCommandStateRunning();
+    void testCommandStateSucceeded();
+    void testCommandStateFailed();
+    void testCommandStateIdleWhenNoResult();
+    void testCommandStateTransitionSequence();
 };
 
 namespace {
@@ -874,6 +880,106 @@ void TestTerminalWidget::testApplyThemeSetsColors() {
     QVERIFY(widget.debugAppliedIsDark());
     QCOMPARE(widget.debugAppliedForeground(), QColor(255, 0, 0));
     QCOMPARE(widget.debugAppliedBackground(), QColor(0, 0, 255));
+}
+
+void TestTerminalWidget::testCommandStateRunning() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    QSignalSpy spy(&widget, &TerminalWidget::commandStateChanged);
+    QVERIFY(spy.isValid());
+
+    const QByteArray command = QByteArray("\033]777;ShellCommand=") + QByteArray("bWFrZQ==") + QByteArray("\033\\");
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, command));
+
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 100);
+    QCOMPARE(widget.property("commandState").toInt(), static_cast<int>(TerminalWidget::CommandState::Running));
+}
+
+void TestTerminalWidget::testCommandStateSucceeded() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    QSignalSpy spy(&widget, &TerminalWidget::commandStateChanged);
+    QVERIFY(spy.isValid());
+
+    const QByteArray command = QByteArray("\033]777;ShellCommand=") + QByteArray("bWFrZQ==") + QByteArray("\033\\");
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, command));
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 100);
+
+    const QByteArray result = "\033]777;ShellCommandResult=0\033\\";
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, result));
+
+    const QByteArray clear = "\033]777;ShellCommand=\033\\";
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, clear));
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 2, 100);
+
+    QCOMPARE(widget.property("commandState").toInt(), static_cast<int>(TerminalWidget::CommandState::Succeeded));
+}
+
+void TestTerminalWidget::testCommandStateFailed() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    QSignalSpy spy(&widget, &TerminalWidget::commandStateChanged);
+    QVERIFY(spy.isValid());
+
+    const QByteArray command = QByteArray("\033]777;ShellCommand=") + QByteArray("bWFrZQ==") + QByteArray("\033\\");
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, command));
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 100);
+
+    const QByteArray result = "\033]777;ShellCommandResult=2\033\\";
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, result));
+
+    const QByteArray clear = "\033]777;ShellCommand=\033\\";
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, clear));
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 2, 100);
+
+    QCOMPARE(widget.property("commandState").toInt(), static_cast<int>(TerminalWidget::CommandState::Failed));
+}
+
+void TestTerminalWidget::testCommandStateIdleWhenNoResult() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    const QByteArray clear = "\033]777;ShellCommand=\033\\";
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, clear));
+
+    QCOMPARE(widget.property("commandState").toInt(), static_cast<int>(TerminalWidget::CommandState::Idle));
+}
+
+void TestTerminalWidget::testCommandStateTransitionSequence() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    QSignalSpy spy(&widget, &TerminalWidget::commandStateChanged);
+    QVERIFY(spy.isValid());
+
+    auto sendOsc = [&widget](const QByteArray &osc) {
+        QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, osc));
+    };
+
+    // Command starts -> Running
+    sendOsc(QByteArray("\033]777;ShellCommand=") + QByteArray("bWFrZQ==") + QByteArray("\033\\"));
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 100);
+    QCOMPARE(widget.property("commandState").toInt(), static_cast<int>(TerminalWidget::CommandState::Running));
+
+    // Result 0 + clear -> Succeeded
+    sendOsc("\033]777;ShellCommandResult=0\033\\");
+    sendOsc("\033]777;ShellCommand=\033\\");
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 2, 100);
+    QCOMPARE(widget.property("commandState").toInt(), static_cast<int>(TerminalWidget::CommandState::Succeeded));
+
+    // New command -> Running again
+    sendOsc(QByteArray("\033]777;ShellCommand=") + QByteArray("bWFrZSBhbGw=") + QByteArray("\033\\"));
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 3, 100);
+    QCOMPARE(widget.property("commandState").toInt(), static_cast<int>(TerminalWidget::CommandState::Running));
+
+    // Result 1 + clear -> Failed
+    sendOsc("\033]777;ShellCommandResult=1\033\\");
+    sendOsc("\033]777;ShellCommand=\033\\");
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 4, 100);
+    QCOMPARE(widget.property("commandState").toInt(), static_cast<int>(TerminalWidget::CommandState::Failed));
 }
 
 // We need QApplication for QWidget tests

@@ -351,6 +351,11 @@ void MainWindow::addTab(bool activate, const std::optional<PtySession::StartOpti
             refreshTabRecord(*record);
         syncTabWidgetsFromRecords();
     });
+    connect(pane, &TermPane::paneCommandStateChanged, this, [this, pane](const QUuid &, TerminalWidget::CommandState) {
+        if (auto *record = tabRecordForPane(pane))
+            refreshTabRecord(*record);
+        syncTabWidgetsFromRecords();
+    });
     connect(pane, &TermPane::requestSettings, this, &MainWindow::onSettingsTriggered);
 
     int stackIndex = m_stackWidget->addWidget(pane);

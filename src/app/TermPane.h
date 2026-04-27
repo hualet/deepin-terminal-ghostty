@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PtySession.h"
+#include "TerminalWidget.h"
 
 #include <QList>
 #include <QUuid>
@@ -23,6 +24,7 @@ public:
         QString title;
         QString iconName;
         bool isActive = false;
+        TerminalWidget::CommandState commandState = TerminalWidget::CommandState::Idle;
     };
 
     explicit TermPane(const std::optional<PtySession::StartOptions> &initialSessionOptions = std::nullopt,
@@ -51,6 +53,7 @@ signals:
     void paneStructureChanged();
     void activePaneChanged(const QUuid &paneId);
     void paneTitleChanged(const QUuid &paneId, const QString &title);
+    void paneCommandStateChanged(const QUuid &paneId, TerminalWidget::CommandState state);
     void terminalTitleChanged(const QString &title);
     void startupSessionExited(int exitCode);
     void sessionClosed();
