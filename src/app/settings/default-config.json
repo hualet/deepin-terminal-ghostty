@@ -52,7 +52,7 @@
                         },
                         {
                             "key": "colorScheme",
-                            "name": "Color Scheme",
+                            "name": "Theme",
                             "type": "combobox",
                             "default": "system"
                         },

@@ -3,17 +3,20 @@
 #include <DSettings>
 
 void GenerateSettingTranslate() {
+    auto basic_interface_blurred_backgroundText = QObject::tr("Blur background");
+    auto basic_interface_colorSchemeName = QObject::tr("Theme");
     auto basic_interface_cursorBlinkText = QObject::tr("Cursor blink");
     auto basic_interface_cursorShapeName = QObject::tr("Cursor shape");
     auto basic_interface_fontFamilyName = QObject::tr("Font family");
     auto basic_interface_fontSizeName = QObject::tr("Font size");
+    auto basic_interface_opacityName = QObject::tr("Opacity");
     auto basic_interface_scrollbackLinesName = QObject::tr("Scrollback lines");
+    auto basic_interface_verticalTabsText = QObject::tr("Vertical Tabs");
     auto group_basicName = QObject::tr("Basic");
     auto group_basic_interfaceName = QObject::tr("Interface");
     auto group_shortcutsName = QObject::tr("Shortcuts");
     auto group_shortcuts_advancedName = QObject::tr("Advanced");
     auto group_shortcuts_tabName = QObject::tr("Tabs");
-    auto basic_interface_verticalTabsName = QObject::tr("Vertical Tabs");
     auto group_shortcuts_terminalName = QObject::tr("Terminal");
     auto shortcuts_advanced_custom_commandName = QObject::tr("Custom commands");
     auto shortcuts_advanced_display_shortcutsName = QObject::tr("Display shortcuts");
