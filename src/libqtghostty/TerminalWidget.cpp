@@ -709,7 +709,6 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
             if (runCellCount == 0 || runFont != cachedFont || runForeground != cellForeground) {
                 flushTextRun();
                 runText.reserve(static_cast<int>(m_cols) + 1);
-                runText.append(QChar(0x202D));
                 runFont = cachedFont;
                 runForeground = cellForeground;
                 runStartX = x;
