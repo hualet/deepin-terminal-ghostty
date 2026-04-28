@@ -464,7 +464,7 @@ void TestMainWindow::testAppTerminalsSetTerminalContentMargins() {
 
     auto *terminal = pane.currentTerminal();
     QVERIFY(terminal);
-    QCOMPARE(terminal->contentsMargins(), QMargins(4, 4, 4, 4));
+    QCOMPARE(terminal->contentsMargins(), QMargins(12, 12, 12, 12));
 }
 
 void TestMainWindow::testVerticalTabsActionReflectsAndUpdatesSettings() {
@@ -752,7 +752,7 @@ void TestMainWindow::testProcessIconsAreAvailable() {
 
 void TestMainWindow::testThemeLoaderLoadsAllThemes() {
     auto themes = ThemeLoader::loadThemes();
-    QCOMPARE(themes.size(), 7);
+    QCOMPARE(themes.size(), 8);
 
     QStringList names;
     for (const auto &t : themes)
@@ -765,6 +765,7 @@ void TestMainWindow::testThemeLoaderLoadsAllThemes() {
     QVERIFY(names.contains(QStringLiteral("ocean-dark")));
     QVERIFY(names.contains(QStringLiteral("hybrid")));
     QVERIFY(names.contains(QStringLiteral("one-light")));
+    QVERIFY(names.contains(QStringLiteral("classic-dark")));
 }
 
 void TestMainWindow::testThemeLoaderFindsThemeByName() {
