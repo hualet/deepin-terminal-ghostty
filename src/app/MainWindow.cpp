@@ -675,9 +675,12 @@ void MainWindow::rebuildCentralLayout() {
         m_mainSplitter->setStretchFactor(0, 0);
         m_mainSplitter->setStretchFactor(1, 1);
         m_verticalSidebar->setMinimumWidth(150);
+        m_verticalSidebar->setMaximumWidth(width() / 2);
         bool sidebarJustAdded = (m_mainSplitter->indexOf(m_verticalSidebar) < 0);
-        if (sidebarJustAdded)
-            m_mainSplitter->setSizes({240, 720});
+        if (sidebarJustAdded) {
+            int sw = qMin(360, width() / 2);
+            m_mainSplitter->setSizes({sw, width() - sw});
+        }
         layout->addWidget(m_mainSplitter);
     } else {
         layout->addWidget(m_stackWidget);
@@ -1040,6 +1043,10 @@ void MainWindow::applyThemeToAll() {
 void MainWindow::resizeEvent(QResizeEvent *event) {
     DMainWindow::resizeEvent(event);
     AppSettings::instance()->saveWindowSize(event->size());
+
+    if (m_verticalTabsEnabled && m_verticalSidebar)
+        m_verticalSidebar->setMaximumWidth(event->size().width() / 2);
+
     if (m_remotePanel && m_remotePanel->isPanelVisible() && m_contentHost) {
         QRect hostRect = m_contentHost->rect();
         m_remotePanel->setGeometry(hostRect.width() - 260, 0, 260, hostRect.height());
