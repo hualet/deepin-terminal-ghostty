@@ -1,3 +1,25 @@
+deepin-terminal-ghostty (0.8.0-1) unstable; urgency=medium
+
+  * Add terminal background opacity and blur support with Ctrl+Shift+Up/Down
+    keyboard shortcuts for on-the-fly opacity adjustment.
+  * Rename dark theme to Classic Dark and add a new Dark theme based on
+    Apple Terminal colors for better contrast and readability.
+  * Remember window size across restarts so the terminal restores its
+    previous dimensions.
+  * Show colored status dots in the vertical sidebar to indicate when
+    terminal tabs have running commands.
+  * Update application logo.
+  * Fix Ctrl+0 to reset font size to the configured default rather than
+    the last interactive size.
+  * Fix font size changes not being saved to settings.
+  * Set terminal content margins to 12px for consistent visual spacing.
+  * Fix background rendering to use CompositionMode_Source and keep the
+    sidebar bar fully opaque when background blur is enabled.
+  * Update MainWindow translucency attribute when opacity changes so the
+    compositor keeps the background correctly blended.
+
+ -- Deepin Packages <packages@deepin.org>  Tue, 28 Apr 2026 23:00:00 +0800
+
 deepin-terminal-ghostty (0.7.0-1) unstable; urgency=medium
 
   * Update application logo and regenerate 128x128 and 256x256 sizes.
