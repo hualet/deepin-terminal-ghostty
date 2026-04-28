@@ -23,6 +23,9 @@ public:
 
     void setItems(const QList<TabItem> &items);
     QList<TabItem> items() const;
+
+    void setOpacity(qreal opacity);
+
 signals:
     void tabActivated(int tabId);
     void tabExpansionToggled(int tabId);
@@ -30,6 +33,7 @@ signals:
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
+    void paintEvent(QPaintEvent *event) override;
 
 private:
     void rebuild();
@@ -38,4 +42,5 @@ private:
 
     QList<TabItem> m_items;
     QVBoxLayout *m_layout = nullptr;
+    qreal m_opacity = 1.0;
 };

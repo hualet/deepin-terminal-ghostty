@@ -636,7 +636,10 @@ void MainWindow::rebuildCentralLayout() {
     if (m_verticalTabsEnabled) {
         if (!m_verticalSidebar) {
             m_verticalSidebar = new VerticalTabSidebar(this);
-            m_verticalSidebar->setAutoFillBackground(true);
+            qreal opacity = AppSettings::instance()->opacity();
+            if (!m_compositorHasBlur)
+                opacity = 1.0;
+            m_verticalSidebar->setOpacity(opacity);
             connect(m_verticalSidebar, &VerticalTabSidebar::tabActivated, this,
                     [this](int tabId) { gotoTab(indexOfTabId(tabId)); });
             connect(m_verticalSidebar, &VerticalTabSidebar::tabExpansionToggled, this, [this](int tabId) {
@@ -985,6 +988,9 @@ void MainWindow::applyOpacityToAll() {
         if (auto *pane = qobject_cast<TermPane *>(m_stackWidget->widget(i)))
             pane->setOpacity(opacity);
     }
+
+    if (m_verticalSidebar)
+        m_verticalSidebar->setOpacity(opacity);
 }
 
 void MainWindow::setWindowBlurEnabled(bool enabled) {

@@ -207,7 +207,7 @@ void VerticalTabSidebar::applyStylesheet() {
     setStyleSheet(
         QStringLiteral(R"(
         #verticalTabSidebar {
-            background: %1;
+            background: transparent;
         }
         #verticalTabSidebarScrollArea {
             border: none;
@@ -217,32 +217,32 @@ void VerticalTabSidebar::applyStylesheet() {
             background: transparent;
         }
         #verticalTabSection {
-            border: 1px solid %2;
+            border: 1px solid %1;
             border-radius: 8px;
-            background-color: %3;
+            background-color: %2;
         }
         #verticalTabSection:hover {
-            background-color: %4;
+            background-color: %3;
         }
         #verticalTabSection[isCurrent="true"] {
-            border: 1px solid %5;
-            background-color: %6;
+            border: 1px solid %4;
+            background-color: %5;
         }
         #verticalTabHeader {
             background: transparent;
         }
         #verticalTabSection[isCurrent="true"] #verticalTabButton {
-            color: %7;
+            color: %6;
         }
         #verticalTabExpandButton {
             border: none;
             background: transparent;
             padding: 0px 1px;
             margin: 0px;
-            color: %8;
+            color: %7;
         }
         #verticalTabExpandButton:hover {
-            background-color: %9;
+            background-color: %8;
             border-radius: 6px;
         }
         #verticalTabButton {
@@ -250,7 +250,7 @@ void VerticalTabSidebar::applyStylesheet() {
             background: transparent;
             padding: 6px 0px;
             margin: 0px;
-            color: %10;
+            color: %9;
             text-align: left;
             font-size: 15px;
         }
@@ -260,11 +260,11 @@ void VerticalTabSidebar::applyStylesheet() {
         #verticalTabBadge,
         #verticalPaneBadge {
             border-radius: 12px;
-            background-color: %11;
-            color: %12;
+            background-color: %10;
+            color: %11;
         }
         #verticalTabSection[isCurrent="true"] #verticalTabBadge {
-            background-color: %13;
+            background-color: %12;
         }
         #verticalPaneList {
             background: transparent;
@@ -272,7 +272,7 @@ void VerticalTabSidebar::applyStylesheet() {
         #verticalPaneGuide {
             min-width: 1px;
             max-width: 1px;
-            background-color: %14;
+            background-color: %13;
             margin-top: 2px;
             margin-bottom: 4px;
         }
@@ -281,19 +281,18 @@ void VerticalTabSidebar::applyStylesheet() {
             background: transparent;
             padding: 5px 0px;
             margin: 0px;
-            color: %15;
+            color: %14;
             text-align: left;
             font-size: 14px;
         }
         #verticalPaneButton[active="true"] {
-            color: %16;
+            color: %15;
         }
         #verticalPaneButton:checked {
             font-weight: 500;
         }
     )")
-            .arg(c(sidebarBg.red(), sidebarBg.green(), sidebarBg.blue(), sidebarBg.alpha()),
-                 c(sectionBorder.red(), sectionBorder.green(), sectionBorder.blue(), sectionBorder.alpha()),
+            .arg(c(sectionBorder.red(), sectionBorder.green(), sectionBorder.blue(), sectionBorder.alpha()),
                  c(sectionBg.red(), sectionBg.green(), sectionBg.blue(), sectionBg.alpha()),
                  c(sectionHover.red(), sectionHover.green(), sectionHover.blue(), sectionHover.alpha()),
                  c(sectionBorder.red(), sectionBorder.green(), sectionBorder.blue(), sectionBorder.alpha()),
@@ -468,4 +467,20 @@ void VerticalTabSidebar::rebuild() {
     m_layout->addStretch(1);
 
     QTimer::singleShot(0, this, &VerticalTabSidebar::updateButtonElisions);
+}
+
+void VerticalTabSidebar::setOpacity(qreal opacity) {
+    m_opacity = opacity;
+    setAttribute(Qt::WA_TranslucentBackground, m_opacity < 1.0);
+    update();
+}
+
+void VerticalTabSidebar::paintEvent(QPaintEvent *) {
+    const auto *helper = DGuiApplicationHelper::instance();
+    QColor bg = helper->applicationPalette().color(QPalette::Window);
+    bg.setAlpha(qRound(m_opacity * 255));
+
+    QPainter painter(this);
+    painter.setCompositionMode(QPainter::CompositionMode_Source);
+    painter.fillRect(rect(), bg);
 }
