@@ -108,7 +108,7 @@ QLabel *createCommandStatusDot(QWidget *parent, TerminalWidget::CommandState sta
     dot->setObjectName(QStringLiteral("commandStatusDot"));
     dot->setFixedSize(kStatusDotSize, kStatusDotSize);
 
-    if (isActive || state == TerminalWidget::CommandState::Idle) {
+    if (isActive || state == TerminalWidget::CommandState::Idle || state == TerminalWidget::CommandState::Running) {
         dot->setVisible(false);
         return dot;
     }
@@ -118,9 +118,6 @@ QLabel *createCommandStatusDot(QWidget *parent, TerminalWidget::CommandState sta
 
     QColor color;
     switch (state) {
-        case TerminalWidget::CommandState::Running:
-            color = isDark ? QColor(255, 184, 0) : QColor(210, 150, 0);
-            break;
         case TerminalWidget::CommandState::Succeeded:
             color = isDark ? QColor(46, 213, 115) : QColor(34, 170, 91);
             break;
