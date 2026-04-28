@@ -129,6 +129,13 @@ private:
     void pasteFromClipboard();
     bool hasSelection() const;
 
+    bool isWordChar(uint32_t codepoint) const;
+    void wordBoundsAt(int screenRow, int col, int *startCol, int *endCol) const;
+    void selectWordAt(int screenRow, int col);
+    void selectLineAt(int screenRow);
+    void extendWordSelection(int screenRow, int col);
+    void extendLineSelection(int screenRow);
+
     int screenRowForViewportRow(int viewportRow) const;
     bool cellInSelection(int screenRow, int col) const;
 
@@ -212,6 +219,15 @@ private:
         bool active = false;
     };
     Selection m_selection;
+
+    // Multi-click detection
+    enum class ClickMode { Single, Word, Line };
+    ClickMode m_clickMode = ClickMode::Single;
+    int m_clickCount = 0;
+    QPoint m_lastClickPos;
+    QElapsedTimer m_clickTimer;
+    int m_clickAnchorRow = 0;
+    int m_clickAnchorCol = 0;
 
 #ifdef QTGHOSTTY_TESTING
     int m_debugLastFrameRenderedRowCount = 0;

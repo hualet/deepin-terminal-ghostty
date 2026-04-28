@@ -66,6 +66,11 @@ private slots:
     void testCommandStateFailed();
     void testCommandStateIdleWhenNoResult();
     void testCommandStateTransitionSequence();
+
+    void testDoubleClickSelectsWord();
+    void testTripleClickSelectsLine();
+    void testDoubleClickDragExtendsByWord();
+    void testTripleClickDragExtendsByLine();
 };
 
 namespace {
@@ -980,6 +985,146 @@ void TestTerminalWidget::testCommandStateTransitionSequence() {
     sendOsc("\033]777;ShellCommand=\033\\");
     QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 4, 100);
     QCOMPARE(widget.property("commandState").toInt(), static_cast<int>(TerminalWidget::CommandState::Failed));
+}
+
+namespace {
+
+QPoint cellCenterForPos(const TerminalWidget &widget, int col, int row) {
+    const QFont font = widget.terminalFont();
+    const QFontMetrics fm(font);
+    const int cellWidth = fm.horizontalAdvance('M');
+    const int cellHeight = fm.height();
+    return QPoint(col * cellWidth + cellWidth / 2, row * cellHeight + cellHeight / 2);
+}
+
+} // namespace
+
+void TestTerminalWidget::testDoubleClickSelectsWord() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("hello world test\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    // Double-click on "world" (starts at column 6)
+    const QPoint pos = cellCenterForPos(widget, 6, 0);
+    QMouseEvent press1(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press1);
+    QMouseEvent release1(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release1);
+
+    QMouseEvent press2(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press2);
+
+    const QString text = widget.debugSelectedText();
+    QCOMPARE(text, QStringLiteral("world"));
+}
+
+void TestTerminalWidget::testTripleClickSelectsLine() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("hello world test\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    // Triple-click on the line
+    const QPoint pos = cellCenterForPos(widget, 3, 0);
+    for (int i = 0; i < 3; ++i) {
+        QMouseEvent press(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(&widget, &press);
+        QMouseEvent release(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(&widget, &release);
+    }
+
+    const QString text = widget.debugSelectedText();
+    // Triple-click should select the entire line (all columns)
+    QVERIFY(!text.isEmpty());
+    QVERIFY(text.startsWith(QStringLiteral("hello")));
+}
+
+void TestTerminalWidget::testDoubleClickDragExtendsByWord() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("hello world test\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    // Double-click on "hello"
+    const QPoint startPos = cellCenterForPos(widget, 1, 0);
+    QMouseEvent press1(QEvent::MouseButtonPress, startPos, startPos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press1);
+    QMouseEvent release1(QEvent::MouseButtonRelease, startPos, startPos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release1);
+    QMouseEvent press2(QEvent::MouseButtonPress, startPos, startPos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press2);
+
+    // Drag to "test"
+    const QPoint endPos = cellCenterForPos(widget, 12, 0);
+    QMouseEvent moveEvent(QEvent::MouseMove, endPos, endPos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &moveEvent);
+
+    const QString text = widget.debugSelectedText();
+    QCOMPARE(text, QStringLiteral("hello world test"));
+}
+
+void TestTerminalWidget::testTripleClickDragExtendsByLine() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("line one\nline two\nline three\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    // Triple-click on "line one"
+    const QPoint startPos = cellCenterForPos(widget, 2, 0);
+    for (int i = 0; i < 3; ++i) {
+        QMouseEvent press(QEvent::MouseButtonPress, startPos, startPos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(&widget, &press);
+        QMouseEvent release(QEvent::MouseButtonRelease, startPos, startPos, Qt::LeftButton, Qt::NoButton,
+                            Qt::NoModifier);
+        QApplication::sendEvent(&widget, &release);
+    }
+
+    // Drag to "line three"
+    const QPoint endPos = cellCenterForPos(widget, 2, 2);
+    QMouseEvent moveEvent(QEvent::MouseMove, endPos, endPos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &moveEvent);
+
+    const QString text = widget.debugSelectedText();
+    QVERIFY(!text.isEmpty());
+    QVERIFY(text.contains(QStringLiteral("line one")));
+    QVERIFY(text.contains(QStringLiteral("line three")));
 }
 
 // We need QApplication for QWidget tests

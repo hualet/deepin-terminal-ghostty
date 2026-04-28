@@ -1736,11 +1736,43 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
     }
 
     if (event->button() == Qt::LeftButton) {
-        m_selection.active = false;
-        m_selection.startCol = viewportColumnForPosition(event->pos());
-        m_selection.startRow = screenRowForViewportRow(viewportRowForPosition(event->pos()));
-        m_selection.endCol = m_selection.startCol;
-        m_selection.endRow = m_selection.startRow;
+        const int col = viewportColumnForPosition(event->pos());
+        const int viewportRow = viewportRowForPosition(event->pos());
+        const int screenRow = screenRowForViewportRow(viewportRow);
+
+        // Detect multi-click
+        constexpr int kMultiClickIntervalMs = 400;
+        constexpr int kMultiClickDistancePx = 5;
+        if (m_clickTimer.isValid() && m_clickTimer.elapsed() < kMultiClickIntervalMs
+            && (event->pos() - m_lastClickPos).manhattanLength() < kMultiClickDistancePx) {
+            m_clickCount = qMin(m_clickCount + 1, 3);
+        } else {
+            m_clickCount = 1;
+        }
+        m_clickTimer.start();
+        m_lastClickPos = event->pos();
+
+        m_clickAnchorRow = screenRow;
+        m_clickAnchorCol = col;
+
+        switch (m_clickCount) {
+            case 1:
+                m_clickMode = ClickMode::Single;
+                m_selection.active = false;
+                m_selection.startCol = col;
+                m_selection.startRow = screenRow;
+                m_selection.endCol = col;
+                m_selection.endRow = screenRow;
+                break;
+            case 2:
+                m_clickMode = ClickMode::Word;
+                selectWordAt(screenRow, col);
+                break;
+            case 3:
+                m_clickMode = ClickMode::Line;
+                selectLineAt(screenRow);
+                break;
+        }
         update();
     }
 }
@@ -1775,9 +1807,22 @@ void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
     }
 
     if (event->buttons() & Qt::LeftButton) {
-        m_selection.endCol = viewportColumnForPosition(event->pos());
-        m_selection.endRow = screenRowForViewportRow(viewportRowForPosition(event->pos()));
-        m_selection.active = true;
+        const int col = viewportColumnForPosition(event->pos());
+        const int screenRow = screenRowForViewportRow(viewportRowForPosition(event->pos()));
+
+        switch (m_clickMode) {
+            case ClickMode::Single:
+                m_selection.endCol = col;
+                m_selection.endRow = screenRow;
+                m_selection.active = true;
+                break;
+            case ClickMode::Word:
+                extendWordSelection(screenRow, col);
+                break;
+            case ClickMode::Line:
+                extendLineSelection(screenRow);
+                break;
+        }
         update();
     }
 }
@@ -1810,9 +1855,22 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
     }
 
     if (event->button() == Qt::LeftButton) {
-        m_selection.endCol = viewportColumnForPosition(event->pos());
-        m_selection.endRow = screenRowForViewportRow(viewportRowForPosition(event->pos()));
-        m_selection.active = true;
+        const int col = viewportColumnForPosition(event->pos());
+        const int screenRow = screenRowForViewportRow(viewportRowForPosition(event->pos()));
+
+        switch (m_clickMode) {
+            case ClickMode::Single:
+                m_selection.endCol = col;
+                m_selection.endRow = screenRow;
+                m_selection.active = true;
+                break;
+            case ClickMode::Word:
+                extendWordSelection(screenRow, col);
+                break;
+            case ClickMode::Line:
+                extendLineSelection(screenRow);
+                break;
+        }
         update();
     }
 }
@@ -1924,6 +1982,146 @@ void TerminalWidget::selectAll() {
     m_selection.endRow = static_cast<int>(totalRows) - 1;
     m_selection.endCol = m_cols - 1;
     update();
+}
+
+bool TerminalWidget::isWordChar(uint32_t codepoint) const {
+    // Common terminal word characters: letters, digits, underscore, hyphen
+    if (codepoint >= 'a' && codepoint <= 'z')
+        return true;
+    if (codepoint >= 'A' && codepoint <= 'Z')
+        return true;
+    if (codepoint >= '0' && codepoint <= '9')
+        return true;
+    if (codepoint == '_')
+        return true;
+    if (codepoint == '-')
+        return true;
+    return false;
+}
+
+void TerminalWidget::wordBoundsAt(int screenRow, int col, int *startCol, int *endCol) const {
+    *startCol = col;
+    *endCol = col;
+    if (!m_terminal || col < 0 || col >= static_cast<int>(m_cols))
+        return;
+
+    auto getCodepointAt = [&](int c) -> uint32_t {
+        GhosttyPoint point = {
+            .tag = GHOSTTY_POINT_TAG_SCREEN,
+            .value = {.coordinate = {.x = static_cast<uint16_t>(c), .y = static_cast<uint32_t>(screenRow)}}};
+        GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+        if (ghostty_terminal_grid_ref(m_terminal, point, &ref) != GHOSTTY_SUCCESS)
+            return 0;
+        uint32_t graphemes[16];
+        size_t len = 0;
+        if (ghostty_grid_ref_graphemes(&ref, graphemes, 16, &len) == GHOSTTY_SUCCESS && len > 0)
+            return graphemes[0];
+        return 0;
+    };
+
+    auto cellWidthAt = [&](int c) -> GhosttyCellWide {
+        GhosttyPoint point = {
+            .tag = GHOSTTY_POINT_TAG_SCREEN,
+            .value = {.coordinate = {.x = static_cast<uint16_t>(c), .y = static_cast<uint32_t>(screenRow)}}};
+        GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+        if (ghostty_terminal_grid_ref(m_terminal, point, &ref) != GHOSTTY_SUCCESS)
+            return GHOSTTY_CELL_WIDE_NARROW;
+        GhosttyCell cell = 0;
+        if (ghostty_grid_ref_cell(&ref, &cell) != GHOSTTY_SUCCESS)
+            return GHOSTTY_CELL_WIDE_NARROW;
+        GhosttyCellWide wide = GHOSTTY_CELL_WIDE_NARROW;
+        ghostty_cell_get(cell, GHOSTTY_CELL_DATA_WIDE, &wide);
+        return wide;
+    };
+
+    int adjustedCol = col;
+    GhosttyCellWide clickedWide = cellWidthAt(col);
+    if (clickedWide == GHOSTTY_CELL_WIDE_SPACER_TAIL || clickedWide == GHOSTTY_CELL_WIDE_SPACER_HEAD) {
+        adjustedCol = qMax(0, col - 1);
+    }
+
+    uint32_t anchorCp = getCodepointAt(adjustedCol);
+    const bool expectBoundary = !isWordChar(anchorCp);
+
+    for (int c = adjustedCol; c >= 0; --c) {
+        GhosttyCellWide cw = cellWidthAt(c);
+        if (cw == GHOSTTY_CELL_WIDE_SPACER_TAIL || cw == GHOSTTY_CELL_WIDE_SPACER_HEAD)
+            continue;
+        uint32_t cp = getCodepointAt(c);
+        if ((expectBoundary && isWordChar(cp)) || (!expectBoundary && !isWordChar(cp))) {
+            *startCol = c + 1;
+            break;
+        }
+        *startCol = c;
+    }
+
+    for (int c = adjustedCol; c < static_cast<int>(m_cols); ++c) {
+        GhosttyCellWide cw = cellWidthAt(c);
+        if (cw == GHOSTTY_CELL_WIDE_SPACER_TAIL || cw == GHOSTTY_CELL_WIDE_SPACER_HEAD)
+            continue;
+        uint32_t cp = getCodepointAt(c);
+        if ((expectBoundary && isWordChar(cp)) || (!expectBoundary && !isWordChar(cp))) {
+            *endCol = c - 1;
+            break;
+        }
+        int advance = (cw == GHOSTTY_CELL_WIDE_WIDE) ? 2 : 1;
+        *endCol = c + advance - 1;
+        if (cw == GHOSTTY_CELL_WIDE_WIDE)
+            ++c;
+    }
+}
+
+void TerminalWidget::selectWordAt(int screenRow, int col) {
+    int startCol = col;
+    int endCol = col;
+    wordBoundsAt(screenRow, col, &startCol, &endCol);
+    m_selection.active = true;
+    m_selection.startRow = screenRow;
+    m_selection.startCol = startCol;
+    m_selection.endRow = screenRow;
+    m_selection.endCol = endCol;
+}
+
+void TerminalWidget::selectLineAt(int screenRow) {
+    m_selection.active = true;
+    m_selection.startRow = screenRow;
+    m_selection.startCol = 0;
+    m_selection.endRow = screenRow;
+    m_selection.endCol = m_cols - 1;
+}
+
+void TerminalWidget::extendWordSelection(int screenRow, int col) {
+    int anchorWordStart = 0, anchorWordEnd = 0;
+    wordBoundsAt(m_clickAnchorRow, m_clickAnchorCol, &anchorWordStart, &anchorWordEnd);
+    int currentWordStart = 0, currentWordEnd = 0;
+    wordBoundsAt(screenRow, col, &currentWordStart, &currentWordEnd);
+    if (screenRow < m_clickAnchorRow || (screenRow == m_clickAnchorRow && col < m_clickAnchorCol)) {
+        m_selection.startRow = screenRow;
+        m_selection.startCol = currentWordStart;
+        m_selection.endRow = m_clickAnchorRow;
+        m_selection.endCol = anchorWordEnd;
+    } else {
+        m_selection.startRow = m_clickAnchorRow;
+        m_selection.startCol = anchorWordStart;
+        m_selection.endRow = screenRow;
+        m_selection.endCol = currentWordEnd;
+    }
+    m_selection.active = true;
+}
+
+void TerminalWidget::extendLineSelection(int screenRow) {
+    if (screenRow < m_clickAnchorRow) {
+        m_selection.startRow = screenRow;
+        m_selection.startCol = 0;
+        m_selection.endRow = m_clickAnchorRow;
+        m_selection.endCol = m_cols - 1;
+    } else {
+        m_selection.startRow = m_clickAnchorRow;
+        m_selection.startCol = 0;
+        m_selection.endRow = screenRow;
+        m_selection.endCol = m_cols - 1;
+    }
+    m_selection.active = true;
 }
 
 void TerminalWidget::zoomIn() {
