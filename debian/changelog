@@ -1,3 +1,18 @@
+deepin-terminal-ghostty (0.9.0-1) unstable; urgency=medium
+
+  * Show Kimi badge icon in terminal tabs to indicate AI-powered sessions.
+  * Deduplicate selection logic and improve word selection to handle wide
+    characters correctly.
+  * Remove invisible LRO Unicode character from text runs so that selection
+    alignment matches the visual display.
+  * Render narrow characters per-cell at exact grid positions for crisper text.
+  * Make sidebar follow window opacity instead of being fully transparent when
+    background opacity is adjusted.
+  * Only show command status dots on non-active tabs for completed commands,
+    keeping the active tab indicator clean.
+
+ -- Deepin Packages <packages@deepin.org>  Tue, 28 Apr 2026 23:59:00 +0800
+
 deepin-terminal-ghostty (0.8.0-1) unstable; urgency=medium
 
   * Add terminal background opacity and blur support with Ctrl+Shift+Up/Down
