@@ -57,7 +57,7 @@ QString resolveBadgeName(const QString &iconName) {
 QString resolveBadgeResourcePath(const QString &rawName) {
     static const QSet<QString> kWebpIcons = {
         QStringLiteral("claude"),   QStringLiteral("gemini"), QStringLiteral("codex"),   QStringLiteral("qwen"),
-        QStringLiteral("opencode"), QStringLiteral("goose"),  QStringLiteral("copilot"),
+        QStringLiteral("opencode"), QStringLiteral("goose"),  QStringLiteral("copilot"), QStringLiteral("kimi"),
     };
     const QString name = rawName.isEmpty() ? QStringLiteral("terminal") : resolveBadgeName(rawName);
     const QString ext = kWebpIcons.contains(name) ? QStringLiteral("webp") : QStringLiteral("svg");

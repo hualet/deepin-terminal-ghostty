@@ -82,6 +82,7 @@ QString commandIconName(const QString &command) {
         {QStringLiteral("opencode"), QStringLiteral("opencode")},
         {QStringLiteral("goose"), QStringLiteral("goose")},
         {QStringLiteral("qwen"), QStringLiteral("qwen")},
+        {QStringLiteral("kimi"), QStringLiteral("kimi")},
         {QStringLiteral("ssh"), QStringLiteral("shell")},
         {QStringLiteral("mosh"), QStringLiteral("shell")},
         {QStringLiteral("docker"), QStringLiteral("docker")},

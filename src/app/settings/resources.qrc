@@ -13,6 +13,7 @@
         <file alias="opencode.webp">../../../resources/badges/process/opencode.webp</file>
         <file alias="goose.webp">../../../resources/badges/process/goose.webp</file>
         <file alias="copilot.webp">../../../resources/badges/process/copilot.webp</file>
+        <file alias="kimi.webp">../../../resources/badges/process/kimi.webp</file>
         <file alias="aider.svg">../../../resources/badges/process/aider.svg</file>
         <file alias="github-copilot.svg">../../../resources/badges/process/github-copilot.svg</file>
         <file alias="shell.svg">../../../resources/badges/process/shell.svg</file>
