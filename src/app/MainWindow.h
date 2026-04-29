@@ -100,6 +100,7 @@ private:
     QAction *m_verticalTabsAction = nullptr;
     QActionGroup *m_themeGroup = nullptr;
     bool m_verticalTabsEnabled = false;
+    int m_titlebarDefaultHeight = 0;
     int m_nextTabId = 1;
     QList<TabRecord> m_tabs;
     QPointer<QWidget> m_tabTitlebarWidget;

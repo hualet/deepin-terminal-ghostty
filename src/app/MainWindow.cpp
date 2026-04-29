@@ -700,14 +700,19 @@ void MainWindow::updateTitlebarPresentation() {
     if (!tb)
         return;
 
+    if (m_titlebarDefaultHeight <= 0)
+        m_titlebarDefaultHeight = tb->height();
+
     if (m_verticalTabsEnabled) {
         detachTabBarFromTitlebarWidget();
         ensureTabBar()->hide();
         tb->setCustomWidget(ensureCompactTitlebarWidget());
+        tb->setFixedHeight(40);
     } else {
         auto *tabBar = ensureTabBar();
         tb->setCustomWidget(ensureTabTitlebarWidget());
         tabBar->show();
+        tb->setFixedHeight(m_titlebarDefaultHeight);
     }
 }
 
