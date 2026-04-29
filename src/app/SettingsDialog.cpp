@@ -28,6 +28,8 @@ static QPair<QWidget *, QWidget *> createShortcutEditHandle(QObject *opt) {
 
 SettingsDialog::SettingsDialog(QWidget *parent) : DSettingsDialog(parent) {
     setWindowTitle(tr("Settings"));
+    setAccessibleName(tr("Settings"));
+    setAccessibleDescription(tr("Configure terminal appearance, behavior, and shortcuts."));
     widgetFactory()->registerWidget("shortcut", createShortcutEditHandle);
     updateSettings(AppSettings::instance()->dsettings());
 }

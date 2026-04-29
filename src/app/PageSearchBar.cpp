@@ -5,6 +5,9 @@
 #include <QToolButton>
 
 PageSearchBar::PageSearchBar(QWidget *parent) : DFloatingWidget(parent) {
+    setObjectName(QStringLiteral("pageSearchBar"));
+    setAccessibleName(tr("Terminal search"));
+    setAccessibleDescription(tr("Search text in the active terminal."));
     hide();
     setFixedSize(kBarWidth, kBarHeight);
 
@@ -63,6 +66,9 @@ void PageSearchBar::keyPressEvent(QKeyEvent *event) {
 
 void PageSearchBar::initFindPrevButton() {
     m_findPrevButton = new DIconButton(QStyle::SP_ArrowUp);
+    m_findPrevButton->setObjectName(QStringLiteral("findPreviousButton"));
+    m_findPrevButton->setAccessibleName(tr("Find previous"));
+    m_findPrevButton->setAccessibleDescription(tr("Find the previous search match."));
     m_findPrevButton->setFixedSize(kWidgetHeight, kWidgetHeight);
     m_findPrevButton->setFocusPolicy(Qt::TabFocus);
     connect(m_findPrevButton, &DIconButton::clicked, this, [this]() {
@@ -73,6 +79,9 @@ void PageSearchBar::initFindPrevButton() {
 
 void PageSearchBar::initFindNextButton() {
     m_findNextButton = new DIconButton(QStyle::SP_ArrowDown);
+    m_findNextButton->setObjectName(QStringLiteral("findNextButton"));
+    m_findNextButton->setAccessibleName(tr("Find next"));
+    m_findNextButton->setAccessibleDescription(tr("Find the next search match."));
     m_findNextButton->setFixedSize(kWidgetHeight, kWidgetHeight);
     m_findNextButton->setFocusPolicy(Qt::TabFocus);
     connect(m_findNextButton, &DIconButton::clicked, this, [this]() {
@@ -83,6 +92,9 @@ void PageSearchBar::initFindNextButton() {
 
 void PageSearchBar::initSearchEdit() {
     m_searchEdit = new DSearchEdit(this);
+    m_searchEdit->setObjectName(QStringLiteral("terminalSearchEdit"));
+    m_searchEdit->setAccessibleName(tr("Search text"));
+    m_searchEdit->setAccessibleDescription(tr("Enter text to search in the active terminal."));
     m_searchEdit->setFocusPolicy(Qt::StrongFocus);
     m_searchEdit->setFocusProxy(m_searchEdit->lineEdit());
 

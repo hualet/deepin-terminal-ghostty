@@ -91,6 +91,9 @@ QLabel *createProcessBadge(const QString &objectName, QWidget *parent, const QSt
                            const QString &toneProperty) {
     auto *badge = new QLabel(parent);
     badge->setObjectName(objectName);
+    const QString name = iconName.isEmpty() ? QStringLiteral("terminal") : resolveBadgeName(iconName);
+    badge->setAccessibleName(QObject::tr("Process badge: %1").arg(name));
+    badge->setAccessibleDescription(QObject::tr("Icon showing the process associated with this terminal."));
     badge->setProperty("tone", toneProperty);
     badge->setFixedSize(kProcessBadgeSize, kProcessBadgeSize);
     badge->setAlignment(Qt::AlignCenter);
@@ -106,6 +109,8 @@ QLabel *createProcessBadge(const QString &objectName, QWidget *parent, const QSt
 QLabel *createCommandStatusDot(QWidget *parent, TerminalWidget::CommandState state, bool isActive) {
     auto *dot = new QLabel(parent);
     dot->setObjectName(QStringLiteral("commandStatusDot"));
+    dot->setAccessibleName(QObject::tr("Command status"));
+    dot->setAccessibleDescription(QObject::tr("Shows whether the last command succeeded or failed."));
     dot->setFixedSize(kStatusDotSize, kStatusDotSize);
 
     if (isActive || state == TerminalWidget::CommandState::Idle || state == TerminalWidget::CommandState::Running) {
@@ -149,6 +154,8 @@ QLabel *createCommandStatusDot(QWidget *parent, TerminalWidget::CommandState sta
 
 VerticalTabSidebar::VerticalTabSidebar(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("verticalTabSidebar"));
+    setAccessibleName(tr("Vertical terminal tabs"));
+    setAccessibleDescription(tr("Navigate terminal tabs and panes in the vertical sidebar."));
 
     auto *outerLayout = new QVBoxLayout(this);
     outerLayout->setContentsMargins(0, 0, 0, 0);
@@ -346,6 +353,8 @@ void VerticalTabSidebar::rebuild() {
     for (const auto &tab : m_items) {
         auto *section = new QFrame(this);
         section->setObjectName(QStringLiteral("verticalTabSection"));
+        section->setAccessibleName(tr("Terminal tab section: %1").arg(tab.title));
+        section->setAccessibleDescription(tr("A terminal tab and its panes."));
         section->setProperty("tabId", tab.id);
         section->setProperty("isCurrent", tab.isCurrent);
         allowHorizontalShrink(section);
@@ -356,6 +365,7 @@ void VerticalTabSidebar::rebuild() {
 
         auto *header = new QWidget(section);
         header->setObjectName(QStringLiteral("verticalTabHeader"));
+        header->setAccessibleName(tr("Terminal tab header: %1").arg(tab.title));
         header->setProperty("tabId", tab.id);
         allowHorizontalShrink(header);
 
@@ -368,6 +378,9 @@ void VerticalTabSidebar::rebuild() {
 
         auto *expandButton = new QToolButton(header);
         expandButton->setObjectName(QStringLiteral("verticalTabExpandButton"));
+        expandButton->setAccessibleName(tab.expanded ? tr("Collapse panes for terminal tab")
+                                                     : tr("Expand panes for terminal tab"));
+        expandButton->setAccessibleDescription(tr("Show or hide the pane list for this terminal tab."));
         expandButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
         expandButton->setArrowType(tab.expanded ? Qt::DownArrow : Qt::RightArrow);
         expandButton->setAutoRaise(true);
@@ -391,6 +404,8 @@ void VerticalTabSidebar::rebuild() {
             tabStatusDot->setVisible(false);
 
         auto *tabButton = createButton(QStringLiteral("verticalTabButton"), tab.title, header);
+        tabButton->setAccessibleName(tr("Terminal tab: %1").arg(tab.title));
+        tabButton->setAccessibleDescription(tr("Activate this terminal tab."));
         tabButton->setCheckable(true);
         tabButton->setChecked(tab.isCurrent);
         tabButton->setProperty("tabId", tab.id);
@@ -407,6 +422,8 @@ void VerticalTabSidebar::rebuild() {
         if (tab.expanded && isMultiPane) {
             auto *paneList = new QWidget(section);
             paneList->setObjectName(QStringLiteral("verticalPaneList"));
+            paneList->setAccessibleName(tr("Terminal panes"));
+            paneList->setAccessibleDescription(tr("Panes inside the expanded terminal tab."));
             paneList->setProperty("tabId", tab.id);
             allowHorizontalShrink(paneList);
 
@@ -438,6 +455,8 @@ void VerticalTabSidebar::rebuild() {
                     createProcessBadge(QStringLiteral("verticalPaneBadge"), paneRow, pane.iconName,
                                        pane.isActive ? QStringLiteral("bright") : QStringLiteral("muted"));
                 auto *paneButton = createButton(QStringLiteral("verticalPaneButton"), paneTitle, paneRow);
+                paneButton->setAccessibleName(tr("Terminal pane: %1").arg(paneTitle));
+                paneButton->setAccessibleDescription(tr("Activate this terminal pane."));
                 paneButton->setCheckable(true);
                 paneButton->setChecked(pane.isActive);
                 paneButton->setProperty("tabId", tab.id);

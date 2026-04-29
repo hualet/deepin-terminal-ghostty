@@ -14,6 +14,7 @@
 #include <DTabBar>
 #include <DTitlebar>
 #include <QAbstractButton>
+#include <QAccessible>
 #include <QAction>
 #include <QFile>
 #include <QIcon>
@@ -64,6 +65,8 @@ private slots:
     void testVerticalSidebarTabClickSwitchesCurrentTab();
     void testVerticalSidebarIncludesDecorativeHierarchyElements();
     void testVerticalSidebarElidesLabelsWhenNarrow();
+    void testCoreControlsExposeAccessibleLabels();
+    void testVerticalSidebarExposesAccessibleLabels();
     void testProcessIconsAreAvailable();
     void testTerminalProcessBadgeHasVisibleColoredArtwork();
     void testLoggingCategoriesExposeExpectedNames();
@@ -140,6 +143,20 @@ PtySession *ptySession(TerminalWidget *terminal) {
     if (!terminal)
         return nullptr;
     return terminal->findChild<PtySession *>();
+}
+
+QString accessibleText(QObject *object, QAccessible::Text textType) {
+    auto *iface = QAccessible::queryAccessibleInterface(object);
+    if (!iface)
+        return {};
+    return iface->text(textType);
+}
+
+QAccessible::Role accessibleRole(QObject *object) {
+    auto *iface = QAccessible::queryAccessibleInterface(object);
+    if (!iface)
+        return QAccessible::NoRole;
+    return iface->role();
 }
 
 TerminalWidget *terminalForPaneId(TermPane &pane, const QUuid &paneId) {
@@ -741,6 +758,77 @@ void TestMainWindow::testVerticalSidebarElidesLabelsWhenNarrow() {
     QVERIFY(paneButton);
     QVERIFY(tabButton->text().contains(QChar(0x2026)));
     QVERIFY(paneButton->text().contains(QChar(0x2026)));
+}
+
+void TestMainWindow::testCoreControlsExposeAccessibleLabels() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QCOMPARE(accessibleText(&window, QAccessible::Name), QStringLiteral("Deepin Terminal Ghostty"));
+    QVERIFY(accessibleText(&window, QAccessible::Description).contains(QStringLiteral("terminal emulator")));
+    QVERIFY(accessibleRole(&window) != QAccessible::NoRole);
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(accessibleText(tabs, QAccessible::Name), QStringLiteral("Terminal tabs"));
+    QVERIFY(accessibleText(tabs, QAccessible::Description).contains(QStringLiteral("terminal tabs")));
+    QVERIFY(accessibleRole(tabs) != QAccessible::NoRole);
+
+    auto *terminal = currentTerminal(window);
+    QVERIFY(terminal);
+    QCOMPARE(accessibleText(terminal, QAccessible::Name), QStringLiteral("Terminal pane"));
+    QVERIFY(accessibleText(terminal, QAccessible::Description).contains(QStringLiteral("terminal input and output")));
+    QVERIFY(accessibleRole(terminal) != QAccessible::NoRole);
+
+    auto *verticalTabsAction = window.findChild<QAction *>(QStringLiteral("verticalTabsAction"));
+    auto *remoteAction = window.findChild<QAction *>(QStringLiteral("remoteManagementAction"));
+    auto *settingsAction = window.findChild<QAction *>(QStringLiteral("settingsAction"));
+    QVERIFY(verticalTabsAction);
+    QVERIFY(remoteAction);
+    QVERIFY(settingsAction);
+    QCOMPARE(verticalTabsAction->toolTip(), QStringLiteral("Toggle vertical tab navigation"));
+    QCOMPARE(remoteAction->toolTip(), QStringLiteral("Open remote server management"));
+    QCOMPARE(settingsAction->toolTip(), QStringLiteral("Open application settings"));
+}
+
+void TestMainWindow::testVerticalSidebarExposesAccessibleLabels() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *pane = currentPane(window);
+    QVERIFY(pane);
+    pane->splitCurrent(Qt::Vertical);
+
+    auto *verticalAction = window.findChild<QAction *>(QStringLiteral("verticalTabsAction"));
+    QVERIFY(verticalAction);
+    verticalAction->setChecked(true);
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+    QTRY_VERIFY(verticalSidebar->isVisible());
+
+    QCOMPARE(accessibleText(verticalSidebar, QAccessible::Name), QStringLiteral("Vertical terminal tabs"));
+    QVERIFY(accessibleText(verticalSidebar, QAccessible::Description).contains(QStringLiteral("tabs and panes")));
+    QVERIFY(accessibleRole(verticalSidebar) != QAccessible::NoRole);
+
+    auto *expandButton = verticalSidebar->findChild<QAbstractButton *>(QStringLiteral("verticalTabExpandButton"));
+    auto *tabButton = verticalSidebar->findChild<QAbstractButton *>(QStringLiteral("verticalTabButton"));
+    const auto paneButtons = verticalSidebar->findChildren<QAbstractButton *>(QStringLiteral("verticalPaneButton"));
+    auto *tabBadge = verticalSidebar->findChild<QLabel *>(QStringLiteral("verticalTabBadge"));
+    auto *paneBadge = verticalSidebar->findChild<QLabel *>(QStringLiteral("verticalPaneBadge"));
+    QVERIFY(expandButton);
+    QVERIFY(tabButton);
+    QVERIFY(paneButtons.size() >= 2);
+    QVERIFY(tabBadge);
+    QVERIFY(paneBadge);
+
+    QVERIFY(accessibleText(expandButton, QAccessible::Name).contains(QStringLiteral("panes")));
+    QVERIFY(accessibleText(tabButton, QAccessible::Name).contains(QStringLiteral("Terminal tab")));
+    QVERIFY(accessibleText(paneButtons.first(), QAccessible::Name).contains(QStringLiteral("Terminal pane")));
+    QVERIFY(accessibleText(tabBadge, QAccessible::Name).contains(QStringLiteral("Process")));
+    QVERIFY(accessibleText(paneBadge, QAccessible::Name).contains(QStringLiteral("Process")));
 }
 
 void TestMainWindow::testProcessIconsAreAvailable() {

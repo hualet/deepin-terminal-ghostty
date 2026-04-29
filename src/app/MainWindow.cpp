@@ -39,6 +39,10 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
       m_stackWidget(new QStackedWidget(this)),
       m_contentHost(new QWidget(this)),
       m_startupOptions(startupOptions) {
+    setObjectName(QStringLiteral("mainWindow"));
+    setAccessibleName(tr("Deepin Terminal Ghostty"));
+    setAccessibleDescription(tr("Main window for the Deepin Terminal Ghostty terminal emulator."));
+
     m_verticalTabsEnabled = AppSettings::instance()->verticalTabsEnabled();
 
     // Prevent DTK or Qt default actions from intercepting standard
@@ -167,6 +171,9 @@ DTabBar *MainWindow::ensureTabBar() {
         return m_tabBar;
 
     m_tabBar = new DTabBar(this);
+    m_tabBar->setObjectName(QStringLiteral("mainTabBar"));
+    m_tabBar->setAccessibleName(tr("Terminal tabs"));
+    m_tabBar->setAccessibleDescription(tr("Switch between terminal tabs."));
     m_tabBar->setTabsClosable(true);
     m_tabBar->setVisibleAddButton(true);
     m_tabBar->setElideMode(Qt::ElideRight);
@@ -182,6 +189,9 @@ DTabBar *MainWindow::ensureTabBar() {
 QWidget *MainWindow::ensureTabTitlebarWidget() {
     if (!m_tabTitlebarWidget) {
         m_tabTitlebarWidget = new QWidget(this);
+        m_tabTitlebarWidget->setObjectName(QStringLiteral("tabTitlebarWidget"));
+        m_tabTitlebarWidget->setAccessibleName(tr("Horizontal terminal tabs"));
+        m_tabTitlebarWidget->setAccessibleDescription(tr("Titlebar area containing terminal tabs."));
         auto *tabLayout = new QHBoxLayout(m_tabTitlebarWidget);
         tabLayout->setContentsMargins(0, 0, 0, 0);
     }
@@ -200,6 +210,8 @@ QWidget *MainWindow::ensureCompactTitlebarWidget() {
 
     m_compactTitlebarWidget = new QWidget(this);
     m_compactTitlebarWidget->setObjectName(QStringLiteral("compactTitlebarWidget"));
+    m_compactTitlebarWidget->setAccessibleName(tr("Compact titlebar"));
+    m_compactTitlebarWidget->setAccessibleDescription(tr("Titlebar shown when vertical tabs are enabled."));
     m_compactTitlebarWidget->setFixedHeight(36);
     auto *compactLayout = new QHBoxLayout(m_compactTitlebarWidget);
     compactLayout->setContentsMargins(12, 6, 12, 6);
@@ -234,6 +246,8 @@ void MainWindow::setupTitleBar() {
 
     m_verticalTabsAction = menu->addAction(tr("Vertical Tabs"));
     m_verticalTabsAction->setObjectName(QStringLiteral("verticalTabsAction"));
+    m_verticalTabsAction->setToolTip(tr("Toggle vertical tab navigation"));
+    m_verticalTabsAction->setStatusTip(tr("Toggle vertical tab navigation"));
     m_verticalTabsAction->setCheckable(true);
     m_verticalTabsAction->setChecked(m_verticalTabsEnabled);
     connect(m_verticalTabsAction, &QAction::toggled, this, [this](bool checked) {
@@ -242,9 +256,15 @@ void MainWindow::setupTitleBar() {
     });
 
     auto *remoteAction = menu->addAction(tr("Remote Management"));
+    remoteAction->setObjectName(QStringLiteral("remoteManagementAction"));
+    remoteAction->setToolTip(tr("Open remote server management"));
+    remoteAction->setStatusTip(tr("Open remote server management"));
     connect(remoteAction, &QAction::triggered, this, &MainWindow::onShortcutRemoteManagement);
 
     auto *settingsAction = menu->addAction(tr("Settings"));
+    settingsAction->setObjectName(QStringLiteral("settingsAction"));
+    settingsAction->setToolTip(tr("Open application settings"));
+    settingsAction->setStatusTip(tr("Open application settings"));
     connect(settingsAction, &QAction::triggered, this, &MainWindow::onSettingsTriggered);
 
     menu->addSeparator();
@@ -258,6 +278,7 @@ void MainWindow::setupTitleBar() {
     m_themeGroup = themeGroup;
 
     auto *lightAction = themeMenu->addAction(tr("Light"));
+    lightAction->setObjectName(QStringLiteral("lightThemeAction"));
     lightAction->setCheckable(true);
     lightAction->setChecked(currentScheme == QStringLiteral("light"));
     lightAction->setData(QStringLiteral("light"));
@@ -266,6 +287,7 @@ void MainWindow::setupTitleBar() {
             [this]() { AppSettings::instance()->setColorScheme(QStringLiteral("light")); });
 
     auto *darkAction = themeMenu->addAction(tr("Dark"));
+    darkAction->setObjectName(QStringLiteral("darkThemeAction"));
     darkAction->setCheckable(true);
     darkAction->setChecked(currentScheme == QStringLiteral("dark"));
     darkAction->setData(QStringLiteral("dark"));
@@ -274,6 +296,7 @@ void MainWindow::setupTitleBar() {
             [this]() { AppSettings::instance()->setColorScheme(QStringLiteral("dark")); });
 
     auto *systemAction = themeMenu->addAction(tr("System"));
+    systemAction->setObjectName(QStringLiteral("systemThemeAction"));
     systemAction->setCheckable(true);
     systemAction->setChecked(currentScheme == QStringLiteral("system"));
     systemAction->setData(QStringLiteral("system"));

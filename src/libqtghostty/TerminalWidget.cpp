@@ -231,6 +231,9 @@ bool effectColorScheme(GhosttyTerminal terminal, void *userdata, GhosttyColorSch
 // ---------------------------------------------------------------------------
 
 TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
+    setObjectName(QStringLiteral("terminalWidget"));
+    setAccessibleName(tr("Terminal pane"));
+    setAccessibleDescription(tr("Interactive terminal input and output area."));
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_InputMethodEnabled, true);
 
