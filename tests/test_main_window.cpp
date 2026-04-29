@@ -17,6 +17,8 @@
 #include <QAction>
 #include <QFile>
 #include <QIcon>
+#include <QImage>
+#include <QLabel>
 #include <QPointer>
 #include <QScrollArea>
 #include <QSignalSpy>
@@ -63,6 +65,7 @@ private slots:
     void testVerticalSidebarIncludesDecorativeHierarchyElements();
     void testVerticalSidebarElidesLabelsWhenNarrow();
     void testProcessIconsAreAvailable();
+    void testTerminalProcessBadgeHasVisibleColoredArtwork();
     void testLoggingCategoriesExposeExpectedNames();
     void testApplicationMetadataIsConfigured();
     void testStartupSessionFinishedEmitsExitCode();
@@ -734,6 +737,10 @@ void TestMainWindow::testVerticalSidebarElidesLabelsWhenNarrow() {
 }
 
 void TestMainWindow::testProcessIconsAreAvailable() {
+    const QSet<QString> webpIcons = {
+        QStringLiteral("claude"),   QStringLiteral("gemini"), QStringLiteral("codex"),   QStringLiteral("qwen"),
+        QStringLiteral("opencode"), QStringLiteral("goose"),  QStringLiteral("copilot"), QStringLiteral("kimi"),
+    };
     const QStringList iconNames = {
         QStringLiteral("codex"),          QStringLiteral("claude"),   QStringLiteral("gemini"),
         QStringLiteral("aider"),          QStringLiteral("opencode"), QStringLiteral("goose"),
@@ -745,9 +752,56 @@ void TestMainWindow::testProcessIconsAreAvailable() {
     };
 
     for (const QString &iconName : iconNames) {
-        const QString path = QStringLiteral(":/icons/process/%1.svg").arg(iconName);
+        const QString badgeName = iconName == QStringLiteral("github-copilot") ? QStringLiteral("copilot") : iconName;
+        const QString ext = webpIcons.contains(badgeName) ? QStringLiteral("webp") : QStringLiteral("svg");
+        const QString path = QStringLiteral(":/badges/process/%1.%2").arg(badgeName, ext);
         QVERIFY2(!QIcon(path).isNull(), qPrintable(path));
     }
+}
+
+void TestMainWindow::testTerminalProcessBadgeHasVisibleColoredArtwork() {
+    VerticalTabSidebar sidebar;
+    VerticalTabSidebar::TabItem item;
+    item.id = 1;
+    item.title = QStringLiteral("Terminal");
+    item.isCurrent = true;
+
+    TermPane::PaneInfo pane;
+    pane.id = QUuid::createUuid();
+    pane.title = QStringLiteral("Terminal");
+    pane.isActive = true;
+    item.panes.append(pane);
+
+    sidebar.setItems({item});
+    sidebar.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&sidebar));
+    QCoreApplication::processEvents();
+
+    auto *badge = sidebar.findChild<QLabel *>(QStringLiteral("verticalTabBadge"));
+    QVERIFY(badge);
+
+    const QImage image = badge->pixmap().toImage();
+    QVERIFY(!image.isNull());
+
+    QSet<QRgb> colors;
+    bool hasVisibleAccent = false;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const QColor color = image.pixelColor(x, y);
+            if (color.alpha() > 0) {
+                colors.insert(color.rgb());
+                if (color.saturation() > 80 && color.value() > 110)
+                    hasVisibleAccent = true;
+            }
+        }
+    }
+
+    QVERIFY(colors.size() > 2);
+    QVERIFY(hasVisibleAccent);
+    QCOMPARE(image.pixelColor(0, 0).alpha(), 0);
+    QCOMPARE(image.pixelColor(image.width() - 1, 0).alpha(), 0);
+    QCOMPARE(image.pixelColor(0, image.height() - 1).alpha(), 0);
+    QCOMPARE(image.pixelColor(image.width() - 1, image.height() - 1).alpha(), 0);
 }
 
 void TestMainWindow::testThemeLoaderLoadsAllThemes() {
