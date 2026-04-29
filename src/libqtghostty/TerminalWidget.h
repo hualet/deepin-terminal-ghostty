@@ -37,6 +37,7 @@ public:
     void setCursorShape(int shape);
     void setCursorBlinkEnabled(bool blink);
     void setScrollbackLines(int lines);
+    qreal opacity() const;
     void setOpacity(qreal opacity);
     void applyTheme(const TerminalTheme &theme);
     void setStartOptions(const PtySession::StartOptions &options);

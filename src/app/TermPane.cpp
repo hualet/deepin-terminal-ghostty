@@ -255,6 +255,10 @@ TerminalWidget *TermPane::createTerminal() {
 
     term->installEventFilter(this);
     setupTerminalConnections(term);
+
+    if (m_currentTerm)
+        term->setOpacity(m_currentTerm->opacity());
+
     return term;
 }
 

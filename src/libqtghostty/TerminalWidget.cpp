@@ -1234,6 +1234,10 @@ void TerminalWidget::setScrollbackLines(int lines) {
     m_scrollbackLines = lines;
 }
 
+qreal TerminalWidget::opacity() const {
+    return m_opacity;
+}
+
 void TerminalWidget::setOpacity(qreal opacity) {
     m_opacity = opacity;
     setAttribute(Qt::WA_TranslucentBackground, m_opacity < 1.0);
