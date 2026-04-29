@@ -5,6 +5,9 @@
     <qresource prefix="/other">
         <file alias="ssh_login.sh">../remote/ssh_login.sh</file>
     </qresource>
+    <qresource prefix="/icons/app">
+        <file alias="deepin-terminal-ghostty.png">../../../resources/logo_256x256.png</file>
+    </qresource>
     <qresource prefix="/badges/process">
         <file alias="claude.webp">../../../resources/badges/process/claude.webp</file>
         <file alias="gemini.webp">../../../resources/badges/process/gemini.webp</file>

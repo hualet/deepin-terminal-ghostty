@@ -2,13 +2,20 @@
 
 #include <QIcon>
 
+QIcon applicationLogoIcon() {
+    return QIcon(QStringLiteral(":/icons/app/deepin-terminal-ghostty.png"));
+}
+
 void applyApplicationMetadata(Dtk::Widget::DApplication &app) {
+    const QIcon appIcon = applicationLogoIcon();
+
     app.setApplicationName(QStringLiteral("deepin-terminal-ghostty"));
     app.setProductName(QStringLiteral("deepin-terminal-ghostty"));
     app.setApplicationDisplayName(QObject::tr("Deepin Terminal Ghostty"));
     app.setOrganizationName(QStringLiteral("deepin"));
     app.setApplicationVersion(QStringLiteral(PROJECT_VERSION_STR));
-    app.setProductIcon(QIcon::fromTheme("utilities-terminal"));
+    app.setProductIcon(appIcon);
+    app.setWindowIcon(appIcon);
     app.setApplicationDescription(
         QObject::tr("A feature-rich terminal emulator for Linux built with Qt6, DTK6, and libghostty-vt."));
     app.setApplicationLicense(QStringLiteral("LGPL-2.1"));

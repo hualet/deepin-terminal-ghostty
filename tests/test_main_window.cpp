@@ -189,6 +189,13 @@ void TestMainWindow::testApplicationMetadataIsConfigured() {
     QVERIFY(!app->applicationDescription().isEmpty());
     QVERIFY(!app->applicationLicense().isEmpty());
     QCOMPARE(app->applicationHomePage(), QStringLiteral("https://github.com/linuxdeepin/deepin-terminal-ghostty"));
+
+    const QIcon expectedLogo(QStringLiteral(":/icons/app/deepin-terminal-ghostty.png"));
+    QVERIFY(!expectedLogo.isNull());
+    QVERIFY(!app->windowIcon().isNull());
+    QCOMPARE(app->windowIcon().pixmap(64, 64).toImage(), expectedLogo.pixmap(64, 64).toImage());
+    QVERIFY(!window.windowIcon().isNull());
+    QCOMPARE(window.windowIcon().pixmap(64, 64).toImage(), expectedLogo.pixmap(64, 64).toImage());
 }
 
 void TestMainWindow::testStartupSessionFinishedEmitsExitCode() {

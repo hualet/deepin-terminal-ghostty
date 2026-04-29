@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include "AppSettings.h"
+#include "ApplicationMetadata.h"
 #include "SettingsDialog.h"
 #include "TermPane.h"
 #include "TerminalWidget.h"
@@ -58,6 +59,7 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
     QSize savedSize = AppSettings::instance()->windowSize();
     resize(savedSize.isValid() ? savedSize : QSize(960, 640));
     setWindowTitle("deepin-terminal-ghostty");
+    setWindowIcon(applicationLogoIcon());
 
     // Central widget host keeps layout switching local to MainWindow.
     setCentralWidget(m_contentHost);
@@ -220,7 +222,7 @@ void MainWindow::setupTitleBar() {
         return;
 
     tb->setTitle("");
-    tb->setIcon(QIcon::fromTheme("utilities-terminal"));
+    tb->setIcon(applicationLogoIcon());
     tb->setAutoHideOnFullscreen(true);
     tb->setSwitchThemeMenuVisible(false);
 
