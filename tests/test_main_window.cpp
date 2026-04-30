@@ -20,10 +20,12 @@
 #include <QAbstractButton>
 #include <QAccessible>
 #include <QAction>
-#include <QDialog>
 #include <QFile>
 #include <QIcon>
 #include <QImage>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPointer>
@@ -31,7 +33,7 @@
 #include <QSignalSpy>
 #include <QStackedWidget>
 #include <QStandardPaths>
-#include <QTableWidget>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
 
@@ -77,14 +79,14 @@ private slots:
     void testVerticalSidebarExposesAccessibleLabels();
     void testSearchBarExposesAccessibleLabels();
     void testSettingsDialogExposesAccessibleLabels();
-    void testShortcutDialogExposesAccessibleLabels();
+    void testShortcutViewerLaunchesFromDisplayShortcut();
     void testVerticalSidebarAccessibleLabelsTrackTitlesAndExpansion();
     void testRemoteManagementPanelExposesAccessibleLabels();
     void testServerConfigDialogExposesAccessibleLabels();
     void testAccessibleSearchControlsDriveFindActions();
     void testAccessibleVerticalSidebarButtonsActivateTargets();
     void testAccessibleRemoteAddButtonOpensConfigDialog();
-    void testShortcutDialogListsConfiguredActions();
+    void testShortcutViewerPayloadListsConfiguredActions();
     void testProcessIconsAreAvailable();
     void testTerminalProcessBadgeHasVisibleColoredArtwork();
     void testLoggingCategoriesExposeExpectedNames();
@@ -175,6 +177,70 @@ QAccessible::Role accessibleRole(QObject *object) {
     if (!iface)
         return QAccessible::NoRole;
     return iface->role();
+}
+
+struct ShortcutViewerCapture {
+    QTemporaryDir dir;
+    QByteArray previousPath;
+    QByteArray previousOutputPath;
+    QString outputPath;
+    bool installed = false;
+
+    ~ShortcutViewerCapture() { restore(); }
+
+    bool install() {
+        if (!dir.isValid())
+            return false;
+
+        outputPath = dir.filePath(QStringLiteral("viewer-args.txt"));
+        const QString scriptPath = dir.filePath(QStringLiteral("deepin-shortcut-viewer"));
+        QFile script(scriptPath);
+        if (!script.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            return false;
+        script.write("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$DEEPIN_SHORTCUT_VIEWER_ARGS\"\n");
+        script.close();
+        if (!script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner))
+            return false;
+
+        previousPath = qgetenv("PATH");
+        previousOutputPath = qgetenv("DEEPIN_SHORTCUT_VIEWER_ARGS");
+        qputenv("PATH", QFile::encodeName(dir.path()) + ":" + previousPath);
+        qputenv("DEEPIN_SHORTCUT_VIEWER_ARGS", QFile::encodeName(outputPath));
+        installed = true;
+        return true;
+    }
+
+    void restore() {
+        if (!installed)
+            return;
+        qputenv("PATH", previousPath);
+        if (previousOutputPath.isEmpty())
+            qunsetenv("DEEPIN_SHORTCUT_VIEWER_ARGS");
+        else
+            qputenv("DEEPIN_SHORTCUT_VIEWER_ARGS", previousOutputPath);
+        installed = false;
+    }
+};
+
+QStringList readShortcutViewerArguments(const QString &path) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    QStringList arguments;
+    const auto lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString &line : lines)
+        arguments.append(line);
+    return arguments;
+}
+
+QJsonObject shortcutViewerPayload(const QStringList &arguments) {
+    for (const QString &argument : arguments) {
+        if (!argument.startsWith(QStringLiteral("-j=")))
+            continue;
+        const QByteArray json = argument.mid(3).toUtf8();
+        return QJsonDocument::fromJson(json).object();
+    }
+    return {};
 }
 
 template <typename T> T *findByAccessibleName(QObject *root, const QString &name) {
@@ -914,25 +980,25 @@ void TestMainWindow::testSettingsDialogExposesAccessibleLabels() {
     QVERIFY(accessibleRole(dialog) != QAccessible::NoRole);
 }
 
-void TestMainWindow::testShortcutDialogExposesAccessibleLabels() {
+void TestMainWindow::testShortcutViewerLaunchesFromDisplayShortcut() {
+    ShortcutViewerCapture capture;
+    QVERIFY(capture.install());
+
     MainWindow window;
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
     window.activateWindow();
     QVERIFY(QTest::qWaitForWindowActive(&window));
 
-    QTest::keyClick(&window, Qt::Key_Question, Qt::ControlModifier | Qt::ShiftModifier);
+    QTest::keyClick(&window, Qt::Key_Slash, Qt::ControlModifier | Qt::ShiftModifier);
 
-    QDialog *dialog = nullptr;
-    QTRY_VERIFY((dialog = window.findChild<QDialog *>(QString(), Qt::FindDirectChildrenOnly)));
-    QCOMPARE(dialog->windowTitle(), QStringLiteral("Keyboard Shortcuts"));
-    QCOMPARE(accessibleText(dialog, QAccessible::Name), QStringLiteral("Keyboard shortcuts"));
-    QVERIFY(accessibleText(dialog, QAccessible::Description).contains(QStringLiteral("configured keyboard shortcuts")));
+    QTRY_VERIFY(QFile::exists(capture.outputPath));
+    const QStringList arguments = readShortcutViewerArguments(capture.outputPath);
+    capture.restore();
 
-    auto *table = dialog->findChild<QTableWidget *>();
-    QVERIFY(table);
-    QCOMPARE(accessibleText(table, QAccessible::Name), QStringLiteral("Keyboard shortcuts table"));
-    QVERIFY(accessibleText(table, QAccessible::Description).contains(QStringLiteral("Action and shortcut")));
+    QCOMPARE(arguments.size(), 2);
+    QVERIFY(arguments.at(0).startsWith(QStringLiteral("-j=")));
+    QVERIFY(arguments.at(1).startsWith(QStringLiteral("-p=")));
 }
 
 void TestMainWindow::testVerticalSidebarAccessibleLabelsTrackTitlesAndExpansion() {
@@ -1168,31 +1234,43 @@ void TestMainWindow::testAccessibleRemoteAddButtonOpensConfigDialog() {
     QCOMPARE(serverNameField, QStringLiteral("Server name"));
 }
 
-void TestMainWindow::testShortcutDialogListsConfiguredActions() {
+void TestMainWindow::testShortcutViewerPayloadListsConfiguredActions() {
+    ShortcutViewerCapture capture;
+    QVERIFY(capture.install());
+
     MainWindow window;
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
     window.activateWindow();
     QVERIFY(QTest::qWaitForWindowActive(&window));
 
-    QTest::keyClick(&window, Qt::Key_Question, Qt::ControlModifier | Qt::ShiftModifier);
+    QTest::keyClick(&window, Qt::Key_Slash, Qt::ControlModifier | Qt::ShiftModifier);
 
-    auto *dialog = findByAccessibleName<QDialog>(&window, QStringLiteral("Keyboard shortcuts"));
-    QVERIFY(dialog);
-    auto *table = findByAccessibleName<QTableWidget>(dialog, QStringLiteral("Keyboard shortcuts table"));
-    QVERIFY(table);
-    QVERIFY(table->rowCount() > 0);
+    QTRY_VERIFY(QFile::exists(capture.outputPath));
+    const QJsonObject payload = shortcutViewerPayload(readShortcutViewerArguments(capture.outputPath));
+    capture.restore();
 
+    const QJsonArray groups = payload.value(QStringLiteral("shortcut")).toArray();
+    QCOMPARE(groups.size(), 3);
+
+    QStringList groupNames;
     QStringList actions;
-    for (int row = 0; row < table->rowCount(); ++row) {
-        if (auto *item = table->item(row, 0))
-            actions.append(item->text());
+    for (const QJsonValue &groupValue : groups) {
+        const QJsonObject group = groupValue.toObject();
+        groupNames.append(group.value(QStringLiteral("groupName")).toString());
+        const QJsonArray items = group.value(QStringLiteral("groupItems")).toArray();
+        for (const QJsonValue &itemValue : items)
+            actions.append(itemValue.toObject().value(QStringLiteral("name")).toString());
     }
 
+    QVERIFY(groupNames.contains(QStringLiteral("Terminal")));
+    QVERIFY(groupNames.contains(QStringLiteral("Tabs")));
+    QVERIFY(groupNames.contains(QStringLiteral("Others")));
     QVERIFY(actions.contains(QStringLiteral("Copy")));
     QVERIFY(actions.contains(QStringLiteral("Paste")));
     QVERIFY(actions.contains(QStringLiteral("Find")));
     QVERIFY(actions.contains(QStringLiteral("New tab")));
+    QVERIFY(actions.contains(QStringLiteral("Display shortcuts")));
     QVERIFY(actions.contains(QStringLiteral("Remote management")));
 }
 

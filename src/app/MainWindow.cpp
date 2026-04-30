@@ -19,18 +19,18 @@
 #include <DTitlebar>
 #include <DWindowManagerHelper>
 #include <QActionGroup>
-#include <QDialog>
 #include <QHBoxLayout>
-#include <QHeaderView>
 #include <QIcon>
 #include <QInputDialog>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QKeyEvent>
 #include <QMenu>
+#include <QProcess>
 #include <QShortcut>
 #include <QSplitter>
 #include <QStackedWidget>
-#include <QTableWidget>
-#include <QVBoxLayout>
 
 #include <algorithm>
 
@@ -868,7 +868,12 @@ void MainWindow::setupShortcuts() {
 void MainWindow::updateShortcut(QShortcut *shortcut, const QString &name) {
     if (!shortcut)
         return;
-    shortcut->setKey(AppSettings::instance()->shortcut(name));
+    const QKeySequence sequence = AppSettings::instance()->shortcut(name);
+    if (name == QStringLiteral("display_shortcuts") && sequence == QKeySequence(QStringLiteral("Ctrl+Shift+?"))) {
+        shortcut->setKeys({sequence, QKeySequence(Qt::ControlModifier | Qt::ShiftModifier | Qt::Key_Slash)});
+        return;
+    }
+    shortcut->setKey(sequence);
 }
 
 void MainWindow::closeOtherTabs() {
@@ -903,69 +908,78 @@ void MainWindow::onShortcutRenameTitle() {
 }
 
 void MainWindow::onShortcutDisplayShortcuts() {
-    auto *dialog = new QDialog(this);
-    dialog->setObjectName(QStringLiteral("shortcutDialog"));
-    dialog->setWindowTitle(tr("Keyboard Shortcuts"));
-    dialog->setAccessibleName(tr("Keyboard shortcuts"));
-    dialog->setAccessibleDescription(tr("View configured keyboard shortcuts."));
-    dialog->setMinimumSize(480, 520);
-    dialog->setAttribute(Qt::WA_DeleteOnClose);
-
-    auto *table = new QTableWidget(dialog);
-    table->setObjectName(QStringLiteral("shortcutTable"));
-    table->setAccessibleName(tr("Keyboard shortcuts table"));
-    table->setAccessibleDescription(tr("Action and shortcut key bindings."));
-    table->setColumnCount(2);
-    table->setHorizontalHeaderLabels(QStringList() << tr("Action") << tr("Shortcut"));
-    table->horizontalHeader()->setStretchLastSection(true);
-    table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    table->setSelectionBehavior(QAbstractItemView::SelectRows);
-
     struct Item {
         QString name;
         QString key;
     };
-    QList<Item> items;
+
+    auto makeGroup = [](const QString &groupName, const QList<Item> &items) {
+        QJsonArray groupItems;
+        for (const Item &item : items) {
+            QJsonObject object;
+            object.insert(QStringLiteral("name"), item.name);
+            object.insert(QStringLiteral("value"), item.key);
+            groupItems.append(object);
+        }
+
+        QJsonObject group;
+        group.insert(QStringLiteral("groupName"), groupName);
+        group.insert(QStringLiteral("groupItems"), groupItems);
+        return group;
+    };
+
     auto *settings = AppSettings::instance();
 
-    items << Item{tr("Copy"), settings->shortcut("copy").toString()};
-    items << Item{tr("Paste"), settings->shortcut("paste").toString()};
-    items << Item{tr("Find"), settings->shortcut("find").toString()};
-    items << Item{tr("Zoom in"), settings->shortcut("zoom_in").toString()};
-    items << Item{tr("Zoom out"), settings->shortcut("zoom_out").toString()};
-    items << Item{tr("Default size"), settings->shortcut("default_size").toString()};
-    items << Item{tr("Select all"), settings->shortcut("select_all").toString()};
-    items << Item{tr("New tab"), settings->shortcut("new_tab").toString()};
-    items << Item{tr("Close tab"), settings->shortcut("close_tab").toString()};
-    items << Item{tr("Close other tabs"), settings->shortcut("close_other_tabs").toString()};
-    items << Item{tr("Previous tab"), settings->shortcut("previous_tab").toString()};
-    items << Item{tr("Next tab"), settings->shortcut("next_tab").toString()};
-    items << Item{tr("Vertical split"), settings->shortcut("vertical_split").toString()};
-    items << Item{tr("Horizontal split"), settings->shortcut("horionzal_split").toString()};
-    items << Item{tr("Select upper workspace"), settings->shortcut("select_upper_workspace").toString()};
-    items << Item{tr("Select lower workspace"), settings->shortcut("select_lower_workspace").toString()};
-    items << Item{tr("Select left workspace"), settings->shortcut("select_left_workspace").toString()};
-    items << Item{tr("Select right workspace"), settings->shortcut("select_right_workspace").toString()};
-    items << Item{tr("Close workspace"), settings->shortcut("close_workspace").toString()};
-    items << Item{tr("Close other workspaces"), settings->shortcut("close_other_workspaces").toString()};
+    QList<Item> terminalItems;
+    terminalItems << Item{tr("Copy"), settings->shortcut("copy").toString()};
+    terminalItems << Item{tr("Paste"), settings->shortcut("paste").toString()};
+    terminalItems << Item{tr("Find"), settings->shortcut("find").toString()};
+    terminalItems << Item{tr("Zoom in"), settings->shortcut("zoom_in").toString()};
+    terminalItems << Item{tr("Zoom out"), settings->shortcut("zoom_out").toString()};
+    terminalItems << Item{tr("Default size"), settings->shortcut("default_size").toString()};
+    terminalItems << Item{tr("Select all"), settings->shortcut("select_all").toString()};
+
+    QList<Item> tabItems;
+    tabItems << Item{tr("New tab"), settings->shortcut("new_tab").toString()};
+    tabItems << Item{tr("Close tab"), settings->shortcut("close_tab").toString()};
+    tabItems << Item{tr("Close other tabs"), settings->shortcut("close_other_tabs").toString()};
+    tabItems << Item{tr("Previous tab"), settings->shortcut("previous_tab").toString()};
+    tabItems << Item{tr("Next tab"), settings->shortcut("next_tab").toString()};
+    tabItems << Item{tr("Vertical split"), settings->shortcut("vertical_split").toString()};
+    tabItems << Item{tr("Horizontal split"), settings->shortcut("horionzal_split").toString()};
+    tabItems << Item{tr("Select upper workspace"), settings->shortcut("select_upper_workspace").toString()};
+    tabItems << Item{tr("Select lower workspace"), settings->shortcut("select_lower_workspace").toString()};
+    tabItems << Item{tr("Select left workspace"), settings->shortcut("select_left_workspace").toString()};
+    tabItems << Item{tr("Select right workspace"), settings->shortcut("select_right_workspace").toString()};
+    tabItems << Item{tr("Close workspace"), settings->shortcut("close_workspace").toString()};
+    tabItems << Item{tr("Close other workspaces"), settings->shortcut("close_other_workspaces").toString()};
     for (int i = 1; i <= 9; ++i)
-        items << Item{tr("Go to tab %1").arg(i), settings->shortcut(QString("switch_label_win_%1").arg(i)).toString()};
-    items << Item{tr("Fullscreen"), settings->shortcut("switch_fullscreen").toString()};
-    items << Item{tr("Rename title"), settings->shortcut("rename_title").toString()};
-    items << Item{tr("Custom command"), settings->shortcut("custom_command").toString()};
-    items << Item{tr("Remote management"), settings->shortcut("remote_management").toString()};
+        tabItems << Item{tr("Go to tab %1").arg(i),
+                         settings->shortcut(QStringLiteral("switch_label_win_%1").arg(i)).toString()};
 
-    table->setRowCount(items.size());
-    for (int i = 0; i < items.size(); ++i) {
-        table->setItem(i, 0, new QTableWidgetItem(items[i].name));
-        table->setItem(i, 1, new QTableWidgetItem(items[i].key));
+    QList<Item> advancedItems;
+    advancedItems << Item{tr("Fullscreen"), settings->shortcut("switch_fullscreen").toString()};
+    advancedItems << Item{tr("Rename title"), settings->shortcut("rename_title").toString()};
+    advancedItems << Item{tr("Display shortcuts"), settings->shortcut("display_shortcuts").toString()};
+    advancedItems << Item{tr("Custom commands"), settings->shortcut("custom_command").toString()};
+    advancedItems << Item{tr("Remote management"), settings->shortcut("remote_management").toString()};
+
+    QJsonArray groups;
+    groups.append(makeGroup(tr("Terminal"), terminalItems));
+    groups.append(makeGroup(tr("Tabs"), tabItems));
+    groups.append(makeGroup(tr("Others"), advancedItems));
+
+    QJsonObject root;
+    root.insert(QStringLiteral("shortcut"), groups);
+
+    const QPoint center = frameGeometry().center();
+    QStringList arguments;
+    arguments << QStringLiteral("-j=%1").arg(QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact)));
+    arguments << QStringLiteral("-p=%1,%2").arg(center.x()).arg(center.y());
+
+    if (!QProcess::startDetached(QStringLiteral("deepin-shortcut-viewer"), arguments)) {
+        qCWarning(appLog) << "Failed to start deepin-shortcut-viewer";
     }
-
-    auto *layout = new QVBoxLayout(dialog);
-    layout->addWidget(table);
-    dialog->setLayout(layout);
-    dialog->show();
 }
 
 void MainWindow::onShortcutCustomCommand() {
