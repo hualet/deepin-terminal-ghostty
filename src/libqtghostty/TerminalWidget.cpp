@@ -196,6 +196,48 @@ std::optional<QString> shellCommandFromOscPayload(const QByteArray &payload) {
     return std::nullopt;
 }
 
+bool isCursorOnlyPtyData(const QByteArray &data) {
+    for (int i = 0; i < data.size();) {
+        const unsigned char ch = static_cast<unsigned char>(data.at(i));
+        if (ch == '\r' || ch == '\b') {
+            ++i;
+            continue;
+        }
+
+        if (ch != 0x1B || i + 1 >= data.size() || data.at(i + 1) != '[')
+            return false;
+
+        i += 2;
+        while (i < data.size()) {
+            const unsigned char param = static_cast<unsigned char>(data.at(i));
+            if ((param >= '0' && param <= '9') || param == ';' || param == '?' || param == ' ') {
+                ++i;
+                continue;
+            }
+            break;
+        }
+
+        if (i >= data.size())
+            return false;
+
+        const char final = data.at(i++);
+        switch (final) {
+            case 'A':
+            case 'B':
+            case 'C':
+            case 'D':
+            case 'G':
+            case 'H':
+            case 'f':
+                break;
+            default:
+                return false;
+        }
+    }
+
+    return !data.isEmpty();
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -285,8 +327,10 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     m_blinkTimer = new QTimer(this);
     m_blinkTimer->setInterval(500);
     connect(m_blinkTimer, &QTimer::timeout, this, [this]() {
+        const QRect previousCursorRect = cursorPaintRect();
         m_cursorBlinkVisible = !m_cursorBlinkVisible;
-        update();
+        const QRect currentCursorRect = cursorPaintRect();
+        update(previousCursorRect.united(currentCursorRect).adjusted(-1, -1, 1, 1));
     });
 
     m_renderTimer = new QTimer(this);
@@ -395,6 +439,10 @@ int TerminalWidget::debugResizeApplyCount() const {
 
 int TerminalWidget::debugPtyFlushCount() const {
     return m_debugPtyFlushCount;
+}
+
+int TerminalWidget::debugCursorOnlyRepaintCount() const {
+    return m_debugCursorOnlyRepaintCount;
 }
 
 void TerminalWidget::debugSetSelection(int startRow, int startCol, int endRow, int endCol, bool active) {
@@ -1634,6 +1682,48 @@ GhosttyMousePosition TerminalWidget::ghosttyMousePositionForEvent(const QPointF 
     return {static_cast<float>(localPosition.x()), static_cast<float>(localPosition.y())};
 }
 
+QRect TerminalWidget::cursorPaintRect() const {
+    if (!m_renderState || m_renderStateDirty || !m_hasFocus)
+        return {};
+
+    bool cursorVisible = false;
+    if (ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_VISIBLE, &cursorVisible)
+            != GHOSTTY_SUCCESS
+        || !cursorVisible) {
+        return {};
+    }
+
+    bool cursorInViewport = false;
+    if (ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_HAS_VALUE, &cursorInViewport)
+            != GHOSTTY_SUCCESS
+        || !cursorInViewport) {
+        return {};
+    }
+
+    bool cursorBlinking = false;
+    ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_BLINKING, &cursorBlinking);
+    if (m_cursorBlinkEnabled && cursorBlinking && !m_cursorBlinkVisible)
+        return {};
+
+    uint16_t cx = 0;
+    uint16_t cy = 0;
+    ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_X, &cx);
+    ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_Y, &cy);
+
+    const QPoint origin = terminalContentOrigin();
+    const int x = origin.x() + static_cast<int>(cx) * m_cellWidth;
+    const int y = origin.y() + static_cast<int>(cy) * m_cellHeight;
+
+    switch (m_cursorShape) {
+        case 1:
+            return QRect(x, y, 2, m_cellHeight);
+        case 2:
+            return QRect(x, y + m_cellHeight - 2, m_cellWidth, 2);
+        default:
+            return QRect(x, y, m_cellWidth, m_cellHeight);
+    }
+}
+
 void TerminalWidget::notifyInputMethodCursorChange() {
     if (QInputMethod *inputMethod = QGuiApplication::inputMethod()) {
         inputMethod->update(Qt::ImEnabled | Qt::ImCursorRectangle | Qt::ImAnchorRectangle
@@ -1647,8 +1737,9 @@ void TerminalWidget::scheduleTerminalRepaint() {
     }
 
     if (m_pendingPtyData.size() >= kImmediatePtyFlushBytes) {
-        flushPendingPtyData();
-        update();
+        QRect repaintRegion;
+        flushPendingPtyData(&repaintRegion);
+        updateAfterPtyFlush(repaintRegion);
         m_lastRenderTime.restart();
         return;
     }
@@ -1660,8 +1751,9 @@ void TerminalWidget::scheduleTerminalRepaint() {
     }
 
     if (m_lastRenderTime.elapsed() >= kBurstRenderIntervalMs) {
-        flushPendingPtyData();
-        update();
+        QRect repaintRegion;
+        flushPendingPtyData(&repaintRegion);
+        updateAfterPtyFlush(repaintRegion);
         m_lastRenderTime.restart();
         return;
     }
@@ -1704,10 +1796,35 @@ void TerminalWidget::applyPendingResize() {
     update();
 }
 
-void TerminalWidget::flushPendingPtyData() {
-    if (!m_terminal || m_pendingPtyData.isEmpty()) {
+void TerminalWidget::updateAfterPtyFlush(const QRect &repaintRegion) {
+    if (repaintRegion.isValid()) {
+        update(repaintRegion.adjusted(-1, -1, 1, 1));
         return;
     }
+
+    update();
+}
+
+void TerminalWidget::clearRenderStateDirtyRows() {
+    if (ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, &m_rowIter) != GHOSTTY_SUCCESS)
+        return;
+
+    bool clean = false;
+    while (ghostty_render_state_row_iterator_next(m_rowIter))
+        ghostty_render_state_row_set(m_rowIter, GHOSTTY_RENDER_STATE_ROW_OPTION_DIRTY, &clean);
+
+    GhosttyRenderStateDirty cleanState = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
+    ghostty_render_state_set(m_renderState, GHOSTTY_RENDER_STATE_OPTION_DIRTY, &cleanState);
+}
+
+bool TerminalWidget::flushPendingPtyData(QRect *repaintRegion) {
+    if (!m_terminal || m_pendingPtyData.isEmpty()) {
+        return false;
+    }
+
+    const bool canDetectCursorOnly = repaintRegion && m_renderState && !m_renderStateDirty && !m_backBuffer.isNull()
+                                     && m_preeditText.isEmpty() && isCursorOnlyPtyData(m_pendingPtyData);
+    const QRect previousCursorRect = canDetectCursorOnly ? cursorPaintRect() : QRect();
 
 #ifdef QTGHOSTTY_TESTING
     ++m_debugPtyFlushCount;
@@ -1716,7 +1833,27 @@ void TerminalWidget::flushPendingPtyData() {
                               static_cast<size_t>(m_pendingPtyData.size()));
     m_pendingPtyData.clear();
     m_renderStateDirty = true;
+
+    if (canDetectCursorOnly && ghostty_render_state_update(m_renderState, m_terminal) == GHOSTTY_SUCCESS) {
+        m_renderStateDirty = false;
+
+        GhosttyRenderStateDirty dirtyState = GHOSTTY_RENDER_STATE_DIRTY_FULL;
+        ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_DIRTY, &dirtyState);
+        if (dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FALSE || dirtyState == GHOSTTY_RENDER_STATE_DIRTY_PARTIAL) {
+            if (dirtyState == GHOSTTY_RENDER_STATE_DIRTY_PARTIAL)
+                clearRenderStateDirtyRows();
+            const QRect currentCursorRect = cursorPaintRect();
+            *repaintRegion = previousCursorRect.united(currentCursorRect);
+#ifdef QTGHOSTTY_TESTING
+            ++m_debugCursorOnlyRepaintCount;
+#endif
+            notifyInputMethodCursorChange();
+            return true;
+        }
+    }
+
     notifyInputMethodCursorChange();
+    return false;
 }
 
 void TerminalWidget::onRenderTimerTimeout() {
@@ -1724,8 +1861,9 @@ void TerminalWidget::onRenderTimerTimeout() {
         return;
     }
 
-    flushPendingPtyData();
-    update();
+    QRect repaintRegion;
+    flushPendingPtyData(&repaintRegion);
+    updateAfterPtyFlush(repaintRegion);
     m_lastRenderTime.restart();
 }
 

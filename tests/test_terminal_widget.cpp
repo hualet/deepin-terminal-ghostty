@@ -45,6 +45,7 @@ private slots:
     void testRendersWideCharactersAcrossTwoCells();
     void testRendersAnsiForegroundColors();
     void testCoalescesPlainTextIntoRenderRuns();
+    void testCursorOnlyUpdatesUseNarrowRepaint();
     void testCoalescesBurstRepaintsWithoutLosingFinalFrame();
     void testCoalescesSmallPtyBurstsIntoSingleFlush();
     void testIncrementalUpdatesRenderDirtyRowsOnly();
@@ -546,6 +547,38 @@ void TestTerminalWidget::testCoalescesPlainTextIntoRenderRuns() {
     const int perCellDrawUpperBound = widget.debugLastFrameRenderedRowCount() * widget.terminalColumns();
     QVERIFY2(widget.debugLastFrameTextRunCount() < perCellDrawUpperBound / 4,
              "plain text with one style should be rendered as a small number of text runs, not one draw per cell");
+}
+
+void TestTerminalWidget::testCursorOnlyUpdatesUseNarrowRepaint() {
+    CountingTerminalWidget widget;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+    widget.setStartOptions(options);
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    widget.setCursorBlinkEnabled(false);
+    widget.setFocus();
+    QApplication::processEvents();
+
+    int previousFlushCount = widget.debugPtyFlushCount();
+    bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                             Q_ARG(QByteArray, QByteArray("abc")));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+    renderWidgetImage(widget);
+
+    const int previousCursorOnlyRepaintCount = widget.debugCursorOnlyRepaintCount();
+    previousFlushCount = widget.debugPtyFlushCount();
+    invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                        Q_ARG(QByteArray, QByteArray("\r")));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+
+    QVERIFY2(widget.debugCursorOnlyRepaintCount() > previousCursorOnlyRepaintCount,
+             "cursor-only PTY updates should repaint only the old and new cursor rectangles");
 }
 
 void TestTerminalWidget::testCoalescesBurstRepaintsWithoutLosingFinalFrame() {

@@ -60,6 +60,7 @@ public:
     int debugLastFrameTextRunCount() const;
     int debugResizeApplyCount() const;
     int debugPtyFlushCount() const;
+    int debugCursorOnlyRepaintCount() const;
     void debugSetSelection(int startRow, int startCol, int endRow, int endCol, bool active);
     bool debugCellInSelection(int screenRow, int col) const;
     QString debugSelectedText() const;
@@ -118,7 +119,10 @@ private:
     GhosttyMousePosition ghosttyMousePositionForEvent(const QPointF &position) const;
     void notifyInputMethodCursorChange();
     void scheduleTerminalRepaint();
-    void flushPendingPtyData();
+    bool flushPendingPtyData(QRect *repaintRegion = nullptr);
+    void updateAfterPtyFlush(const QRect &repaintRegion);
+    QRect cursorPaintRect() const;
+    void clearRenderStateDirtyRows();
     void scanShellIntegrationSequences(const QByteArray &data);
     void setShellCommand(const QString &command);
     void setShellCommandResult(int exitCode);
@@ -238,6 +242,7 @@ private:
     int m_debugLastFrameTextRunCount = 0;
     int m_debugResizeApplyCount = 0;
     int m_debugPtyFlushCount = 0;
+    int m_debugCursorOnlyRepaintCount = 0;
 #endif
 
     friend class TermPane;
