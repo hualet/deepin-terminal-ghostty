@@ -40,6 +40,7 @@ private slots:
     void testSetCursorBlink();
     void testContentsMarginsInsetTerminalGridAndCursorRect();
     void testRendersSupplementaryPlaneCharacters();
+    void testRendersLongGraphemeCells();
     void testRendersPreeditTextAcrossMultipleCells();
     void testRendersWideCharactersAcrossTwoCells();
     void testRendersAnsiForegroundColors();
@@ -379,6 +380,29 @@ void TestTerminalWidget::testRendersSupplementaryPlaneCharacters() {
     const QByteArray emojiLine = QStringLiteral("hello 🌍\n").toUtf8();
     const bool invoked =
         QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, emojiLine));
+    QVERIFY(invoked);
+
+    widget.repaint();
+    QApplication::processEvents();
+
+    QVERIFY(true);
+}
+
+void TestTerminalWidget::testRendersLongGraphemeCells() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    QString longGrapheme = QStringLiteral("a");
+    for (int i = 0; i < 32; ++i)
+        longGrapheme.append(QChar(0x0301));
+    longGrapheme.append(QChar(u'\n'));
+
+    const bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                                   Q_ARG(QByteArray, longGrapheme.toUtf8()));
     QVERIFY(invoked);
 
     widget.repaint();

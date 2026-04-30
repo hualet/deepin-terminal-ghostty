@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <optional>
+#include <vector>
 
 namespace {
 
@@ -24,6 +25,7 @@ constexpr int kBurstRenderIntervalMs = 8;
 constexpr int kResizeCoalesceIntervalMs = 8;
 constexpr int kImmediatePtyFlushBytes = 32 * 1024;
 constexpr int kMaxOscScanBufferBytes = 16 * 1024;
+constexpr uint32_t kMaxCellGraphemeCodepoints = 4096;
 
 void appendCodepoint(QString &text, uint32_t codepoint) {
     if (codepoint <= 0xFFFF) {
@@ -42,6 +44,26 @@ void appendCodepoint(QString &text, uint32_t codepoint) {
     }
 
     text.append(QChar::ReplacementCharacter);
+}
+
+QString textFromRenderCellGraphemes(GhosttyRenderStateRowCells cells, uint32_t graphemeLen) {
+    if (graphemeLen == 0)
+        return {};
+
+    if (graphemeLen > kMaxCellGraphemeCodepoints)
+        return QString(QChar::ReplacementCharacter);
+
+    std::vector<uint32_t> codepoints(graphemeLen);
+    if (ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, codepoints.data())
+        != GHOSTTY_SUCCESS) {
+        return {};
+    }
+
+    QString text;
+    text.reserve(static_cast<int>(graphemeLen));
+    for (uint32_t codepoint : codepoints)
+        appendCodepoint(text, codepoint);
+    return text;
 }
 
 QString decodeVscodeOsc633Value(const QByteArray &encoded) {
@@ -709,12 +731,7 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
 
             QString cellText;
             if (graphemeLen > 0) {
-                uint32_t codepoints[16];
-                const uint32_t len = graphemeLen < 16 ? graphemeLen : 16;
-                ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF,
-                                                   codepoints);
-                for (uint32_t i = 0; i < len; ++i)
-                    appendCodepoint(cellText, codepoints[i]);
+                cellText = textFromRenderCellGraphemes(m_rowCells, graphemeLen);
             } else {
                 cellText = QChar(u' ');
             }
@@ -726,15 +743,7 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         }
 
         if (graphemeLen > 0 && !isWideTail) {
-            uint32_t codepoints[16];
-            const uint32_t len = graphemeLen < 16 ? graphemeLen : 16;
-            ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF,
-                                               codepoints);
-
-            QString text;
-            text.reserve(static_cast<int>(len));
-            for (uint32_t i = 0; i < len; ++i)
-                appendCodepoint(text, codepoints[i]);
+            const QString text = textFromRenderCellGraphemes(m_rowCells, graphemeLen);
 
             QFont cellFont = *cachedFont;
             cellFont.setFixedPitch(false);
