@@ -27,6 +27,11 @@ constexpr int kMaxOscScanBufferBytes = 16 * 1024;
 
 void appendCodepoint(QString &text, uint32_t codepoint) {
     if (codepoint <= 0xFFFF) {
+        // Surrogate range (0xD800-0xDFFF) is not a valid Unicode scalar value.
+        if (codepoint >= 0xD800 && codepoint <= 0xDFFF) {
+            text.append(QChar::ReplacementCharacter);
+            return;
+        }
         text.append(QChar(static_cast<ushort>(codepoint)));
         return;
     }
