@@ -44,6 +44,7 @@ private slots:
     void testRendersPreeditTextAcrossMultipleCells();
     void testRendersWideCharactersAcrossTwoCells();
     void testRendersAnsiForegroundColors();
+    void testCoalescesPlainTextIntoRenderRuns();
     void testCoalescesBurstRepaintsWithoutLosingFinalFrame();
     void testCoalescesSmallPtyBurstsIntoSingleFlush();
     void testIncrementalUpdatesRenderDirtyRowsOnly();
@@ -519,6 +520,32 @@ void TestTerminalWidget::testRendersAnsiForegroundColors() {
     QVERIFY2(dominantColor.isValid(), "rendered ANSI text should produce visible colored pixels");
     QVERIFY2(dominantColor.red() > dominantColor.green() + 20 && dominantColor.red() > dominantColor.blue() + 20,
              "ANSI red foreground should render as a red-dominant color instead of grayscale");
+}
+
+void TestTerminalWidget::testCoalescesPlainTextIntoRenderRuns() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    widget.repaint();
+    QApplication::processEvents();
+
+    const int previousFlushCount = widget.debugPtyFlushCount();
+    const QByteArray line("abcdefghijklmnopqrstuvwxyz0123456789\n");
+    const bool invoked =
+        QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, line));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+
+    renderWidgetImage(widget);
+
+    const int perCellDrawUpperBound = widget.debugLastFrameRenderedRowCount() * widget.terminalColumns();
+    QVERIFY2(widget.debugLastFrameTextRunCount() < perCellDrawUpperBound / 4,
+             "plain text with one style should be rendered as a small number of text runs, not one draw per cell");
 }
 
 void TestTerminalWidget::testCoalescesBurstRepaintsWithoutLosingFinalFrame() {

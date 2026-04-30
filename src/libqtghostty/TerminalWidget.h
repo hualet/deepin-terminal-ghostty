@@ -57,6 +57,7 @@ public:
     int debugLastFrameRenderedRowCount() const;
     int debugLastFrameDirtyRowCount() const;
     bool debugLastFrameWasFullRedraw() const;
+    int debugLastFrameTextRunCount() const;
     int debugResizeApplyCount() const;
     int debugPtyFlushCount() const;
     void debugSetSelection(int startRow, int startCol, int endRow, int endCol, bool active);
@@ -234,6 +235,7 @@ private:
     int m_debugLastFrameRenderedRowCount = 0;
     int m_debugLastFrameDirtyRowCount = 0;
     bool m_debugLastFrameWasFullRedraw = false;
+    int m_debugLastFrameTextRunCount = 0;
     int m_debugResizeApplyCount = 0;
     int m_debugPtyFlushCount = 0;
 #endif
