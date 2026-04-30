@@ -904,11 +904,17 @@ void MainWindow::onShortcutRenameTitle() {
 
 void MainWindow::onShortcutDisplayShortcuts() {
     auto *dialog = new QDialog(this);
+    dialog->setObjectName(QStringLiteral("shortcutDialog"));
     dialog->setWindowTitle(tr("Keyboard Shortcuts"));
+    dialog->setAccessibleName(tr("Keyboard shortcuts"));
+    dialog->setAccessibleDescription(tr("View configured keyboard shortcuts."));
     dialog->setMinimumSize(480, 520);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
 
     auto *table = new QTableWidget(dialog);
+    table->setObjectName(QStringLiteral("shortcutTable"));
+    table->setAccessibleName(tr("Keyboard shortcuts table"));
+    table->setAccessibleDescription(tr("Action and shortcut key bindings."));
     table->setColumnCount(2);
     table->setHorizontalHeaderLabels(QStringList() << tr("Action") << tr("Shortcut"));
     table->horizontalHeader()->setStretchLastSection(true);

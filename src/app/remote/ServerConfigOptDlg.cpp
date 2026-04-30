@@ -35,6 +35,9 @@ ServerConfigOptDlg::ServerConfigOptDlg(ServerConfigOptType type, const ServerCon
       m_delServer(new DCommandLinkButton(tr("Delete server"), this)),
       m_cancelButton(new DPushButton(tr("Cancel"), this)),
       m_addSaveButton(new DSuggestButton(tr("Add"), this)) {
+    setObjectName(QStringLiteral("serverConfigDialog"));
+    setAccessibleName(m_type == SCT_MODIFY ? tr("Edit remote server") : tr("Add remote server"));
+    setAccessibleDescription(tr("Configure a remote server connection."));
     setWindowModality(Qt::WindowModal);
     setAutoFillBackground(true);
     initUI();
@@ -50,8 +53,12 @@ void ServerConfigOptDlg::initUI() {
 
     // Header
     m_iconLabel->setFixedSize(50, 50);
+    m_iconLabel->setObjectName(QStringLiteral("serverConfigIcon"));
+    m_iconLabel->setAccessibleName(tr("Remote server icon"));
     m_iconLabel->setPixmap(QIcon::fromTheme("utilities-terminal").pixmap(36, 36));
     m_titleLabel->setText(tr("Add Server"));
+    m_titleLabel->setObjectName(QStringLiteral("serverConfigTitleLabel"));
+    m_titleLabel->setAccessibleName(tr("Add remote server"));
     m_titleLabel->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
     DFontSizeManager::instance()->bind(m_titleLabel, DFontSizeManager::T5, QFont::DemiBold);
 
@@ -78,9 +85,15 @@ void ServerConfigOptDlg::initUI() {
     };
 
     m_serverName->lineEdit()->setPlaceholderText(tr("Required"));
+    m_serverName->setObjectName(QStringLiteral("serverNameEdit"));
+    m_serverName->setAccessibleName(tr("Server name"));
+    m_serverName->setAccessibleDescription(tr("Name used to identify this remote server."));
     addRow(tr("Server name:"), m_serverName, 0, 3);
 
     m_address->lineEdit()->setPlaceholderText(tr("Required"));
+    m_address->setObjectName(QStringLiteral("serverAddressEdit"));
+    m_address->setAccessibleName(tr("Address"));
+    m_address->setAccessibleDescription(tr("Hostname or IP address of the remote server."));
     addRow(tr("Address:"), m_address, 1, 2);
 
     auto *portLabel = new DLabel(tr("Port:"));
@@ -90,26 +103,44 @@ void ServerConfigOptDlg::initUI() {
     m_port->setValue(22);
     m_port->setSingleStep(1);
     m_port->setFixedWidth(70);
+    m_port->setObjectName(QStringLiteral("serverPortSpinBox"));
+    m_port->setAccessibleName(tr("Port"));
+    m_port->setAccessibleDescription(tr("SSH port for the remote server."));
     m_port->setButtonSymbols(DSpinBox::NoButtons);
     m_port->setAttribute(Qt::WA_InputMethodEnabled, false);
     m_gridLayout->addWidget(portLabel, 1, 3);
     m_gridLayout->addWidget(m_port, 1, 4);
 
     m_userName->lineEdit()->setPlaceholderText(tr("Required"));
+    m_userName->setObjectName(QStringLiteral("serverUserNameEdit"));
+    m_userName->setAccessibleName(tr("Username"));
+    m_userName->setAccessibleDescription(tr("Username for the remote server."));
     addRow(tr("Username:"), m_userName, 2, 3);
 
     m_password->lineEdit()->setAttribute(Qt::WA_InputMethodEnabled, false);
+    m_password->setObjectName(QStringLiteral("serverPasswordEdit"));
+    m_password->setAccessibleName(tr("Password"));
+    m_password->setAccessibleDescription(tr("Password for the remote server."));
     addRow(tr("Password:"), m_password, 3, 3);
 
+    m_privateKey->setObjectName(QStringLiteral("serverPrivateKeyEdit"));
+    m_privateKey->setAccessibleName(tr("Certificate"));
+    m_privateKey->setAccessibleDescription(tr("Private key file used for authentication."));
     addRow(tr("Certificate:"), m_privateKey, 4, 3);
 
     DPalette advPalette = DPaletteHelper::instance()->palette(m_advancedOptions);
     advPalette.setColor(DPalette::ButtonText, advPalette.color(DPalette::Highlight));
     m_advancedOptions->setPalette(advPalette);
+    m_advancedOptions->setObjectName(QStringLiteral("advancedServerOptionsButton"));
+    m_advancedOptions->setAccessibleName(tr("Advanced options"));
+    m_advancedOptions->setAccessibleDescription(tr("Show additional remote server options."));
     m_advancedOptions->setFocusPolicy(Qt::TabFocus);
     m_gridLayout->addWidget(m_advancedOptions, 5, 0, 1, 5, Qt::AlignCenter);
 
     m_group->setEditable(true);
+    m_group->setObjectName(QStringLiteral("serverGroupComboBox"));
+    m_group->setAccessibleName(tr("Group"));
+    m_group->setAccessibleDescription(tr("Optional group for organizing remote servers."));
     m_group->lineEdit()->setPlaceholderText(tr("No Group"));
     auto *groupLabel = new DLabel(tr("Group:"));
     groupLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
@@ -121,33 +152,51 @@ void ServerConfigOptDlg::initUI() {
     pathLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     DFontSizeManager::instance()->bind(pathLabel, DFontSizeManager::T6);
     m_gridLayout->addWidget(pathLabel, 7, 0);
+    m_path->setObjectName(QStringLiteral("serverPathEdit"));
+    m_path->setAccessibleName(tr("Path"));
+    m_path->setAccessibleDescription(tr("Initial remote working directory."));
     m_gridLayout->addWidget(m_path, 7, 1, 1, 3);
 
     auto *commandLabel = new DLabel(tr("Command:"));
     commandLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     DFontSizeManager::instance()->bind(commandLabel, DFontSizeManager::T6);
     m_gridLayout->addWidget(commandLabel, 8, 0);
+    m_command->setObjectName(QStringLiteral("serverCommandEdit"));
+    m_command->setAccessibleName(tr("Command"));
+    m_command->setAccessibleDescription(tr("Command to run after connecting."));
     m_gridLayout->addWidget(m_command, 8, 1, 1, 3);
 
     auto *codingLabel = new DLabel(tr("Encoding:"));
     codingLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     DFontSizeManager::instance()->bind(codingLabel, DFontSizeManager::T6);
     m_gridLayout->addWidget(codingLabel, 9, 0);
+    m_coding->setObjectName(QStringLiteral("serverEncodingComboBox"));
+    m_coding->setAccessibleName(tr("Encoding"));
+    m_coding->setAccessibleDescription(tr("Character encoding for the remote session."));
     m_gridLayout->addWidget(m_coding, 9, 1, 1, 3);
 
     auto *backspaceLabel = new DLabel(tr("Backspace key:"));
     backspaceLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     DFontSizeManager::instance()->bind(backspaceLabel, DFontSizeManager::T6);
     m_gridLayout->addWidget(backspaceLabel, 10, 0);
+    m_backSpaceKey->setObjectName(QStringLiteral("serverBackspaceKeyComboBox"));
+    m_backSpaceKey->setAccessibleName(tr("Backspace key"));
+    m_backSpaceKey->setAccessibleDescription(tr("Backspace key behavior for the remote session."));
     m_gridLayout->addWidget(m_backSpaceKey, 10, 1, 1, 3);
 
     auto *deleteLabel = new DLabel(tr("Delete key:"));
     deleteLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     DFontSizeManager::instance()->bind(deleteLabel, DFontSizeManager::T6);
     m_gridLayout->addWidget(deleteLabel, 11, 0);
+    m_deleteKey->setObjectName(QStringLiteral("serverDeleteKeyComboBox"));
+    m_deleteKey->setAccessibleName(tr("Delete key"));
+    m_deleteKey->setAccessibleDescription(tr("Delete key behavior for the remote session."));
     m_gridLayout->addWidget(m_deleteKey, 11, 1, 1, 3);
 
     m_delServer->setPalette(advPalette);
+    m_delServer->setObjectName(QStringLiteral("deleteServerButton"));
+    m_delServer->setAccessibleName(tr("Delete server"));
+    m_delServer->setAccessibleDescription(tr("Delete this saved remote server."));
     m_gridLayout->addWidget(m_delServer, 12, 0, 1, 5, Qt::AlignCenter);
 
     mainLayout->addLayout(m_gridLayout, 1);
@@ -159,8 +208,15 @@ void ServerConfigOptDlg::initUI() {
     m_addSaveButton->setDefault(true);
     if (m_type == SCT_MODIFY) {
         m_titleLabel->setText(tr("Edit Server"));
+        m_titleLabel->setAccessibleName(tr("Edit remote server"));
         m_addSaveButton->setText(tr("Save"));
     }
+    m_cancelButton->setObjectName(QStringLiteral("cancelServerConfigButton"));
+    m_cancelButton->setAccessibleName(tr("Cancel"));
+    m_cancelButton->setAccessibleDescription(tr("Close without saving this remote server."));
+    m_addSaveButton->setObjectName(QStringLiteral("saveServerConfigButton"));
+    m_addSaveButton->setAccessibleName(m_type == SCT_MODIFY ? tr("Save remote server") : tr("Add remote server"));
+    m_addSaveButton->setAccessibleDescription(tr("Save this remote server connection."));
 
     auto *btnLayout = new QHBoxLayout();
     btnLayout->setContentsMargins(10, 0, 10, 0);

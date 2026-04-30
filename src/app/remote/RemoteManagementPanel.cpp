@@ -11,6 +11,9 @@
 #include <QVBoxLayout>
 
 RemoteManagementPanel::RemoteManagementPanel(QWidget *parent) : QWidget(parent) {
+    setObjectName(QStringLiteral("remoteManagementPanel"));
+    setAccessibleName(tr("Remote management"));
+    setAccessibleDescription(tr("Manage saved remote servers and start remote terminal sessions."));
     setFixedWidth(kPanelWidth);
     setAttribute(Qt::WA_DeleteOnClose, false);
     initUI();
@@ -32,6 +35,9 @@ void RemoteManagementPanel::initUI() {
 
     // Scroll area for server items
     m_scrollArea = new QScrollArea(this);
+    m_scrollArea->setObjectName(QStringLiteral("remoteServerScrollArea"));
+    m_scrollArea->setAccessibleName(tr("Remote server list"));
+    m_scrollArea->setAccessibleDescription(tr("List of saved remote servers."));
     m_scrollArea->setWidgetResizable(true);
     m_scrollArea->setFrameShape(QFrame::NoFrame);
     m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -52,6 +58,8 @@ void RemoteManagementPanel::initUI() {
     auto *iconLayout = new QHBoxLayout();
     iconLayout->addStretch();
     m_emptyIcon = new DLabel(this);
+    m_emptyIcon->setObjectName(QStringLiteral("remoteEmptyIcon"));
+    m_emptyIcon->setAccessibleName(tr("No remote servers icon"));
     m_emptyIcon->setPixmap(QIcon::fromTheme("folder-remote").pixmap(64, 64));
     iconLayout->addWidget(m_emptyIcon);
     iconLayout->addStretch();
@@ -60,6 +68,9 @@ void RemoteManagementPanel::initUI() {
     auto *textLayout = new QHBoxLayout();
     textLayout->addStretch();
     m_emptyLabel = new DLabel(tr("No servers yet"), this);
+    m_emptyLabel->setObjectName(QStringLiteral("remoteEmptyLabel"));
+    m_emptyLabel->setAccessibleName(tr("No remote servers configured"));
+    m_emptyLabel->setAccessibleDescription(tr("No saved remote server connections are available."));
     m_emptyLabel->setAlignment(Qt::AlignCenter);
     textLayout->addWidget(m_emptyLabel);
     textLayout->addStretch();
@@ -70,6 +81,9 @@ void RemoteManagementPanel::initUI() {
 
     // Add button
     m_addButton = new DPushButton(tr("Add Server"), this);
+    m_addButton->setObjectName(QStringLiteral("addRemoteServerButton"));
+    m_addButton->setAccessibleName(tr("Add remote server"));
+    m_addButton->setAccessibleDescription(tr("Create a remote server connection."));
     layout->addWidget(m_addButton);
 
     setLayout(layout);

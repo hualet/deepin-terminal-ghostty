@@ -1,13 +1,17 @@
 #include "AppSettings.h"
 #include "ApplicationMetadata.h"
 #include "MainWindow.h"
+#include "PageSearchBar.h"
 #include "PtySession.h"
+#include "SettingsDialog.h"
 #include "StartupOptions.h"
 #include "TermPane.h"
 #include "TerminalWidget.h"
 #include "ThemeLoader.h"
 #include "VerticalTabSidebar.h"
 #include "logging/Logging.h"
+#include "remote/RemoteManagementPanel.h"
+#include "remote/ServerConfigOptDlg.h"
 
 #include <DApplication>
 #include <DSettings>
@@ -16,16 +20,20 @@
 #include <QAbstractButton>
 #include <QAccessible>
 #include <QAction>
+#include <QDialog>
 #include <QFile>
 #include <QIcon>
 #include <QImage>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPointer>
 #include <QScrollArea>
 #include <QSignalSpy>
 #include <QStackedWidget>
 #include <QStandardPaths>
+#include <QTableWidget>
 #include <QTest>
+#include <QTimer>
 
 DWIDGET_USE_NAMESPACE
 
@@ -67,6 +75,16 @@ private slots:
     void testVerticalSidebarElidesLabelsWhenNarrow();
     void testCoreControlsExposeAccessibleLabels();
     void testVerticalSidebarExposesAccessibleLabels();
+    void testSearchBarExposesAccessibleLabels();
+    void testSettingsDialogExposesAccessibleLabels();
+    void testShortcutDialogExposesAccessibleLabels();
+    void testVerticalSidebarAccessibleLabelsTrackTitlesAndExpansion();
+    void testRemoteManagementPanelExposesAccessibleLabels();
+    void testServerConfigDialogExposesAccessibleLabels();
+    void testAccessibleSearchControlsDriveFindActions();
+    void testAccessibleVerticalSidebarButtonsActivateTargets();
+    void testAccessibleRemoteAddButtonOpensConfigDialog();
+    void testShortcutDialogListsConfiguredActions();
     void testProcessIconsAreAvailable();
     void testTerminalProcessBadgeHasVisibleColoredArtwork();
     void testLoggingCategoriesExposeExpectedNames();
@@ -157,6 +175,26 @@ QAccessible::Role accessibleRole(QObject *object) {
     if (!iface)
         return QAccessible::NoRole;
     return iface->role();
+}
+
+template <typename T> T *findByAccessibleName(QObject *root, const QString &name) {
+    if (!root)
+        return nullptr;
+    for (auto *child : root->findChildren<T *>()) {
+        if (accessibleText(child, QAccessible::Name) == name)
+            return child;
+    }
+    return nullptr;
+}
+
+template <typename T> T *findByAccessibleNameContaining(QObject *root, const QString &text) {
+    if (!root)
+        return nullptr;
+    for (auto *child : root->findChildren<T *>()) {
+        if (accessibleText(child, QAccessible::Name).contains(text))
+            return child;
+    }
+    return nullptr;
 }
 
 TerminalWidget *terminalForPaneId(TermPane &pane, const QUuid &paneId) {
@@ -829,6 +867,333 @@ void TestMainWindow::testVerticalSidebarExposesAccessibleLabels() {
     QVERIFY(accessibleText(paneButtons.first(), QAccessible::Name).contains(QStringLiteral("Terminal pane")));
     QVERIFY(accessibleText(tabBadge, QAccessible::Name).contains(QStringLiteral("Process")));
     QVERIFY(accessibleText(paneBadge, QAccessible::Name).contains(QStringLiteral("Process")));
+}
+
+void TestMainWindow::testSearchBarExposesAccessibleLabels() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *terminal = currentTerminal(window);
+    QVERIFY(terminal);
+    terminal->setFocus();
+    QTest::keyClick(terminal, Qt::Key_F, Qt::ControlModifier | Qt::AltModifier);
+
+    auto *searchBar = window.findChild<QWidget *>(QStringLiteral("pageSearchBar"));
+    QVERIFY(searchBar);
+    QTRY_VERIFY(searchBar->isVisible());
+    QCOMPARE(accessibleText(searchBar, QAccessible::Name), QStringLiteral("Terminal search"));
+    QVERIFY(accessibleText(searchBar, QAccessible::Description).contains(QStringLiteral("Search text")));
+    QVERIFY(accessibleRole(searchBar) != QAccessible::NoRole);
+
+    auto *searchEdit = searchBar->findChild<QWidget *>(QStringLiteral("terminalSearchEdit"));
+    auto *previousButton = searchBar->findChild<QAbstractButton *>(QStringLiteral("findPreviousButton"));
+    auto *nextButton = searchBar->findChild<QAbstractButton *>(QStringLiteral("findNextButton"));
+    QVERIFY(searchEdit);
+    QVERIFY(previousButton);
+    QVERIFY(nextButton);
+    QCOMPARE(accessibleText(searchEdit, QAccessible::Name), QStringLiteral("Search text"));
+    QCOMPARE(accessibleText(previousButton, QAccessible::Name), QStringLiteral("Find previous"));
+    QCOMPARE(accessibleText(nextButton, QAccessible::Name), QStringLiteral("Find next"));
+}
+
+void TestMainWindow::testSettingsDialogExposesAccessibleLabels() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *settingsAction = window.findChild<QAction *>(QStringLiteral("settingsAction"));
+    QVERIFY(settingsAction);
+    settingsAction->trigger();
+
+    auto *dialog = window.findChild<SettingsDialog *>();
+    QVERIFY(dialog);
+    QTRY_VERIFY(dialog->isVisible());
+    QCOMPARE(accessibleText(dialog, QAccessible::Name), QStringLiteral("Settings"));
+    QVERIFY(accessibleText(dialog, QAccessible::Description).contains(QStringLiteral("Configure terminal")));
+    QVERIFY(accessibleRole(dialog) != QAccessible::NoRole);
+}
+
+void TestMainWindow::testShortcutDialogExposesAccessibleLabels() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+
+    QTest::keyClick(&window, Qt::Key_Question, Qt::ControlModifier | Qt::ShiftModifier);
+
+    QDialog *dialog = nullptr;
+    QTRY_VERIFY((dialog = window.findChild<QDialog *>(QString(), Qt::FindDirectChildrenOnly)));
+    QCOMPARE(dialog->windowTitle(), QStringLiteral("Keyboard Shortcuts"));
+    QCOMPARE(accessibleText(dialog, QAccessible::Name), QStringLiteral("Keyboard shortcuts"));
+    QVERIFY(accessibleText(dialog, QAccessible::Description).contains(QStringLiteral("configured keyboard shortcuts")));
+
+    auto *table = dialog->findChild<QTableWidget *>();
+    QVERIFY(table);
+    QCOMPARE(accessibleText(table, QAccessible::Name), QStringLiteral("Keyboard shortcuts table"));
+    QVERIFY(accessibleText(table, QAccessible::Description).contains(QStringLiteral("Action and shortcut")));
+}
+
+void TestMainWindow::testVerticalSidebarAccessibleLabelsTrackTitlesAndExpansion() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *pane = currentPane(window);
+    QVERIFY(pane);
+    pane->splitCurrent(Qt::Vertical);
+
+    const auto infos = pane->paneInfos();
+    QVERIFY(infos.size() >= 2);
+    QVERIFY(pane->focusPane(infos.last().id));
+    pane->setCustomTitle(QStringLiteral("Build Logs"));
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+    QTRY_VERIFY(verticalSidebar->isVisible());
+
+    bool foundBuildLogsPane = false;
+    for (auto *button : verticalSidebar->findChildren<QAbstractButton *>(QStringLiteral("verticalPaneButton"))) {
+        if (accessibleText(button, QAccessible::Name).contains(QStringLiteral("Build Logs"))) {
+            foundBuildLogsPane = true;
+            break;
+        }
+    }
+    QVERIFY(foundBuildLogsPane);
+
+    auto *expandButton = verticalSidebar->findChild<QAbstractButton *>(QStringLiteral("verticalTabExpandButton"));
+    QVERIFY(expandButton);
+    QVERIFY(accessibleText(expandButton, QAccessible::Name).contains(QStringLiteral("Collapse panes")));
+
+    QTest::mouseClick(expandButton, Qt::LeftButton);
+    QTRY_COMPARE(verticalSidebar->findChildren<QAbstractButton *>(QStringLiteral("verticalPaneButton")).size(), 0);
+
+    QCoreApplication::processEvents();
+    expandButton = verticalSidebar->findChild<QAbstractButton *>(QStringLiteral("verticalTabExpandButton"));
+    QVERIFY(expandButton);
+    QVERIFY(accessibleText(expandButton, QAccessible::Name).contains(QStringLiteral("Expand panes")));
+}
+
+void TestMainWindow::testRemoteManagementPanelExposesAccessibleLabels() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *remoteAction = window.findChild<QAction *>(QStringLiteral("remoteManagementAction"));
+    QVERIFY(remoteAction);
+    remoteAction->trigger();
+
+    auto *panel = window.findChild<RemoteManagementPanel *>();
+    QVERIFY(panel);
+    QTRY_VERIFY(panel->isVisible());
+    QCOMPARE(accessibleText(panel, QAccessible::Name), QStringLiteral("Remote management"));
+    QVERIFY(accessibleText(panel, QAccessible::Description).contains(QStringLiteral("remote servers")));
+
+    auto *emptyLabel = panel->findChild<QLabel *>(QStringLiteral("remoteEmptyLabel"));
+    auto *addButton = panel->findChild<QAbstractButton *>(QStringLiteral("addRemoteServerButton"));
+    QVERIFY(emptyLabel);
+    QVERIFY(addButton);
+    QCOMPARE(accessibleText(emptyLabel, QAccessible::Name), QStringLiteral("No remote servers configured"));
+    QCOMPARE(accessibleText(addButton, QAccessible::Name), QStringLiteral("Add remote server"));
+    QVERIFY(accessibleText(addButton, QAccessible::Description).contains(QStringLiteral("Create a remote server")));
+}
+
+void TestMainWindow::testServerConfigDialogExposesAccessibleLabels() {
+    ServerConfigOptDlg dialog(ServerConfigOptDlg::SCT_ADD);
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+
+    QCOMPARE(accessibleText(&dialog, QAccessible::Name), QStringLiteral("Add remote server"));
+    QVERIFY(accessibleText(&dialog, QAccessible::Description).contains(QStringLiteral("remote server connection")));
+
+    auto *serverName = dialog.findChild<QWidget *>(QStringLiteral("serverNameEdit"));
+    auto *address = dialog.findChild<QWidget *>(QStringLiteral("serverAddressEdit"));
+    auto *port = dialog.findChild<QWidget *>(QStringLiteral("serverPortSpinBox"));
+    auto *userName = dialog.findChild<QWidget *>(QStringLiteral("serverUserNameEdit"));
+    auto *advanced = dialog.findChild<QAbstractButton *>(QStringLiteral("advancedServerOptionsButton"));
+    auto *cancel = dialog.findChild<QAbstractButton *>(QStringLiteral("cancelServerConfigButton"));
+    auto *add = dialog.findChild<QAbstractButton *>(QStringLiteral("saveServerConfigButton"));
+    QVERIFY(serverName);
+    QVERIFY(address);
+    QVERIFY(port);
+    QVERIFY(userName);
+    QVERIFY(advanced);
+    QVERIFY(cancel);
+    QVERIFY(add);
+
+    QCOMPARE(accessibleText(serverName, QAccessible::Name), QStringLiteral("Server name"));
+    QCOMPARE(accessibleText(address, QAccessible::Name), QStringLiteral("Address"));
+    QCOMPARE(accessibleText(port, QAccessible::Name), QStringLiteral("Port"));
+    QCOMPARE(accessibleText(userName, QAccessible::Name), QStringLiteral("Username"));
+    QCOMPARE(accessibleText(advanced, QAccessible::Name), QStringLiteral("Advanced options"));
+    QCOMPARE(accessibleText(cancel, QAccessible::Name), QStringLiteral("Cancel"));
+    QCOMPARE(accessibleText(add, QAccessible::Name), QStringLiteral("Add remote server"));
+}
+
+void TestMainWindow::testAccessibleSearchControlsDriveFindActions() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *terminal = currentTerminal(window);
+    QVERIFY(terminal);
+    terminal->setFocus();
+    QTest::keyClick(terminal, Qt::Key_F, Qt::ControlModifier | Qt::AltModifier);
+
+    auto *searchBar =
+        qobject_cast<PageSearchBar *>(findByAccessibleName<QWidget>(&window, QStringLiteral("Terminal search")));
+    QVERIFY(searchBar);
+    QTRY_VERIFY(searchBar->isVisible());
+
+    auto *lineEdit = searchBar->findChild<QLineEdit *>();
+    auto *previousButton = findByAccessibleName<QAbstractButton>(searchBar, QStringLiteral("Find previous"));
+    auto *nextButton = findByAccessibleName<QAbstractButton>(searchBar, QStringLiteral("Find next"));
+    QVERIFY(lineEdit);
+    QVERIFY(previousButton);
+    QVERIFY(nextButton);
+
+    QSignalSpy keywordSpy(searchBar, &PageSearchBar::keywordChanged);
+    QSignalSpy nextSpy(searchBar, &PageSearchBar::findNext);
+    QSignalSpy previousSpy(searchBar, &PageSearchBar::findPrev);
+    QVERIFY(keywordSpy.isValid());
+    QVERIFY(nextSpy.isValid());
+    QVERIFY(previousSpy.isValid());
+
+    QTest::keyClicks(lineEdit, QStringLiteral("build"));
+    QTRY_COMPARE(searchBar->searchText(), QStringLiteral("build"));
+    QVERIFY(keywordSpy.count() > 0);
+
+    QTest::mouseClick(nextButton, Qt::LeftButton);
+    QCOMPARE(nextSpy.count(), 1);
+
+    QTest::mouseClick(previousButton, Qt::LeftButton);
+    QCOMPARE(previousSpy.count(), 1);
+}
+
+void TestMainWindow::testAccessibleVerticalSidebarButtonsActivateTargets() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+
+    auto *pane = currentPane(window);
+    QVERIFY(pane);
+    pane->setCustomTitle(QStringLiteral("Second Tab"));
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+    QTRY_VERIFY(verticalSidebar->isVisible());
+
+    auto *firstTabButton =
+        findByAccessibleName<QAbstractButton>(verticalSidebar, QStringLiteral("Terminal tab: Terminal"));
+    QVERIFY(firstTabButton);
+    QTest::mouseClick(firstTabButton, Qt::LeftButton);
+    QTRY_COMPARE(tabs->currentIndex(), 0);
+
+    auto *secondTabButton =
+        findByAccessibleName<QAbstractButton>(verticalSidebar, QStringLiteral("Terminal tab: Second Tab"));
+    QVERIFY(secondTabButton);
+    QTest::mouseClick(secondTabButton, Qt::LeftButton);
+    QTRY_COMPARE(tabs->currentIndex(), 1);
+
+    pane = currentPane(window);
+    QVERIFY(pane);
+    pane->splitCurrent(Qt::Vertical);
+
+    const auto paneInfos = pane->paneInfos();
+    QVERIFY(paneInfos.size() >= 2);
+    const QUuid buildPaneId = paneInfos.last().id;
+    pane->setCustomTitle(QStringLiteral("Build Pane"));
+    QVERIFY(pane->focusPane(paneInfos.first().id));
+    QAbstractButton *buildPaneButton = nullptr;
+    QTRY_VERIFY([&]() {
+        for (auto *button : verticalSidebar->findChildren<QAbstractButton *>(QStringLiteral("verticalPaneButton"))) {
+            if (accessibleText(button, QAccessible::Name).contains(QStringLiteral("Build Pane"))) {
+                buildPaneButton = button;
+                return true;
+            }
+        }
+        return false;
+    }());
+    QVERIFY(buildPaneButton);
+    QTest::mouseClick(buildPaneButton, Qt::LeftButton);
+    QTRY_COMPARE(pane->activePaneId(), buildPaneId);
+}
+
+void TestMainWindow::testAccessibleRemoteAddButtonOpensConfigDialog() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *remoteAction = window.findChild<QAction *>(QStringLiteral("remoteManagementAction"));
+    QVERIFY(remoteAction);
+    remoteAction->trigger();
+
+    auto *panel = findByAccessibleName<RemoteManagementPanel>(&window, QStringLiteral("Remote management"));
+    QVERIFY(panel);
+    QTRY_VERIFY(panel->isVisible());
+
+    auto *addButton = findByAccessibleName<QAbstractButton>(panel, QStringLiteral("Add remote server"));
+    QVERIFY(addButton);
+
+    bool sawDialog = false;
+    QString dialogName;
+    QString serverNameField;
+    QTimer::singleShot(50, &window, [&]() {
+        auto *dialog = window.findChild<ServerConfigOptDlg *>();
+        if (!dialog)
+            return;
+        sawDialog = true;
+        dialogName = accessibleText(dialog, QAccessible::Name);
+        if (auto *serverName = dialog->findChild<QWidget *>(QStringLiteral("serverNameEdit")))
+            serverNameField = accessibleText(serverName, QAccessible::Name);
+        dialog->reject();
+    });
+
+    QTest::mouseClick(addButton, Qt::LeftButton);
+
+    QVERIFY(sawDialog);
+    QCOMPARE(dialogName, QStringLiteral("Add remote server"));
+    QCOMPARE(serverNameField, QStringLiteral("Server name"));
+}
+
+void TestMainWindow::testShortcutDialogListsConfiguredActions() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+
+    QTest::keyClick(&window, Qt::Key_Question, Qt::ControlModifier | Qt::ShiftModifier);
+
+    auto *dialog = findByAccessibleName<QDialog>(&window, QStringLiteral("Keyboard shortcuts"));
+    QVERIFY(dialog);
+    auto *table = findByAccessibleName<QTableWidget>(dialog, QStringLiteral("Keyboard shortcuts table"));
+    QVERIFY(table);
+    QVERIFY(table->rowCount() > 0);
+
+    QStringList actions;
+    for (int row = 0; row < table->rowCount(); ++row) {
+        if (auto *item = table->item(row, 0))
+            actions.append(item->text());
+    }
+
+    QVERIFY(actions.contains(QStringLiteral("Copy")));
+    QVERIFY(actions.contains(QStringLiteral("Paste")));
+    QVERIFY(actions.contains(QStringLiteral("Find")));
+    QVERIFY(actions.contains(QStringLiteral("New tab")));
+    QVERIFY(actions.contains(QStringLiteral("Remote management")));
 }
 
 void TestMainWindow::testProcessIconsAreAvailable() {
