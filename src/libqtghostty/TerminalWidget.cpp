@@ -14,6 +14,7 @@
 #include <QWheelEvent>
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <optional>
 #include <vector>
@@ -53,16 +54,23 @@ QString textFromRenderCellGraphemes(GhosttyRenderStateRowCells cells, uint32_t g
     if (graphemeLen > kMaxCellGraphemeCodepoints)
         return QString(QChar::ReplacementCharacter);
 
-    std::vector<uint32_t> codepoints(graphemeLen);
-    if (ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, codepoints.data())
+    std::array<uint32_t, 8> stackCodepoints = {};
+    std::vector<uint32_t> heapCodepoints;
+    uint32_t *codepoints = stackCodepoints.data();
+    if (graphemeLen > stackCodepoints.size()) {
+        heapCodepoints.resize(graphemeLen);
+        codepoints = heapCodepoints.data();
+    }
+
+    if (ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, codepoints)
         != GHOSTTY_SUCCESS) {
         return {};
     }
 
     QString text;
     text.reserve(static_cast<int>(graphemeLen));
-    for (uint32_t codepoint : codepoints)
-        appendCodepoint(text, codepoint);
+    for (uint32_t i = 0; i < graphemeLen; ++i)
+        appendCodepoint(text, codepoints[i]);
     return text;
 }
 
@@ -590,12 +598,29 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
 
     const QColor bgWithAlpha(colors.background.r, colors.background.g, colors.background.b, qRound(m_opacity * 255));
 
-    painter.setCompositionMode(QPainter::CompositionMode_Source);
-    painter.fillRect(rect(), bgWithAlpha);
-    painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
-
     const QRect contentRect = terminalContentRect();
     const QPoint contentOrigin = contentRect.topLeft();
+    const QRect widgetRect = rect();
+    if (contentRect != widgetRect) {
+        painter.setCompositionMode(QPainter::CompositionMode_Source);
+        if (contentRect.top() > widgetRect.top())
+            painter.fillRect(
+                QRect(widgetRect.left(), widgetRect.top(), widgetRect.width(), contentRect.top() - widgetRect.top()),
+                bgWithAlpha);
+        if (contentRect.bottom() < widgetRect.bottom())
+            painter.fillRect(QRect(widgetRect.left(), contentRect.bottom() + 1, widgetRect.width(),
+                                   widgetRect.bottom() - contentRect.bottom()),
+                             bgWithAlpha);
+        if (contentRect.left() > widgetRect.left())
+            painter.fillRect(QRect(widgetRect.left(), contentRect.top(), contentRect.left() - widgetRect.left(),
+                                   contentRect.height()),
+                             bgWithAlpha);
+        if (contentRect.right() < widgetRect.right())
+            painter.fillRect(QRect(contentRect.right() + 1, contentRect.top(), widgetRect.right() - contentRect.right(),
+                                   contentRect.height()),
+                             bgWithAlpha);
+        painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+    }
 
     err = ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, &m_rowIter);
     if (err != GHOSTTY_SUCCESS)
@@ -721,6 +746,18 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         textRun.text = text;
         textRun.cells = 1;
     };
+    const auto appendTextRunCodepoint = [&](int runX, const QFont *font, const QColor &foreground, uint32_t codepoint) {
+        if (textRun.font != font || textRun.foreground != foreground
+            || textRun.x + textRun.cells * m_cellWidth != runX) {
+            flushTextRun();
+            textRun.x = runX;
+            textRun.font = font;
+            textRun.foreground = foreground;
+        }
+
+        appendCodepoint(textRun.text, codepoint);
+        ++textRun.cells;
+    };
 
     int x = 0;
     while (ghostty_render_state_row_cells_next(m_rowCells)) {
@@ -734,6 +771,12 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         if (multiResult != GHOSTTY_SUCCESS || written != std::size(kCellDataKeys))
             continue;
 
+        GhosttyCellWide cellWide = GHOSTTY_CELL_WIDE_NARROW;
+        ghostty_cell_get(rawCell, GHOSTTY_CELL_DATA_WIDE, &cellWide);
+        const bool isWideHead = cellWide == GHOSTTY_CELL_WIDE_WIDE;
+        const bool isWideTail = cellWide == GHOSTTY_CELL_WIDE_SPACER_TAIL || cellWide == GHOSTTY_CELL_WIDE_SPACER_HEAD;
+        const int cellRenderWidth = isWideHead ? m_cellWidth * 2 : m_cellWidth;
+
         GhosttyColorRgb bgColor = colors.background;
         const bool hasBg =
             ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, &bgColor)
@@ -743,12 +786,6 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         const bool hasFg =
             ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, &fgColor)
             == GHOSTTY_SUCCESS;
-
-        GhosttyCellWide cellWide = GHOSTTY_CELL_WIDE_NARROW;
-        ghostty_cell_get(rawCell, GHOSTTY_CELL_DATA_WIDE, &cellWide);
-        const bool isWideHead = cellWide == GHOSTTY_CELL_WIDE_WIDE;
-        const bool isWideTail = cellWide == GHOSTTY_CELL_WIDE_SPACER_TAIL || cellWide == GHOSTTY_CELL_WIDE_SPACER_HEAD;
-        const int cellRenderWidth = isWideHead ? m_cellWidth * 2 : m_cellWidth;
 
         if (style.inverse) {
             flushTextRun();
@@ -770,16 +807,25 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         const QColor cellForeground = hasFg ? QColor(fgColor.r, fgColor.g, fgColor.b) : defaultForeground;
 
         if (!isWideHead && !isWideTail) {
-            QString cellText;
             if (graphemeLen == 0) {
                 x += m_cellWidth;
                 continue;
             }
 
+            uint32_t codepoint = 0;
+            const bool hasSingleCodepoint =
+                graphemeLen == 1
+                && ghostty_cell_get(rawCell, GHOSTTY_CELL_DATA_CODEPOINT, &codepoint) == GHOSTTY_SUCCESS
+                && codepoint != 0;
+            if (!style.inverse && !hasBg && hasSingleCodepoint) {
+                appendTextRunCodepoint(x, cachedFont, cellForeground, codepoint);
+                x += m_cellWidth;
+                continue;
+            }
+
+            QString cellText;
             if (graphemeLen == 1) {
-                uint32_t codepoint = 0;
-                if (ghostty_cell_get(rawCell, GHOSTTY_CELL_DATA_CODEPOINT, &codepoint) == GHOSTTY_SUCCESS
-                    && codepoint != 0) {
+                if (hasSingleCodepoint) {
                     appendCodepoint(cellText, codepoint);
                 } else {
                     cellText = textFromRenderCellGraphemes(m_rowCells, graphemeLen);
