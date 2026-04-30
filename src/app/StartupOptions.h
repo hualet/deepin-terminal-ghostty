@@ -6,6 +6,8 @@
 struct StartupOptions {
     bool isValid = true;
     QString error;
+    bool showHelp = false;
+    QString helpText;
     QString execute;
     QString workingDirectory;
     bool waitForChild = false;

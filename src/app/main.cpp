@@ -49,6 +49,10 @@ bool loadApplicationTranslation(QTranslator &translator) {
 
 int main(int argc, char *argv[]) {
     const StartupOptions startupOptions = parseStartupOptions(commandLineArguments(argc, argv));
+    if (startupOptions.showHelp) {
+        printf("%s", startupOptions.helpText.toLocal8Bit().constData());
+        return 0;
+    }
     if (!startupOptions.isValid) {
         fprintf(stderr, "Failed to parse command line: %s\n", startupOptions.error.toLocal8Bit().constData());
         return 2;

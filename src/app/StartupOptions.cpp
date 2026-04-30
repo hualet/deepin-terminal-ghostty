@@ -2,10 +2,16 @@
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QCoreApplication>
+#include <QFileInfo>
 
 StartupOptions parseStartupOptions(const QStringList &arguments) {
+    QCoreApplication::setApplicationName(QStringLiteral("deepin-terminal-ghostty"));
+
     QCommandLineParser parser;
+    parser.setApplicationDescription(QStringLiteral("Deepin Terminal Ghostty"));
     parser.setSingleDashWordOptionMode(QCommandLineParser::ParseAsLongOptions);
+    const QCommandLineOption helpOption = parser.addHelpOption();
 
     const QCommandLineOption executeOption(QStringLiteral("execute"), QStringLiteral("Execute command in startup tab"),
                                            QStringLiteral("command"));
@@ -27,6 +33,14 @@ StartupOptions parseStartupOptions(const QStringList &arguments) {
     if (!parser.parse(arguments)) {
         options.isValid = false;
         options.error = parser.errorText();
+        return options;
+    }
+
+    if (parser.isSet(helpOption)) {
+        options.showHelp = true;
+        options.helpText = parser.helpText();
+        if (!arguments.isEmpty())
+            options.helpText.replace(QStringLiteral("<executable_name>"), QFileInfo(arguments.first()).fileName());
         return options;
     }
 

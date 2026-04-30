@@ -7,6 +7,7 @@ class TestStartupOptions : public QObject {
 
 private slots:
     void testDefaults();
+    void testHelpOption();
     void testExecuteAndWorkingDirectory();
     void testPropagateExitCodeImpliesWait();
 };
@@ -19,6 +20,24 @@ void TestStartupOptions::testDefaults() {
     QVERIFY(options.workingDirectory.isEmpty());
     QVERIFY(!options.waitForChild);
     QVERIFY(!options.propagateExitCode);
+}
+
+void TestStartupOptions::testHelpOption() {
+    const StartupOptions shortHelp =
+        parseStartupOptions(QStringList{QStringLiteral("deepin-terminal-ghostty"), QStringLiteral("-h")});
+
+    QVERIFY(shortHelp.isValid);
+    QVERIFY(shortHelp.showHelp);
+    QVERIFY(shortHelp.helpText.contains(QStringLiteral("Usage: deepin-terminal-ghostty")));
+    QVERIFY(shortHelp.helpText.contains(QStringLiteral("--execute")));
+    QVERIFY(shortHelp.helpText.contains(QStringLiteral("--working-directory")));
+
+    const StartupOptions longHelp =
+        parseStartupOptions(QStringList{QStringLiteral("deepin-terminal-ghostty"), QStringLiteral("--help")});
+
+    QVERIFY(longHelp.isValid);
+    QVERIFY(longHelp.showHelp);
+    QCOMPARE(longHelp.helpText, shortHelp.helpText);
 }
 
 void TestStartupOptions::testExecuteAndWorkingDirectory() {
