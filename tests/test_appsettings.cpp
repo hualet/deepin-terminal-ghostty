@@ -114,6 +114,63 @@ private slots:
         QCOMPARE(scrollSpy.count(), 1);
         QCOMPARE(verticalTabsSpy.count(), 1);
     }
+
+    void testColorScheme() {
+        auto *s = AppSettings::instance();
+        s->setColorScheme(QStringLiteral("Dracula"));
+        QCOMPARE(s->colorScheme(), QStringLiteral("Dracula"));
+    }
+
+    void testOpacity() {
+        auto *s = AppSettings::instance();
+        s->setOpacity(0.8);
+        QCOMPARE(s->opacity(), 0.8);
+    }
+
+    void testOpacityClampsToMinimum() {
+        auto *s = AppSettings::instance();
+        s->setOpacity(0.1);
+        QCOMPARE(s->opacity(), 0.2);
+    }
+
+    void testOpacityClampsToMaximum() {
+        auto *s = AppSettings::instance();
+        s->setOpacity(1.5);
+        QCOMPARE(s->opacity(), 1.0);
+    }
+
+    void testBackgroundBlur() {
+        auto *s = AppSettings::instance();
+        QCOMPARE(s->backgroundBlur(), false);
+    }
+
+    void testDefaultTerminalFont() {
+        auto *s = AppSettings::instance();
+        QFont defaultFont = s->defaultTerminalFont();
+        QCOMPARE(defaultFont.pointSize(), 11);
+    }
+
+    void testResetFontSize() {
+        auto *s = AppSettings::instance();
+        QFont bigFont(s->terminalFont().family(), 20);
+        s->setTerminalFont(bigFont);
+        QCOMPARE(s->terminalFont().pointSize(), 20);
+
+        s->resetFontSize();
+        QCOMPARE(s->terminalFont().pointSize(), 11);
+    }
+
+    void testWindowSizeSaveAndLoad() {
+        auto *s = AppSettings::instance();
+        s->saveWindowSize(QSize(800, 600));
+        QTest::qWait(600);
+
+        AppSettings::releaseInstance();
+        QCoreApplication::processEvents();
+
+        auto *s2 = AppSettings::instance();
+        QCOMPARE(s2->windowSize(), QSize(800, 600));
+    }
 };
 
 int main(int argc, char *argv[]) {

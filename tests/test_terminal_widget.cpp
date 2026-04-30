@@ -1,6 +1,7 @@
 #include "TerminalTheme.h"
 
 #include <QApplication>
+#include <QClipboard>
 #include <QElapsedTimer>
 #include <QImage>
 #include <QInputMethodEvent>
@@ -74,6 +75,27 @@ private slots:
     void testTripleClickSelectsLine();
     void testDoubleClickDragExtendsByWord();
     void testTripleClickDragExtendsByLine();
+
+    void testZoomInIncreasesFontSize();
+    void testZoomOutDecreasesFontSize();
+    void testZoomInClampsAtMaximum();
+    void testZoomOutClampsAtMinimum();
+    void testSetScrollbackLines();
+    void testSetOpacity();
+    void testSetOpacityFullDisablesTranslucentBackground();
+    void testSetOpacityPartialEnablesTranslucentBackground();
+    void testHasRunningProcessReturnsFalseForShell();
+    void testSelectAllCreatesSelection();
+    void testSelectAllThenCopyToClipboard();
+    void testPasteFromClipboardSendsToPty();
+    void testSearchFindsMatchInTerminalContent();
+    void testSearchNoMatch();
+    void testSearchEmptyQueryClears();
+    void testClearSearch();
+    void testFindNextCycles();
+    void testFindPreviousCycles();
+    void testFindNextOnEmptyMatchesIsNoop();
+    void testFindPreviousOnEmptyMatchesIsNoop();
 };
 
 namespace {
@@ -1209,6 +1231,281 @@ void TestTerminalWidget::testTripleClickDragExtendsByLine() {
     QVERIFY(!text.isEmpty());
     QVERIFY(text.contains(QStringLiteral("line one")));
     QVERIFY(text.contains(QStringLiteral("line three")));
+}
+
+void TestTerminalWidget::testZoomInIncreasesFontSize() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+    const int before = widget.terminalFont().pointSize();
+    widget.zoomIn();
+    QCOMPARE(widget.terminalFont().pointSize(), before + 1);
+}
+
+void TestTerminalWidget::testZoomOutDecreasesFontSize() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+    const int before = widget.terminalFont().pointSize();
+    widget.zoomOut();
+    QCOMPARE(widget.terminalFont().pointSize(), before - 1);
+}
+
+void TestTerminalWidget::testZoomInClampsAtMaximum() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+    QFont maxFont = widget.terminalFont();
+    maxFont.setPointSize(72);
+    widget.setTerminalFont(maxFont);
+    QCOMPARE(widget.terminalFont().pointSize(), 72);
+    widget.zoomIn();
+    QCOMPARE(widget.terminalFont().pointSize(), 72);
+}
+
+void TestTerminalWidget::testZoomOutClampsAtMinimum() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+    QFont minFont = widget.terminalFont();
+    minFont.setPointSize(5);
+    widget.setTerminalFont(minFont);
+    QCOMPARE(widget.terminalFont().pointSize(), 5);
+    widget.zoomOut();
+    QCOMPARE(widget.terminalFont().pointSize(), 5);
+}
+
+void TestTerminalWidget::testSetScrollbackLines() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+    widget.setScrollbackLines(5000);
+    QVERIFY(true);
+}
+
+void TestTerminalWidget::testSetOpacity() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+    widget.setOpacity(0.5);
+    QCOMPARE(widget.opacity(), qreal(0.5));
+}
+
+void TestTerminalWidget::testSetOpacityFullDisablesTranslucentBackground() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+    widget.setOpacity(0.5);
+    QVERIFY(widget.testAttribute(Qt::WA_TranslucentBackground));
+    widget.setOpacity(1.0);
+    QVERIFY(!widget.testAttribute(Qt::WA_TranslucentBackground));
+}
+
+void TestTerminalWidget::testSetOpacityPartialEnablesTranslucentBackground() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+    QVERIFY(!widget.testAttribute(Qt::WA_TranslucentBackground));
+    widget.setOpacity(0.8);
+    QVERIFY(widget.testAttribute(Qt::WA_TranslucentBackground));
+}
+
+void TestTerminalWidget::testHasRunningProcessReturnsFalseForShell() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+    auto *session = widget.findChild<PtySession *>();
+    QVERIFY(session);
+    QSignalSpy spy(session, &PtySession::dataReceived);
+    QVERIFY(spy.isValid());
+    QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 3000);
+    QVERIFY(!widget.hasRunningProcess());
+}
+
+void TestTerminalWidget::testSelectAllCreatesSelection() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("hello terminal\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    widget.selectAll();
+    const QString text = widget.debugSelectedText();
+    QVERIFY(!text.isEmpty());
+}
+
+void TestTerminalWidget::testSelectAllThenCopyToClipboard() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("copy test content\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    QGuiApplication::clipboard()->clear();
+    widget.selectAll();
+    widget.copyToClipboard();
+    const QString clipboardText = QGuiApplication::clipboard()->text();
+    QVERIFY(!clipboardText.isEmpty());
+}
+
+void TestTerminalWidget::testPasteFromClipboardSendsToPty() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    widget.setFocus();
+
+    auto *session = widget.findChild<PtySession *>();
+    QVERIFY(session);
+
+    QSignalSpy spy(session, &PtySession::dataWritten);
+    QVERIFY(spy.isValid());
+
+    QGuiApplication::clipboard()->setText(QStringLiteral("pasted text"));
+    QTest::qWait(50);
+
+    spy.clear();
+    widget.pasteFromClipboard();
+
+    QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 500);
+    const QByteArray written = collectedPtyOutput(spy);
+    QVERIFY(written.contains("pasted text"));
+}
+
+void TestTerminalWidget::testSearchFindsMatchInTerminalContent() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("hello world\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    widget.performSearch(QStringLiteral("hello"));
+    QVERIFY(widget.hasSearchMatches());
+}
+
+void TestTerminalWidget::testSearchNoMatch() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+    widget.performSearch(QStringLiteral("zzznotfound"));
+    QVERIFY(!widget.hasSearchMatches());
+}
+
+void TestTerminalWidget::testSearchEmptyQueryClears() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("hello world\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    widget.performSearch(QStringLiteral("hello"));
+    QVERIFY(widget.hasSearchMatches());
+    widget.performSearch(QString());
+    QVERIFY(!widget.hasSearchMatches());
+}
+
+void TestTerminalWidget::testClearSearch() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("hello world\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    widget.performSearch(QStringLiteral("hello"));
+    QVERIFY(widget.hasSearchMatches());
+    widget.clearSearch();
+    QVERIFY(!widget.hasSearchMatches());
+}
+
+void TestTerminalWidget::testFindNextCycles() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("abc hello def hello ghi\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    widget.performSearch(QStringLiteral("hello"));
+    QVERIFY(widget.hasSearchMatches());
+    widget.findNext();
+    QVERIFY(widget.hasSearchMatches());
+    widget.findNext();
+    QVERIFY(widget.hasSearchMatches());
+}
+
+void TestTerminalWidget::testFindPreviousCycles() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("abc hello def hello ghi\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    widget.performSearch(QStringLiteral("hello"));
+    QVERIFY(widget.hasSearchMatches());
+    widget.findPrevious();
+    QVERIFY(widget.hasSearchMatches());
+    widget.findPrevious();
+    QVERIFY(widget.hasSearchMatches());
+}
+
+void TestTerminalWidget::testFindNextOnEmptyMatchesIsNoop() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+    widget.findNext();
+    QVERIFY(!widget.hasSearchMatches());
+}
+
+void TestTerminalWidget::testFindPreviousOnEmptyMatchesIsNoop() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+    widget.findPrevious();
+    QVERIFY(!widget.hasSearchMatches());
 }
 
 // We need QApplication for QWidget tests

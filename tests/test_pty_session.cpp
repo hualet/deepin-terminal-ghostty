@@ -24,6 +24,10 @@ private slots:
     void testResize();
     void testSessionClose();
     void testPreservesUtf8Locale();
+    void testHasRunningProcessReturnsFalseForShell();
+    void testHasRunningProcessReturnsFalseAfterExit();
+    void testWriteWhenNotStartedIsIgnored();
+    void testResizeWhenNotStartedIsIgnored();
 };
 
 void TestPtySession::testStartShell() {
@@ -225,6 +229,37 @@ void TestPtySession::testPreservesUtf8Locale() {
 
     QVERIFY2(output.contains("UTF-8") || output.contains("UTF8"),
              qPrintable(QString::fromLatin1("Expected UTF-8 locale, got: %1").arg(QString::fromUtf8(output))));
+}
+
+void TestPtySession::testHasRunningProcessReturnsFalseForShell() {
+    PtySession session;
+    QVERIFY(session.start(80, 24));
+    QTest::qWait(100);
+    QCOMPARE(session.hasRunningProcess(), false);
+}
+
+void TestPtySession::testHasRunningProcessReturnsFalseAfterExit() {
+    PtySession session;
+    PtySession::StartOptions opts;
+    opts.command = QStringLiteral("true");
+    QVERIFY(session.start(80, 24, opts));
+
+    QSignalSpy spy(&session, &PtySession::sessionClosed);
+    QVERIFY(spy.wait(3000));
+
+    QCOMPARE(session.hasRunningProcess(), false);
+}
+
+void TestPtySession::testWriteWhenNotStartedIsIgnored() {
+    PtySession session;
+    session.write("test");
+    QCOMPARE(session.hasRunningProcess(), false);
+}
+
+void TestPtySession::testResizeWhenNotStartedIsIgnored() {
+    PtySession session;
+    session.resize(80, 24, 10, 20);
+    QCOMPARE(session.hasRunningProcess(), false);
 }
 
 QTEST_MAIN(TestPtySession)

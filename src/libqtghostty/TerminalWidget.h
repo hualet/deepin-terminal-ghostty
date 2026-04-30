@@ -43,6 +43,8 @@ public:
     void setStartOptions(const PtySession::StartOptions &options);
 
     void selectAll();
+    void copyToClipboard();
+    void pasteFromClipboard();
     void zoomIn();
     void zoomOut();
     void zoomReset();
@@ -131,8 +133,6 @@ private:
     void updateSearchHighlight();
     QString textForScreenRow(int row) const;
     QString selectedText() const;
-    void copyToClipboard();
-    void pasteFromClipboard();
     bool hasSelection() const;
 
     bool isWordChar(uint32_t codepoint) const;
