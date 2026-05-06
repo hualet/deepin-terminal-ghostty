@@ -45,6 +45,8 @@ private slots:
     void testRendersPreeditTextAcrossMultipleCells();
     void testRendersWideCharactersAcrossTwoCells();
     void testRendersAnsiForegroundColors();
+    void testRendersTextDecorations();
+    void testConcealedTextDoesNotRenderGlyphs();
     void testCoalescesPlainTextIntoRenderRuns();
     void testCursorOnlyUpdatesUseNarrowRepaint();
     void testCoalescesBurstRepaintsWithoutLosingFinalFrame();
@@ -175,6 +177,14 @@ int countChangedPixels(const QImage &before, const QImage &after, const QRect &r
 void waitForNextPtyFlush(CountingTerminalWidget &widget, int previousFlushCount, int timeoutMs = 100) {
     QTRY_COMPARE_WITH_TIMEOUT(widget.debugPtyFlushCount(), previousFlushCount + 1, timeoutMs);
     QApplication::processEvents();
+}
+
+void feedTerminalOutput(CountingTerminalWidget &widget, const QByteArray &data) {
+    const int previousFlushCount = widget.debugPtyFlushCount();
+    const bool invoked =
+        QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, data));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
 }
 
 QColor dominantChangedColor(const QImage &before, const QImage &after, const QRect &rect) {
@@ -543,6 +553,61 @@ void TestTerminalWidget::testRendersAnsiForegroundColors() {
     QVERIFY2(dominantColor.isValid(), "rendered ANSI text should produce visible colored pixels");
     QVERIFY2(dominantColor.red() > dominantColor.green() + 20 && dominantColor.red() > dominantColor.blue() + 20,
              "ANSI red foreground should render as a red-dominant color instead of grayscale");
+}
+
+void TestTerminalWidget::testRendersTextDecorations() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
+    CountingTerminalWidget plainWidget;
+    plainWidget.setStartOptions(options);
+    QVERIFY(plainWidget.initialize());
+    plainWidget.resize(240, 120);
+    plainWidget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&plainWidget));
+
+    CountingTerminalWidget decoratedWidget;
+    decoratedWidget.setStartOptions(options);
+    QVERIFY(decoratedWidget.initialize());
+    decoratedWidget.resize(240, 120);
+    decoratedWidget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&decoratedWidget));
+    QApplication::processEvents();
+
+    feedTerminalOutput(plainWidget, QByteArray("x\n"));
+    feedTerminalOutput(decoratedWidget, QByteArray("\x1b[4;9;53mx\x1b[0m\n"));
+
+    const QImage plain = renderWidgetImage(plainWidget);
+    const QImage decorated = renderWidgetImage(decoratedWidget);
+    const QRect diff = changedBounds(plain, decorated);
+    QVERIFY2(diff.isValid(), "SGR underline, strikethrough, and overline should affect rendered text");
+}
+
+void TestTerminalWidget::testConcealedTextDoesNotRenderGlyphs() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
+    CountingTerminalWidget emptyWidget;
+    emptyWidget.setStartOptions(options);
+    QVERIFY(emptyWidget.initialize());
+    emptyWidget.resize(240, 120);
+    emptyWidget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&emptyWidget));
+
+    CountingTerminalWidget concealedWidget;
+    concealedWidget.setStartOptions(options);
+    QVERIFY(concealedWidget.initialize());
+    concealedWidget.resize(240, 120);
+    concealedWidget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&concealedWidget));
+    QApplication::processEvents();
+
+    feedTerminalOutput(concealedWidget, QByteArray("\x1b[8mx\x1b[0m\n"));
+
+    const QImage empty = renderWidgetImage(emptyWidget);
+    const QImage concealed = renderWidgetImage(concealedWidget);
+    const QRect diff = changedBounds(empty, concealed);
+    QVERIFY2(!diff.isValid(), "SGR conceal should advance the terminal state without painting the glyph");
 }
 
 void TestTerminalWidget::testCoalescesPlainTextIntoRenderRuns() {

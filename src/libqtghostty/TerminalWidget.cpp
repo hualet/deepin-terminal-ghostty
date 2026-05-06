@@ -28,6 +28,11 @@ constexpr int kImmediatePtyFlushBytes = 32 * 1024;
 constexpr int kMaxOscScanBufferBytes = 16 * 1024;
 constexpr uint32_t kMaxCellGraphemeCodepoints = 4096;
 
+QColor faintForeground(const QColor &foreground, const QColor &background) {
+    return QColor((foreground.red() + background.red()) / 2, (foreground.green() + background.green()) / 2,
+                  (foreground.blue() + background.blue()) / 2);
+}
+
 void appendCodepoint(QString &text, uint32_t codepoint) {
     if (codepoint <= 0xFFFF) {
         // Surrogate range (0xD800-0xDFFF) is not a valid Unicode scalar value.
@@ -757,6 +762,44 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         int cells = 0;
         const QFont *font = nullptr;
         QColor foreground;
+        QColor decorationColor;
+        int underline = GHOSTTY_SGR_UNDERLINE_NONE;
+        bool strikethrough = false;
+        bool overline = false;
+    };
+    const auto drawTextDecorations = [&](int x, int cells, const QColor &color, int underline, bool strikethrough,
+                                         bool overline) {
+        if (underline == GHOSTTY_SGR_UNDERLINE_NONE && !strikethrough && !overline)
+            return;
+
+        const QPen previousPen = painter.pen();
+        QPen pen(color);
+        switch (underline) {
+            case GHOSTTY_SGR_UNDERLINE_DOTTED:
+                pen.setStyle(Qt::DotLine);
+                break;
+            case GHOSTTY_SGR_UNDERLINE_DASHED:
+                pen.setStyle(Qt::DashLine);
+                break;
+            default:
+                pen.setStyle(Qt::SolidLine);
+                break;
+        }
+        painter.setPen(pen);
+
+        const int right = x + cells * m_cellWidth - 1;
+        if (overline)
+            painter.drawLine(x, y + 1, right, y + 1);
+        if (strikethrough)
+            painter.drawLine(x, y + m_cellHeight / 2, right, y + m_cellHeight / 2);
+        if (underline != GHOSTTY_SGR_UNDERLINE_NONE) {
+            const int underlineY = qMin(y + m_cellHeight - 1, y + m_fontAscent + 2);
+            painter.drawLine(x, underlineY, right, underlineY);
+            if (underline == GHOSTTY_SGR_UNDERLINE_DOUBLE)
+                painter.drawLine(x, qMin(y + m_cellHeight - 1, underlineY + 2), right,
+                                 qMin(y + m_cellHeight - 1, underlineY + 2));
+        }
+        painter.setPen(previousPen);
     };
     TextRun textRun;
     const auto flushTextRun = [&]() {
@@ -774,13 +817,17 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
 
         painter.setLayoutDirection(Qt::LeftToRight);
         painter.drawText(textRun.x, y + m_fontAscent, textRun.text);
+        drawTextDecorations(textRun.x, textRun.cells, textRun.decorationColor, textRun.underline, textRun.strikethrough,
+                            textRun.overline);
 #ifdef QTGHOSTTY_TESTING
         ++m_debugLastFrameTextRunCount;
 #endif
         textRun = {};
     };
-    const auto appendTextRun = [&](int runX, const QFont *font, const QColor &foreground, const QString &text) {
-        if (textRun.font == font && textRun.foreground == foreground
+    const auto appendTextRun = [&](int runX, const QFont *font, const QColor &foreground, const QColor &decorationColor,
+                                   int underline, bool strikethrough, bool overline, const QString &text) {
+        if (textRun.font == font && textRun.foreground == foreground && textRun.decorationColor == decorationColor
+            && textRun.underline == underline && textRun.strikethrough == strikethrough && textRun.overline == overline
             && textRun.x + textRun.cells * m_cellWidth == runX) {
             textRun.text.append(text);
             ++textRun.cells;
@@ -791,16 +838,27 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         textRun.x = runX;
         textRun.font = font;
         textRun.foreground = foreground;
+        textRun.decorationColor = decorationColor;
+        textRun.underline = underline;
+        textRun.strikethrough = strikethrough;
+        textRun.overline = overline;
         textRun.text = text;
         textRun.cells = 1;
     };
-    const auto appendTextRunCodepoint = [&](int runX, const QFont *font, const QColor &foreground, uint32_t codepoint) {
-        if (textRun.font != font || textRun.foreground != foreground
+    const auto appendTextRunCodepoint = [&](int runX, const QFont *font, const QColor &foreground,
+                                            const QColor &decorationColor, int underline, bool strikethrough,
+                                            bool overline, uint32_t codepoint) {
+        if (textRun.font != font || textRun.foreground != foreground || textRun.decorationColor != decorationColor
+            || textRun.underline != underline || textRun.strikethrough != strikethrough || textRun.overline != overline
             || textRun.x + textRun.cells * m_cellWidth != runX) {
             flushTextRun();
             textRun.x = runX;
             textRun.font = font;
             textRun.foreground = foreground;
+            textRun.decorationColor = decorationColor;
+            textRun.underline = underline;
+            textRun.strikethrough = strikethrough;
+            textRun.overline = overline;
         }
 
         appendCodepoint(textRun.text, codepoint);
@@ -852,7 +910,14 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
             cachedFont = &m_fontBold;
         else if (style.italic)
             cachedFont = &m_fontItalic;
-        const QColor cellForeground = hasFg ? QColor(fgColor.r, fgColor.g, fgColor.b) : defaultForeground;
+        QColor cellForeground = hasFg ? QColor(fgColor.r, fgColor.g, fgColor.b) : defaultForeground;
+        if (style.faint)
+            cellForeground = faintForeground(cellForeground, QColor(bgColor.r, bgColor.g, bgColor.b));
+        QColor decorationColor = cellForeground;
+        if (style.underline_color.tag == GHOSTTY_STYLE_COLOR_RGB) {
+            const GhosttyColorRgb color = style.underline_color.value.rgb;
+            decorationColor = QColor(color.r, color.g, color.b);
+        }
 
         if (!isWideHead && !isWideTail) {
             if (graphemeLen == 0) {
@@ -866,7 +931,9 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
                 && ghostty_cell_get(rawCell, GHOSTTY_CELL_DATA_CODEPOINT, &codepoint) == GHOSTTY_SUCCESS
                 && codepoint != 0;
             if (!style.inverse && !hasBg && hasSingleCodepoint) {
-                appendTextRunCodepoint(x, cachedFont, cellForeground, codepoint);
+                if (!style.invisible)
+                    appendTextRunCodepoint(x, cachedFont, cellForeground, decorationColor, style.underline,
+                                           style.strikethrough, style.overline, codepoint);
                 x += m_cellWidth;
                 continue;
             }
@@ -883,29 +950,34 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
             }
 
             if (style.inverse || hasBg) {
-                if (activeFont != cachedFont) {
-                    painter.setFont(*cachedFont);
-                    activeFont = cachedFont;
-                }
-                if (activeForeground != cellForeground) {
-                    painter.setPen(cellForeground);
-                    activeForeground = cellForeground;
-                }
+                if (!style.invisible) {
+                    if (activeFont != cachedFont) {
+                        painter.setFont(*cachedFont);
+                        activeFont = cachedFont;
+                    }
+                    if (activeForeground != cellForeground) {
+                        painter.setPen(cellForeground);
+                        activeForeground = cellForeground;
+                    }
 
-                painter.setLayoutDirection(Qt::LeftToRight);
-                painter.drawText(x, y + m_fontAscent, cellText);
+                    painter.setLayoutDirection(Qt::LeftToRight);
+                    painter.drawText(x, y + m_fontAscent, cellText);
+                    drawTextDecorations(x, 1, decorationColor, style.underline, style.strikethrough, style.overline);
 #ifdef QTGHOSTTY_TESTING
-                ++m_debugLastFrameTextRunCount;
+                    ++m_debugLastFrameTextRunCount;
 #endif
+                }
             } else {
-                appendTextRun(x, cachedFont, cellForeground, cellText);
+                if (!style.invisible)
+                    appendTextRun(x, cachedFont, cellForeground, decorationColor, style.underline, style.strikethrough,
+                                  style.overline, cellText);
             }
             x += m_cellWidth;
             continue;
         }
 
         flushTextRun();
-        if (graphemeLen > 0 && !isWideTail) {
+        if (graphemeLen > 0 && !isWideTail && !style.invisible) {
             const QString text = textFromRenderCellGraphemes(m_rowCells, graphemeLen);
 
             QFont cellFont = *cachedFont;
@@ -915,6 +987,8 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
             painter.setPen(cellForeground);
             painter.setLayoutDirection(Qt::LeftToRight);
             painter.drawText(QRectF(x, y, cellRenderWidth, m_cellHeight), Qt::AlignCenter | Qt::TextSingleLine, text);
+            drawTextDecorations(x, isWideHead ? 2 : 1, decorationColor, style.underline, style.strikethrough,
+                                style.overline);
             activeFont = nullptr;
             activeForeground = QColor();
         }
