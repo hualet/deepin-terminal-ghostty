@@ -17,6 +17,7 @@ public:
         bool isCurrent = false;
         bool expanded = true;
         QList<TermPane::PaneInfo> panes;
+        bool hasPendingCommandResult = false;
     };
 
     explicit VerticalTabSidebar(QWidget *parent = nullptr);

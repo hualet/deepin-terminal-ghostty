@@ -376,11 +376,19 @@ void MainWindow::addTab(bool activate, const std::optional<PtySession::StartOpti
             refreshTabRecord(*record);
         syncTabWidgetsFromRecords();
     });
-    connect(pane, &TermPane::paneCommandStateChanged, this, [this, pane](const QUuid &, TerminalWidget::CommandState) {
-        if (auto *record = tabRecordForPane(pane))
-            refreshTabRecord(*record);
-        syncTabWidgetsFromRecords();
-    });
+    connect(pane, &TermPane::paneCommandStateChanged, this,
+            [this, pane](const QUuid &, TerminalWidget::CommandState state) {
+                if (auto *record = tabRecordForPane(pane)) {
+                    refreshTabRecord(*record);
+                    if (state == TerminalWidget::CommandState::Succeeded
+                        || state == TerminalWidget::CommandState::Failed) {
+                        const int tabIdx = static_cast<int>(record - &m_tabs[0]);
+                        if (tabIdx >= 0 && tabIdx < m_tabs.size() && tabIdx != m_tabBar->currentIndex())
+                            record->hasPendingCommandResult = true;
+                    }
+                }
+                syncTabWidgetsFromRecords();
+            });
     connect(pane, &TermPane::requestSettings, this, &MainWindow::onSettingsTriggered);
 
     int stackIndex = m_stackWidget->addWidget(pane);
@@ -472,6 +480,9 @@ void MainWindow::onTabCloseRequested(int index, bool hasConfirmed) {
 void MainWindow::onTabCurrentChanged(int index) {
     if (index < 0 || index >= m_tabBar->count())
         return;
+
+    if (index >= 0 && index < m_tabs.size())
+        m_tabs[index].hasPendingCommandResult = false;
 
     int stackIndex = m_tabBar->tabData(index).toInt();
     m_stackWidget->setCurrentIndex(stackIndex);
@@ -612,6 +623,7 @@ void MainWindow::refreshSidebar() {
         item.expanded = record.expanded;
         if (record.pane)
             item.panes = record.pane->paneInfos();
+        item.hasPendingCommandResult = record.hasPendingCommandResult;
         items.append(item);
     }
 

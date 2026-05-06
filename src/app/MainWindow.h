@@ -58,6 +58,7 @@ private:
         TermPane *pane = nullptr;
         QString title;
         bool expanded = true;
+        bool hasPendingCommandResult = false;
     };
 
     DTabBar *ensureTabBar();

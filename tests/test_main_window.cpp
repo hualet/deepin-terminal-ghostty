@@ -106,6 +106,8 @@ private slots:
     void testPrevTabShortcutSwitchesInVerticalMode();
     void testGotoTabShortcutSwitchesInVerticalMode();
     void testVerticalSidebarAddTabButtonCreatesNewTab();
+    void testCommandStatusDotNotShownAfterSwitchingFromTabWhereCommandRan();
+    void testCommandStatusDotShownWhenCommandFinishesInBackgroundTab();
 
 private:
     DGuiApplicationHelper::ColorType m_originalPaletteType;
@@ -1619,6 +1621,96 @@ void TestMainWindow::testVerticalSidebarAddTabButtonCreatesNewTab() {
 
     QTest::mouseClick(addButton, Qt::LeftButton);
     QVERIFY(waitForTabCount(tabs, 2));
+}
+
+void triggerCommandSucceeded(TerminalWidget *terminal) {
+    const QByteArray command = QByteArray("\033]777;ShellCommand=") + QByteArray("bWFrZQ==") + QByteArray("\033\\");
+    QMetaObject::invokeMethod(terminal, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, command));
+    QCoreApplication::processEvents();
+
+    const QByteArray result = "\033]777;ShellCommandResult=0\033\\";
+    QMetaObject::invokeMethod(terminal, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, result));
+
+    const QByteArray clear = "\033]777;ShellCommand=\033\\";
+    QMetaObject::invokeMethod(terminal, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, clear));
+    QCoreApplication::processEvents();
+}
+
+void TestMainWindow::testCommandStatusDotNotShownAfterSwitchingFromTabWhereCommandRan() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+
+    auto *pane = currentPane(window);
+    QVERIFY(pane);
+
+    triggerCommandSucceeded(pane->currentTerminal());
+    QTRY_COMPARE(pane->currentTerminal()->property("commandState").toInt(),
+                 static_cast<int>(TerminalWidget::CommandState::Succeeded));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+    QCoreApplication::processEvents();
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+    const auto items = verticalSidebar->items();
+    QCOMPARE(items.size(), 2);
+    QVERIFY(!items.at(0).isCurrent);
+    QVERIFY(!items.at(0).hasPendingCommandResult);
+}
+
+void TestMainWindow::testCommandStatusDotShownWhenCommandFinishesInBackgroundTab() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+
+    int firstTabIndex = tabs->currentIndex() == 0 ? 0 : 1;
+    tabs->setCurrentIndex(firstTabIndex);
+    QCoreApplication::processEvents();
+
+    auto *pane = currentPane(window);
+    QVERIFY(pane);
+
+    const QByteArray command = QByteArray("\033]777;ShellCommand=") + QByteArray("bWFrZQ==") + QByteArray("\033\\");
+    QMetaObject::invokeMethod(pane->currentTerminal(), "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, command));
+    QCoreApplication::processEvents();
+
+    int secondTabIndex = firstTabIndex == 0 ? 1 : 0;
+    tabs->setCurrentIndex(secondTabIndex);
+    QCoreApplication::processEvents();
+
+    auto *firstPane = qobject_cast<TermPane *>(window.findChild<QStackedWidget *>()->widget(firstTabIndex));
+    QVERIFY(firstPane);
+    auto *firstTerminal = firstPane->currentTerminal();
+    QVERIFY(firstTerminal);
+
+    const QByteArray result = "\033]777;ShellCommandResult=0\033\\";
+    QMetaObject::invokeMethod(firstTerminal, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, result));
+    const QByteArray clear = "\033]777;ShellCommand=\033\\";
+    QMetaObject::invokeMethod(firstTerminal, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, clear));
+    QCoreApplication::processEvents();
+
+    QTRY_VERIFY_WITH_TIMEOUT(verticalSidebar->items().size() > static_cast<int>(firstTabIndex)
+                                 && verticalSidebar->items().at(firstTabIndex).hasPendingCommandResult,
+                             1000);
 }
 
 int main(int argc, char *argv[]) {

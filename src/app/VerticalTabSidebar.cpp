@@ -106,14 +106,15 @@ QLabel *createProcessBadge(const QString &objectName, QWidget *parent, const QSt
     return badge;
 }
 
-QLabel *createCommandStatusDot(QWidget *parent, TerminalWidget::CommandState state, bool isActive) {
+QLabel *createCommandStatusDot(QWidget *parent, TerminalWidget::CommandState state, bool isActive, bool hasPending) {
     auto *dot = new QLabel(parent);
     dot->setObjectName(QStringLiteral("commandStatusDot"));
     dot->setAccessibleName(QObject::tr("Command status"));
     dot->setAccessibleDescription(QObject::tr("Shows whether the last command succeeded or failed."));
     dot->setFixedSize(kStatusDotSize, kStatusDotSize);
 
-    if (isActive || state == TerminalWidget::CommandState::Idle || state == TerminalWidget::CommandState::Running) {
+    if (!hasPending || isActive || state == TerminalWidget::CommandState::Idle
+        || state == TerminalWidget::CommandState::Running) {
         dot->setVisible(false);
         return dot;
     }
@@ -420,7 +421,8 @@ void VerticalTabSidebar::rebuild() {
         TerminalWidget::CommandState tabCommandState = TerminalWidget::CommandState::Idle;
         if (paneCount == 1)
             tabCommandState = tab.panes.first().commandState;
-        auto *tabStatusDot = createCommandStatusDot(header, tabCommandState, tab.isCurrent);
+        auto *tabStatusDot =
+            createCommandStatusDot(header, tabCommandState, tab.isCurrent, tab.hasPendingCommandResult);
         if (isMultiPane)
             tabStatusDot->setVisible(false);
 
@@ -486,7 +488,7 @@ void VerticalTabSidebar::rebuild() {
                 connect(paneButton, &QPushButton::clicked, this,
                         [this, tabId = tab.id, paneId = pane.id]() { Q_EMIT paneActivated(tabId, paneId); });
 
-                auto *paneStatusDot = createCommandStatusDot(paneRow, pane.commandState, pane.isActive);
+                auto *paneStatusDot = createCommandStatusDot(paneRow, pane.commandState, pane.isActive, !pane.isActive);
 
                 paneRowLayout->addWidget(paneBadge, 0, Qt::AlignVCenter);
                 paneRowLayout->addWidget(paneButton, 1);
