@@ -30,6 +30,7 @@ signals:
     void tabActivated(int tabId);
     void tabExpansionToggled(int tabId);
     void paneActivated(int tabId, const QUuid &paneId);
+    void addTabRequested();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;

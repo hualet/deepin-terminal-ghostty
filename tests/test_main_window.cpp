@@ -105,6 +105,7 @@ private slots:
     void testNextTabShortcutSwitchesInVerticalMode();
     void testPrevTabShortcutSwitchesInVerticalMode();
     void testGotoTabShortcutSwitchesInVerticalMode();
+    void testVerticalSidebarAddTabButtonCreatesNewTab();
 
 private:
     DGuiApplicationHelper::ColorType m_originalPaletteType;
@@ -1596,6 +1597,28 @@ void TestMainWindow::testGotoTabShortcutSwitchesInVerticalMode() {
 
     QTest::keyClick(&window, Qt::Key_2, Qt::ControlModifier | Qt::ShiftModifier);
     QTRY_COMPARE(tabs->currentIndex(), 1);
+}
+
+void TestMainWindow::testVerticalSidebarAddTabButtonCreatesNewTab() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+
+    auto *addButton = verticalSidebar->findChild<QAbstractButton *>(QStringLiteral("verticalAddTabButton"));
+    QVERIFY(addButton);
+    QVERIFY(addButton->isVisible());
+
+    QTest::mouseClick(addButton, Qt::LeftButton);
+    QVERIFY(waitForTabCount(tabs, 2));
 }
 
 int main(int argc, char *argv[]) {

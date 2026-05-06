@@ -683,6 +683,7 @@ void MainWindow::rebuildCentralLayout() {
                         if (m_tabs[index].pane)
                             m_tabs[index].pane->focusPane(paneId);
                     });
+            connect(m_verticalSidebar, &VerticalTabSidebar::addTabRequested, this, &MainWindow::onTabAddRequested);
         }
         if (!m_mainSplitter) {
             m_mainSplitter = new QSplitter(Qt::Horizontal, this);

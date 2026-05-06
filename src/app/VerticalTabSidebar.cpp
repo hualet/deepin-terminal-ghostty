@@ -178,6 +178,16 @@ VerticalTabSidebar::VerticalTabSidebar(QWidget *parent) : QWidget(parent) {
     scrollArea->setWidget(content);
     outerLayout->addWidget(scrollArea);
 
+    auto *addTabButton = new QPushButton(this);
+    addTabButton->setObjectName(QStringLiteral("verticalAddTabButton"));
+    addTabButton->setAccessibleName(tr("New tab"));
+    addTabButton->setAccessibleDescription(tr("Create a new terminal tab."));
+    addTabButton->setText(QStringLiteral("+"));
+    addTabButton->setFlat(true);
+    addTabButton->setFixedHeight(32);
+    connect(addTabButton, &QPushButton::clicked, this, &VerticalTabSidebar::addTabRequested);
+    outerLayout->addWidget(addTabButton);
+
     applyStylesheet();
     connect(DGuiApplicationHelper::instance(), &DGuiApplicationHelper::paletteTypeChanged, this,
             &VerticalTabSidebar::applyStylesheet);
@@ -294,6 +304,17 @@ void VerticalTabSidebar::applyStylesheet() {
         }
         #verticalPaneButton:checked {
             font-weight: 500;
+        }
+        #verticalAddTabButton {
+            border: none;
+            background: transparent;
+            color: %14;
+            font-size: 18px;
+            text-align: center;
+        }
+        #verticalAddTabButton:hover {
+            background-color: %8;
+            border-radius: 6px;
         }
     )")
             .arg(c(sectionBorder.red(), sectionBorder.green(), sectionBorder.blue(), sectionBorder.alpha()),
