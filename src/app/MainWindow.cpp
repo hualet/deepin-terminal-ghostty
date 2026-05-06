@@ -758,13 +758,13 @@ void MainWindow::setupShortcuts() {
     createOnce(m_scCloseOtherTabs, &MainWindow::closeOtherTabs);
     createOnce(m_scPrevTab, [this]() {
         int idx = m_tabBar->currentIndex();
-        if (idx > 0)
-            m_tabBar->setCurrentIndex(idx - 1);
+        if (m_tabBar->count() > 1)
+            m_tabBar->setCurrentIndex(idx > 0 ? idx - 1 : m_tabBar->count() - 1);
     });
     createOnce(m_scNextTab, [this]() {
         int idx = m_tabBar->currentIndex();
-        if (idx >= 0 && idx < m_tabBar->count() - 1)
-            m_tabBar->setCurrentIndex(idx + 1);
+        if (m_tabBar->count() > 1)
+            m_tabBar->setCurrentIndex(idx < m_tabBar->count() - 1 ? idx + 1 : 0);
     });
     createOnce(m_scVSplit, [this]() {
         if (auto *pane = currentPane())

@@ -102,6 +102,9 @@ private slots:
     void testThemeLoaderFindsThemeByName();
     void testThemeSettingDefaultIsSystem();
     void testThemeChangeAppliesToAllTerminals();
+    void testNextTabShortcutSwitchesInVerticalMode();
+    void testPrevTabShortcutSwitchesInVerticalMode();
+    void testGotoTabShortcutSwitchesInVerticalMode();
 
 private:
     DGuiApplicationHelper::ColorType m_originalPaletteType;
@@ -1526,6 +1529,73 @@ void TestMainWindow::testThemeChangeAppliesToAllTerminals() {
 
     settings->setColorScheme(QStringLiteral("system"));
     QTRY_COMPARE(settings->colorScheme(), QStringLiteral("system"));
+}
+
+void TestMainWindow::testNextTabShortcutSwitchesInVerticalMode() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+    QCOMPARE(tabs->currentIndex(), 1);
+
+    QTest::keyClick(&window, Qt::Key_Tab, Qt::ControlModifier);
+    QTRY_COMPARE(tabs->currentIndex(), 0);
+
+    QTest::keyClick(&window, Qt::Key_Tab, Qt::ControlModifier);
+    QTRY_COMPARE(tabs->currentIndex(), 1);
+}
+
+void TestMainWindow::testPrevTabShortcutSwitchesInVerticalMode() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+    QCOMPARE(tabs->currentIndex(), 1);
+
+    QTest::keyClick(&window, Qt::Key_Tab, Qt::ControlModifier | Qt::ShiftModifier);
+    QTRY_COMPARE(tabs->currentIndex(), 0);
+
+    QTest::keyClick(&window, Qt::Key_Tab, Qt::ControlModifier | Qt::ShiftModifier);
+    QTRY_COMPARE(tabs->currentIndex(), 1);
+}
+
+void TestMainWindow::testGotoTabShortcutSwitchesInVerticalMode() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 3));
+    QCOMPARE(tabs->currentIndex(), 2);
+
+    QTest::keyClick(&window, Qt::Key_1, Qt::ControlModifier | Qt::ShiftModifier);
+    QTRY_COMPARE(tabs->currentIndex(), 0);
+
+    QTest::keyClick(&window, Qt::Key_2, Qt::ControlModifier | Qt::ShiftModifier);
+    QTRY_COMPARE(tabs->currentIndex(), 1);
 }
 
 int main(int argc, char *argv[]) {
