@@ -1,3 +1,20 @@
+deepin-terminal-ghostty (0.9.1-1) unstable; urgency=medium
+
+  * Add command line help (--help) so users can discover available options.
+  * Reduce titlebar height in vertical tab mode for a more compact layout.
+  * Improve rendering performance with batched text runs, refined render path,
+    and narrowed cursor repaint regions for smoother terminal output.
+  * Handle long grapheme cells and reject surrogate-range codepoints to
+    prevent crashes on unusual character sequences.
+  * Use the deepin shortcut viewer for consistent keyboard shortcut display.
+  * Use the application logo as the window icon for proper WM recognition.
+  * Improve the terminal process badge appearance in the tab bar.
+  * Inherit terminal opacity when splitting panes so new panes match the
+    current visual settings.
+  * Rename settings "Color Scheme" to "Theme" for consistency with menus.
+
+ -- Deepin Packages <packages@deepin.org>  Tue, 06 May 2026 23:59:00 +0800
+
 deepin-terminal-ghostty (0.9.0-1) unstable; urgency=medium
 
   * Show Kimi badge icon in terminal tabs to indicate AI-powered sessions.
