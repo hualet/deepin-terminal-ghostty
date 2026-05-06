@@ -64,6 +64,9 @@ private slots:
     void testClosedSessionRemovesOnlyCurrentTab();
     void testAltArrowWithKeypadModifierIsConsumedByPane();
     void testTermPaneReportsPaneSnapshotsAfterSplit();
+    void testSplitSuppressesIntermediateRepaintWhileReparenting();
+    void testCloseSplitSuppressesIntermediateRepaintWhileReparenting();
+    void testNestedSplitDoesNotRepaintUnchangedSiblingTerminal();
     void testClosingRepeatedSameDirectionSplitsPreservesSiblings();
     void testCloseOtherTerminalsPublishesSingleStructureChange();
     void testTermPaneReportsProcessIconNames();
@@ -278,6 +281,50 @@ TerminalWidget *terminalForPaneId(TermPane &pane, const QUuid &paneId) {
     return nullptr;
 }
 
+class VisibilityEventCounter : public QObject {
+public:
+    explicit VisibilityEventCounter(QWidget *guardedWidget) : m_guardedWidget(guardedWidget) {}
+
+    int hideCount = 0;
+    int showCount = 0;
+    int visibleHideUpdateCount = 0;
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override {
+        switch (event->type()) {
+            case QEvent::Hide:
+            case QEvent::HideToParent:
+                ++hideCount;
+                if (m_guardedWidget && m_guardedWidget->updatesEnabled())
+                    ++visibleHideUpdateCount;
+                break;
+            case QEvent::Show:
+            case QEvent::ShowToParent:
+                ++showCount;
+                break;
+            default:
+                break;
+        }
+        return false;
+    }
+
+private:
+    QWidget *m_guardedWidget = nullptr;
+};
+
+class PaintEventCounter : public QObject {
+public:
+    int paintCount = 0;
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override {
+        Q_UNUSED(watched)
+        if (event->type() == QEvent::Paint)
+            ++paintCount;
+        return false;
+    }
+};
+
 } // namespace
 
 void TestMainWindow::testSingleTabCtrlDClosesWindow() {
@@ -483,6 +530,77 @@ void TestMainWindow::testTermPaneReportsPaneSnapshotsAfterSplit() {
     pane.closeCurrentSplit();
     QCOMPARE(pane.paneInfos().size(), 0);
     QVERIFY(pane.activePaneId().isNull());
+}
+
+void TestMainWindow::testSplitSuppressesIntermediateRepaintWhileReparenting() {
+    ExposedTermPane pane;
+    pane.resize(1200, 800);
+    pane.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&pane));
+
+    auto *terminal = pane.currentTerminal();
+    QVERIFY(terminal);
+    QVERIFY(terminal->isVisible());
+
+    VisibilityEventCounter counter(&pane);
+    terminal->installEventFilter(&counter);
+
+    pane.splitCurrent(Qt::Vertical);
+    QCoreApplication::processEvents();
+
+    QVERIFY(counter.hideCount > 0 || counter.showCount > 0);
+    QCOMPARE(counter.visibleHideUpdateCount, 0);
+}
+
+void TestMainWindow::testCloseSplitSuppressesIntermediateRepaintWhileReparenting() {
+    ExposedTermPane pane;
+    pane.resize(1200, 800);
+    pane.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&pane));
+
+    const QUuid firstPaneId = pane.activePaneId();
+    pane.splitCurrent(Qt::Vertical);
+    QCoreApplication::processEvents();
+    QVERIFY(pane.focusPane(firstPaneId));
+
+    auto *terminal = pane.currentTerminal();
+    QVERIFY(terminal);
+    QVERIFY(terminal->isVisible());
+
+    VisibilityEventCounter counter(&pane);
+    terminal->installEventFilter(&counter);
+
+    pane.closeCurrentSplit();
+    QCoreApplication::processEvents();
+
+    QVERIFY(counter.hideCount > 0 || counter.showCount > 0);
+    QCOMPARE(counter.visibleHideUpdateCount, 0);
+}
+
+void TestMainWindow::testNestedSplitDoesNotRepaintUnchangedSiblingTerminal() {
+    ExposedTermPane pane;
+    pane.resize(1200, 800);
+    pane.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&pane));
+
+    const QUuid leftPaneId = pane.activePaneId();
+    pane.splitCurrent(Qt::Vertical);
+    QCoreApplication::processEvents();
+
+    auto *leftTerminal = terminalForPaneId(pane, leftPaneId);
+    QVERIFY(leftTerminal);
+    auto *rightTerminal = pane.currentTerminal();
+    QVERIFY(rightTerminal);
+    rightTerminal->setFocus();
+    QCoreApplication::processEvents();
+
+    PaintEventCounter counter;
+    leftTerminal->installEventFilter(&counter);
+
+    pane.splitCurrent(Qt::Horizontal);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(counter.paintCount, 0);
 }
 
 void TestMainWindow::testClosingRepeatedSameDirectionSplitsPreservesSiblings() {

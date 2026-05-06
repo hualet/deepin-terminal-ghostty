@@ -160,6 +160,23 @@ void collectTerminalWidgetsInVisualOrder(QWidget *widget, QList<TerminalWidget *
     }
 }
 
+class ScopedUpdatesBlocker {
+public:
+    explicit ScopedUpdatesBlocker(QWidget *widget) : m_widget(widget), m_wasUpdatesEnabled(widget->updatesEnabled()) {
+        if (m_wasUpdatesEnabled)
+            m_widget->setUpdatesEnabled(false);
+    }
+
+    ~ScopedUpdatesBlocker() {
+        if (m_wasUpdatesEnabled)
+            m_widget->setUpdatesEnabled(true);
+    }
+
+private:
+    QWidget *m_widget = nullptr;
+    bool m_wasUpdatesEnabled = false;
+};
+
 } // namespace
 
 TermPane::TermPane(const std::optional<PtySession::StartOptions> &initialSessionOptions, QWidget *parent)
@@ -334,6 +351,7 @@ void TermPane::removeTerminal(TerminalWidget *term) {
         return;
     }
 
+    ScopedUpdatesBlocker updatesBlocker(this);
     int index = splitter->indexOf(term);
     QList<int> sizes = splitter->sizes();
     const int removedSize = sizes.value(index, 0);
@@ -393,22 +411,25 @@ QList<TerminalWidget *> TermPane::terminalsInVisualOrder() const {
 
 void TermPane::splitTerminal(TerminalWidget *term, TerminalWidget *newTerm, Qt::Orientation orientation) {
     auto *splitter = qobject_cast<QSplitter *>(term->parentWidget());
-    if (!splitter)
-        m_layout->removeWidget(term);
+    ScopedUpdatesBlocker updatesBlocker(splitter ? static_cast<QWidget *>(term) : static_cast<QWidget *>(this));
 
     auto *newSplitter = createPaneSplitter(orientation);
-    const int index = splitter ? splitter->indexOf(term) : -1;
-    const QList<int> sizes = splitter ? splitter->sizes() : QList<int>();
+    if (splitter) {
+        const int index = splitter->indexOf(term);
+        const QList<int> sizes = splitter->sizes();
+        splitter->replaceWidget(index, newSplitter);
+        newSplitter->addWidget(term);
+        newSplitter->addWidget(newTerm);
+        newSplitter->setSizes({1, 1});
+        splitter->setSizes(sizes);
+        return;
+    }
+
+    m_layout->removeWidget(term);
     term->setParent(nullptr);
     newSplitter->addWidget(term);
     newSplitter->addWidget(newTerm);
     newSplitter->setSizes({1, 1});
-
-    if (splitter) {
-        splitter->insertWidget(index, newSplitter);
-        splitter->setSizes(sizes);
-        return;
-    }
 
     m_layout->addWidget(newSplitter);
     m_rootWidget = newSplitter;
@@ -420,18 +441,17 @@ void TermPane::promoteSingleChildSplitter(QSplitter *splitter) {
 
     const int promotedSize = splitter->sizes().value(0, 1);
     QWidget *remaining = splitter->widget(0);
-    remaining->setParent(nullptr);
 
     auto *parentSplitter = qobject_cast<QSplitter *>(splitter->parentWidget());
     if (parentSplitter) {
         const int parentIndex = parentSplitter->indexOf(splitter);
         QList<int> sizes = parentSplitter->sizes();
-        splitter->setParent(nullptr);
-        parentSplitter->insertWidget(parentIndex, remaining);
+        parentSplitter->replaceWidget(parentIndex, remaining);
         sizes.removeAt(parentIndex);
         sizes.insert(parentIndex, promotedSize);
         parentSplitter->setSizes(sizes);
     } else {
+        remaining->setParent(nullptr);
         m_layout->removeWidget(splitter);
         m_layout->addWidget(remaining);
         m_rootWidget = remaining;
@@ -743,6 +763,7 @@ void TermPane::closeOtherTerminals() {
         if (term != m_currentTerm)
             toRemove.append(term);
     }
+    ScopedUpdatesBlocker updatesBlocker(this);
     m_deferPaneStructureChanged = true;
     for (TerminalWidget *term : toRemove)
         removeTerminal(term);
