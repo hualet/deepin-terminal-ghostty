@@ -14,6 +14,7 @@
 #include "remote/ServerConfigOptDlg.h"
 
 #include <DApplication>
+#include <DGuiApplicationHelper>
 #include <DSettings>
 #include <DTabBar>
 #include <DTitlebar>
@@ -50,11 +51,13 @@ private slots:
     void initTestCase() {
         QStandardPaths::setTestModeEnabled(true);
         clearVerticalTabsSetting();
+        m_originalPaletteType = DGuiApplicationHelper::instance()->paletteType();
     }
 
     void cleanup() {
         AppSettings::releaseInstance();
         clearVerticalTabsSetting();
+        DGuiApplicationHelper::instance()->setPaletteType(m_originalPaletteType);
     }
 
     void testSingleTabCtrlDClosesWindow();
@@ -96,6 +99,9 @@ private slots:
     void testThemeLoaderFindsThemeByName();
     void testThemeSettingDefaultIsSystem();
     void testThemeChangeAppliesToAllTerminals();
+
+private:
+    DGuiApplicationHelper::ColorType m_originalPaletteType;
 };
 
 namespace {
