@@ -33,6 +33,89 @@ QColor faintForeground(const QColor &foreground, const QColor &background) {
                   (foreground.blue() + background.blue()) / 2);
 }
 
+enum BoxDrawingEdge {
+    BoxDrawNone = 0,
+    BoxDrawUp = 1 << 0,
+    BoxDrawRight = 1 << 1,
+    BoxDrawDown = 1 << 2,
+    BoxDrawLeft = 1 << 3,
+};
+
+int boxDrawingEdges(uint32_t codepoint) {
+    switch (codepoint) {
+        case 0x2500: // BOX DRAWINGS LIGHT HORIZONTAL
+        case 0x2501: // BOX DRAWINGS HEAVY HORIZONTAL
+            return BoxDrawLeft | BoxDrawRight;
+        case 0x2502: // BOX DRAWINGS LIGHT VERTICAL
+        case 0x2503: // BOX DRAWINGS HEAVY VERTICAL
+            return BoxDrawUp | BoxDrawDown;
+        case 0x250C: // BOX DRAWINGS LIGHT DOWN AND RIGHT
+        case 0x250F: // BOX DRAWINGS HEAVY DOWN AND RIGHT
+        case 0x256D: // BOX DRAWINGS LIGHT ARC DOWN AND RIGHT
+            return BoxDrawRight | BoxDrawDown;
+        case 0x2510: // BOX DRAWINGS LIGHT DOWN AND LEFT
+        case 0x2513: // BOX DRAWINGS HEAVY DOWN AND LEFT
+        case 0x256E: // BOX DRAWINGS LIGHT ARC DOWN AND LEFT
+            return BoxDrawDown | BoxDrawLeft;
+        case 0x2514: // BOX DRAWINGS LIGHT UP AND RIGHT
+        case 0x2517: // BOX DRAWINGS HEAVY UP AND RIGHT
+        case 0x2570: // BOX DRAWINGS LIGHT ARC UP AND RIGHT
+            return BoxDrawUp | BoxDrawRight;
+        case 0x2518: // BOX DRAWINGS LIGHT UP AND LEFT
+        case 0x251B: // BOX DRAWINGS HEAVY UP AND LEFT
+        case 0x256F: // BOX DRAWINGS LIGHT ARC UP AND LEFT
+            return BoxDrawUp | BoxDrawLeft;
+        case 0x251C: // BOX DRAWINGS LIGHT VERTICAL AND RIGHT
+        case 0x2523: // BOX DRAWINGS HEAVY VERTICAL AND RIGHT
+            return BoxDrawUp | BoxDrawRight | BoxDrawDown;
+        case 0x2524: // BOX DRAWINGS LIGHT VERTICAL AND LEFT
+        case 0x252B: // BOX DRAWINGS HEAVY VERTICAL AND LEFT
+            return BoxDrawUp | BoxDrawDown | BoxDrawLeft;
+        case 0x252C: // BOX DRAWINGS LIGHT DOWN AND HORIZONTAL
+        case 0x2533: // BOX DRAWINGS HEAVY DOWN AND HORIZONTAL
+            return BoxDrawRight | BoxDrawDown | BoxDrawLeft;
+        case 0x2534: // BOX DRAWINGS LIGHT UP AND HORIZONTAL
+        case 0x253B: // BOX DRAWINGS HEAVY UP AND HORIZONTAL
+            return BoxDrawUp | BoxDrawRight | BoxDrawLeft;
+        case 0x253C: // BOX DRAWINGS LIGHT VERTICAL AND HORIZONTAL
+        case 0x254B: // BOX DRAWINGS HEAVY VERTICAL AND HORIZONTAL
+            return BoxDrawUp | BoxDrawRight | BoxDrawDown | BoxDrawLeft;
+        default:
+            return BoxDrawNone;
+    }
+}
+
+bool renderBoxDrawingCodepoint(QPainter &painter, const QRect &cellRect, uint32_t codepoint, const QColor &color,
+                               bool bold) {
+    const int edges = boxDrawingEdges(codepoint);
+    if (edges == BoxDrawNone)
+        return false;
+
+    const QPen previousPen = painter.pen();
+    QPen pen(color);
+    pen.setWidth(bold || codepoint == 0x2501 || codepoint == 0x2503 || codepoint == 0x250F || codepoint == 0x2513
+                         || codepoint == 0x2517 || codepoint == 0x251B || codepoint == 0x2523 || codepoint == 0x252B
+                         || codepoint == 0x2533 || codepoint == 0x253B || codepoint == 0x254B
+                     ? 2
+                     : 1);
+    pen.setCapStyle(Qt::SquareCap);
+    painter.setPen(pen);
+
+    const int cx = cellRect.left() + cellRect.width() / 2;
+    const int cy = cellRect.top() + cellRect.height() / 2;
+    if (edges & BoxDrawUp)
+        painter.drawLine(cx, cellRect.top(), cx, cy);
+    if (edges & BoxDrawRight)
+        painter.drawLine(cx, cy, cellRect.right(), cy);
+    if (edges & BoxDrawDown)
+        painter.drawLine(cx, cy, cx, cellRect.bottom());
+    if (edges & BoxDrawLeft)
+        painter.drawLine(cellRect.left(), cy, cx, cy);
+
+    painter.setPen(previousPen);
+    return true;
+}
+
 void appendCodepoint(QString &text, uint32_t codepoint) {
     if (codepoint <= 0xFFFF) {
         // Surrogate range (0xD800-0xDFFF) is not a valid Unicode scalar value.
@@ -438,6 +521,10 @@ int TerminalWidget::debugLastFrameTextRunCount() const {
     return m_debugLastFrameTextRunCount;
 }
 
+int TerminalWidget::debugLastFrameLineDrawCount() const {
+    return m_debugLastFrameLineDrawCount;
+}
+
 int TerminalWidget::debugResizeApplyCount() const {
     return m_debugResizeApplyCount;
 }
@@ -707,6 +794,7 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     m_debugLastFrameDirtyRowCount = 0;
     m_debugLastFrameWasFullRedraw = fullRedraw;
     m_debugLastFrameTextRunCount = 0;
+    m_debugLastFrameLineDrawCount = 0;
 #endif
 
     int y = 0;
@@ -930,6 +1018,17 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
                 graphemeLen == 1
                 && ghostty_cell_get(rawCell, GHOSTTY_CELL_DATA_CODEPOINT, &codepoint) == GHOSTTY_SUCCESS
                 && codepoint != 0;
+            if (hasSingleCodepoint && !style.invisible && boxDrawingEdges(codepoint) != BoxDrawNone) {
+                flushTextRun();
+                renderBoxDrawingCodepoint(painter, QRect(x, y, m_cellWidth, m_cellHeight), codepoint, cellForeground,
+                                          style.bold);
+                drawTextDecorations(x, 1, decorationColor, style.underline, style.strikethrough, style.overline);
+#ifdef QTGHOSTTY_TESTING
+                ++m_debugLastFrameLineDrawCount;
+#endif
+                x += m_cellWidth;
+                continue;
+            }
             if (!style.inverse && !hasBg && hasSingleCodepoint) {
                 if (!style.invisible)
                     appendTextRunCodepoint(x, cachedFont, cellForeground, decorationColor, style.underline,

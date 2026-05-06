@@ -60,6 +60,7 @@ public:
     int debugLastFrameDirtyRowCount() const;
     bool debugLastFrameWasFullRedraw() const;
     int debugLastFrameTextRunCount() const;
+    int debugLastFrameLineDrawCount() const;
     int debugResizeApplyCount() const;
     int debugPtyFlushCount() const;
     int debugCursorOnlyRepaintCount() const;
@@ -240,6 +241,7 @@ private:
     int m_debugLastFrameDirtyRowCount = 0;
     bool m_debugLastFrameWasFullRedraw = false;
     int m_debugLastFrameTextRunCount = 0;
+    int m_debugLastFrameLineDrawCount = 0;
     int m_debugResizeApplyCount = 0;
     int m_debugPtyFlushCount = 0;
     int m_debugCursorOnlyRepaintCount = 0;

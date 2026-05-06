@@ -47,6 +47,7 @@ private slots:
     void testRendersAnsiForegroundColors();
     void testRendersTextDecorations();
     void testConcealedTextDoesNotRenderGlyphs();
+    void testRendersBoxDrawingCharactersWithoutTextShaping();
     void testCoalescesPlainTextIntoRenderRuns();
     void testCursorOnlyUpdatesUseNarrowRepaint();
     void testCoalescesBurstRepaintsWithoutLosingFinalFrame();
@@ -608,6 +609,23 @@ void TestTerminalWidget::testConcealedTextDoesNotRenderGlyphs() {
     const QImage concealed = renderWidgetImage(concealedWidget);
     const QRect diff = changedBounds(empty, concealed);
     QVERIFY2(!diff.isValid(), "SGR conceal should advance the terminal state without painting the glyph");
+}
+
+void TestTerminalWidget::testRendersBoxDrawingCharactersWithoutTextShaping() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.resize(240, 120);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    feedTerminalOutput(widget, QStringLiteral("┌─┐\n").toUtf8());
+
+    renderWidgetImage(widget);
+
+    QCOMPARE(widget.debugLastFrameTextRunCount(), 0);
+    QCOMPARE(widget.debugLastFrameLineDrawCount(), 3);
 }
 
 void TestTerminalWidget::testCoalescesPlainTextIntoRenderRuns() {
