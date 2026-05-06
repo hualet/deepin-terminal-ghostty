@@ -46,6 +46,7 @@ private slots:
     void testRendersWideCharactersAcrossTwoCells();
     void testRendersAnsiForegroundColors();
     void testRendersTextDecorations();
+    void testStyledTextKeepsCharactersOnCellGrid();
     void testConcealedTextDoesNotRenderGlyphs();
     void testRendersBoxDrawingCharactersWithoutTextShaping();
     void testCoalescesPlainTextIntoRenderRuns();
@@ -208,6 +209,36 @@ QColor dominantChangedColor(const QImage &before, const QImage &after, const QRe
     }
 
     return bestColor;
+}
+
+int firstPaintedColumnInCell(const QImage &image, const QRect &cellRect, const QColor &background) {
+    const QRect bounded = cellRect.intersected(image.rect());
+    for (int x = bounded.left(); x <= bounded.right(); ++x) {
+        for (int y = bounded.top(); y <= bounded.bottom(); ++y) {
+            const QColor pixel = QColor::fromRgba(image.pixel(x, y));
+            if (qAbs(pixel.red() - background.red()) > 8 || qAbs(pixel.green() - background.green()) > 8
+                || qAbs(pixel.blue() - background.blue()) > 8) {
+                return x;
+            }
+        }
+    }
+
+    return -1;
+}
+
+int lastPaintedColumn(const QImage &image, const QRect &rect, const QColor &background) {
+    const QRect bounded = rect.intersected(image.rect());
+    for (int x = bounded.right(); x >= bounded.left(); --x) {
+        for (int y = bounded.top(); y <= bounded.bottom(); ++y) {
+            const QColor pixel = QColor::fromRgba(image.pixel(x, y));
+            if (qAbs(pixel.red() - background.red()) > 8 || qAbs(pixel.green() - background.green()) > 8
+                || qAbs(pixel.blue() - background.blue()) > 8) {
+                return x;
+            }
+        }
+    }
+
+    return -1;
 }
 
 } // namespace
@@ -582,6 +613,54 @@ void TestTerminalWidget::testRendersTextDecorations() {
     const QImage decorated = renderWidgetImage(decoratedWidget);
     const QRect diff = changedBounds(plain, decorated);
     QVERIFY2(diff.isValid(), "SGR underline, strikethrough, and overline should affect rendered text");
+}
+
+void TestTerminalWidget::testStyledTextKeepsCharactersOnCellGrid() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
+    CountingTerminalWidget widget;
+    widget.setStartOptions(options);
+    QFont proportionalFont(QStringLiteral("DejaVu Sans"), 14);
+    proportionalFont.setStyleHint(QFont::SansSerif);
+    widget.debugSetRawTerminalFont(proportionalFont);
+    QVERIFY(widget.initialize());
+    widget.resize(360, 120);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const QFontMetrics fm(widget.terminalFont());
+    const int cellWidth = fm.horizontalAdvance(QLatin1Char('M'));
+    const int cellHeight = fm.height();
+    QVERIFY2(fm.horizontalAdvance(QLatin1Char('i')) < cellWidth / 2,
+             "test font should simulate a fallback font with non-cell-sized glyph advances");
+    const QColor background = widget.debugAppliedBackground();
+
+    feedTerminalOutput(widget, QByteArray("\r\033[2Kiiiiiii"));
+    const QImage plainFrame = renderWidgetImage(widget);
+    const QRect seventhCell(cellWidth * 6, 0, cellWidth, cellHeight);
+    QVERIFY2(firstPaintedColumnInCell(plainFrame, seventhCell, background) >= 0,
+             "each character in a render run should be anchored to its logical terminal cell");
+
+    feedTerminalOutput(widget, QByteArray("\r\033[2K\033[1mW\033[0morking"));
+    const QImage firstFrame = renderWidgetImage(widget);
+
+    feedTerminalOutput(widget, QByteArray("\r\033[2KWo\033[1mr\033[0mking"));
+    const QImage secondFrame = renderWidgetImage(widget);
+
+    const QRect firstKCell(cellWidth * 3, 0, cellWidth, cellHeight);
+    const QRect secondKCell(cellWidth * 3, 0, cellWidth, cellHeight);
+    const int firstKLeft = firstPaintedColumnInCell(firstFrame, firstKCell, background);
+    const int secondKLeft = firstPaintedColumnInCell(secondFrame, secondKCell, background);
+    const QRect lineRect(0, 0, cellWidth * 7, cellHeight);
+    const int firstRight = lastPaintedColumn(firstFrame, lineRect, background);
+    const int secondRight = lastPaintedColumn(secondFrame, lineRect, background);
+
+    QVERIFY2(firstKLeft >= 0, "first styled frame should paint the fourth cell");
+    QVERIFY2(secondKLeft >= 0, "second styled frame should paint the fourth cell");
+    QCOMPARE(firstKLeft, secondKLeft);
+    QCOMPARE(firstRight, secondRight);
 }
 
 void TestTerminalWidget::testConcealedTextDoesNotRenderGlyphs() {

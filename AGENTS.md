@@ -38,6 +38,7 @@ The repo produces:
 │   ├── test_terminal_widget.cpp
 │   └── test_main_window.cpp
 └── docs/
+    ├── root-cause/
     ├── superpowers/
     └── research/
 ```
@@ -224,6 +225,8 @@ CI will reject changes that do not match the enforced style.
 ## Working Rules For Agents
 
 - Explore current code before editing. Do not assume intent from names alone.
+- For bug fixes with non-trivial investigation, add or update a concise root cause report under `docs/root-cause/`.
+- Read existing reports in `docs/root-cause/` before changing related behavior; they capture prior failure modes, evidence, fixes, and verification gaps.
 - Do not revert unrelated user changes.
 - If behavior changes, add or update a focused automated test when practical.
 - Verify changes with the narrowest meaningful test command before claiming success.

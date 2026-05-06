@@ -70,6 +70,7 @@ public:
     bool debugAppliedIsDark() const;
     QColor debugAppliedForeground() const;
     QColor debugAppliedBackground() const;
+    void debugSetRawTerminalFont(const QFont &font);
 #endif
 
 signals:

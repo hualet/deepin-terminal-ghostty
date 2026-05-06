@@ -846,6 +846,7 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
     QColor activeForeground;
     struct TextRun {
         QString text;
+        QVector<QString> cellTexts;
         int x = 0;
         int cells = 0;
         const QFont *font = nullptr;
@@ -904,7 +905,11 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         }
 
         painter.setLayoutDirection(Qt::LeftToRight);
-        painter.drawText(textRun.x, y + m_fontAscent, textRun.text);
+        int cellX = textRun.x;
+        for (const QString &cellText : textRun.cellTexts) {
+            painter.drawText(cellX, y + m_fontAscent, cellText);
+            cellX += m_cellWidth;
+        }
         drawTextDecorations(textRun.x, textRun.cells, textRun.decorationColor, textRun.underline, textRun.strikethrough,
                             textRun.overline);
 #ifdef QTGHOSTTY_TESTING
@@ -918,6 +923,7 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
             && textRun.underline == underline && textRun.strikethrough == strikethrough && textRun.overline == overline
             && textRun.x + textRun.cells * m_cellWidth == runX) {
             textRun.text.append(text);
+            textRun.cellTexts.append(text);
             ++textRun.cells;
             return;
         }
@@ -931,6 +937,7 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         textRun.strikethrough = strikethrough;
         textRun.overline = overline;
         textRun.text = text;
+        textRun.cellTexts = {text};
         textRun.cells = 1;
     };
     const auto appendTextRunCodepoint = [&](int runX, const QFont *font, const QColor &foreground,
@@ -949,7 +956,10 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
             textRun.overline = overline;
         }
 
+        QString cellText;
+        appendCodepoint(cellText, codepoint);
         appendCodepoint(textRun.text, codepoint);
+        textRun.cellTexts.append(cellText);
         ++textRun.cells;
     };
 
@@ -2586,5 +2596,18 @@ QColor TerminalWidget::debugAppliedBackground() const {
     GhosttyColorRgb rgb;
     ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_COLOR_BACKGROUND, &rgb);
     return QColor(rgb.r, rgb.g, rgb.b);
+}
+
+void TerminalWidget::debugSetRawTerminalFont(const QFont &font) {
+    m_font = font;
+
+    QFontMetrics fm(m_font);
+    m_cellWidth = fm.horizontalAdvance('M');
+    m_cellHeight = fm.height();
+    m_fontAscent = fm.ascent();
+    updateCachedFonts();
+
+    updateGridSize();
+    update();
 }
 #endif
