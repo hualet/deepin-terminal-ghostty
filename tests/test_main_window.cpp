@@ -69,6 +69,7 @@ private slots:
     void testSplitSuppressesIntermediateRepaintWhileReparenting();
     void testCloseSplitSuppressesIntermediateRepaintWhileReparenting();
     void testNestedSplitDoesNotRepaintUnchangedSiblingTerminal();
+    void testClosingCurrentSplitFocusesSiblingTerminal();
     void testClosingRepeatedSameDirectionSplitsPreservesSiblings();
     void testCloseOtherTerminalsPublishesSingleStructureChange();
     void testTermPaneReportsProcessIconNames();
@@ -611,6 +612,35 @@ void TestMainWindow::testNestedSplitDoesNotRepaintUnchangedSiblingTerminal() {
 
     QVERIFY2(counter.paintCount <= 1,
              qPrintable(QStringLiteral("unchanged sibling terminal repainted %1 times").arg(counter.paintCount)));
+}
+
+void TestMainWindow::testClosingCurrentSplitFocusesSiblingTerminal() {
+    ExposedTermPane pane;
+    pane.resize(1200, 800);
+    pane.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&pane));
+
+    const QUuid firstPaneId = pane.activePaneId();
+    pane.splitCurrent(Qt::Vertical);
+    const QUuid secondPaneId = pane.activePaneId();
+    QVERIFY(pane.focusPane(firstPaneId));
+    pane.splitCurrent(Qt::Horizontal);
+    const QUuid siblingPaneId = pane.activePaneId();
+
+    QVERIFY(pane.focusPane(siblingPaneId));
+    auto *siblingTerminal = terminalForPaneId(pane, siblingPaneId);
+    QVERIFY(siblingTerminal);
+    auto *closedTerminal = pane.currentTerminal();
+    QVERIFY(closedTerminal);
+    QCOMPARE(QApplication::focusWidget(), closedTerminal);
+
+    pane.closeCurrentSplit();
+    QCoreApplication::processEvents();
+
+    QCOMPARE(pane.activePaneId(), firstPaneId);
+    QCOMPARE(pane.currentTerminal(), terminalForPaneId(pane, firstPaneId));
+    QCOMPARE(QApplication::focusWidget(), pane.currentTerminal());
+    QVERIFY(terminalForPaneId(pane, secondPaneId));
 }
 
 void TestMainWindow::testClosingRepeatedSameDirectionSplitsPreservesSiblings() {

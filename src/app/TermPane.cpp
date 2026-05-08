@@ -436,11 +436,14 @@ void TermPane::removeTerminal(TerminalWidget *term) {
     if (removedTermWasCurrent) {
         if (replacementTerm && replacementTerm != term) {
             setCurrentTerminal(replacementTerm);
+            replacementTerm->setFocus();
         } else {
             QList<TerminalWidget *> remainingTerminals = terminalsInVisualOrder();
             remainingTerminals.removeAll(term);
             if (!remainingTerminals.isEmpty()) {
-                setCurrentTerminal(remainingTerminals.first());
+                TerminalWidget *newCurrentTerm = remainingTerminals.first();
+                setCurrentTerminal(newCurrentTerm);
+                newCurrentTerm->setFocus();
             } else {
                 m_currentTerm = nullptr;
                 Q_EMIT activePaneChanged({});
