@@ -692,15 +692,6 @@ void MainWindow::rebuildCentralLayout() {
                 m_tabs[index].expanded = !m_tabs[index].expanded;
                 refreshSidebar();
             });
-            connect(m_verticalSidebar, &VerticalTabSidebar::paneActivated, this,
-                    [this](int tabId, const QUuid &paneId) {
-                        const int index = indexOfTabId(tabId);
-                        if (index < 0 || index >= m_tabs.size())
-                            return;
-                        gotoTab(index);
-                        if (m_tabs[index].pane)
-                            m_tabs[index].pane->focusPane(paneId);
-                    });
             connect(m_verticalSidebar, &VerticalTabSidebar::addTabRequested, this, &MainWindow::onTabAddRequested);
         }
         if (!m_mainSplitter) {

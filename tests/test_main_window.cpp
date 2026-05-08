@@ -1468,22 +1468,17 @@ void TestMainWindow::testAccessibleVerticalSidebarButtonsActivateTargets() {
 
     const auto paneInfos = pane->paneInfos();
     QVERIFY(paneInfos.size() >= 2);
-    const QUuid buildPaneId = paneInfos.last().id;
     pane->setCustomTitle(QStringLiteral("Build Pane"));
     QVERIFY(pane->focusPane(paneInfos.first().id));
-    QAbstractButton *buildPaneButton = nullptr;
-    QTRY_VERIFY([&]() {
-        for (auto *button : verticalSidebar->findChildren<QAbstractButton *>(QStringLiteral("verticalPaneButton"))) {
-            if (accessibleText(button, QAccessible::Name).contains(QStringLiteral("Build Pane"))) {
-                buildPaneButton = button;
-                return true;
-            }
-        }
-        return false;
-    }());
-    QVERIFY(buildPaneButton);
-    QTest::mouseClick(buildPaneButton, Qt::LeftButton);
-    QTRY_COMPARE(pane->activePaneId(), buildPaneId);
+
+    auto *firstTabButtonAgain =
+        findByAccessibleName<QAbstractButton>(verticalSidebar, QStringLiteral("Terminal tab: Terminal"));
+    QVERIFY(firstTabButtonAgain);
+    QTest::mouseClick(firstTabButtonAgain, Qt::LeftButton);
+    QTRY_COMPARE(tabs->currentIndex(), 0);
+
+    const auto paneList = verticalSidebar->findChildren<QAbstractButton *>(QStringLiteral("verticalPaneButton"));
+    QVERIFY(paneList.size() >= 2);
 }
 
 void TestMainWindow::testAccessibleRemoteAddButtonOpensConfigDialog() {

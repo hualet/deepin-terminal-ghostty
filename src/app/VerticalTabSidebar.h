@@ -2,10 +2,26 @@
 
 #include "TermPane.h"
 
+#include <QFrame>
 #include <QList>
 #include <QWidget>
 
 class QVBoxLayout;
+
+class VerticalTabSidebar;
+
+class ClickableSection : public QFrame {
+    Q_OBJECT
+
+public:
+    explicit ClickableSection(QWidget *parent = nullptr) : QFrame(parent) {}
+
+    int tabId = 0;
+    VerticalTabSidebar *sidebar = nullptr;
+
+protected:
+    void mousePressEvent(QMouseEvent *event) override;
+};
 
 class VerticalTabSidebar : public QWidget {
     Q_OBJECT
@@ -30,7 +46,6 @@ public:
 signals:
     void tabActivated(int tabId);
     void tabExpansionToggled(int tabId);
-    void paneActivated(int tabId, const QUuid &paneId);
     void addTabRequested();
 
 protected:
