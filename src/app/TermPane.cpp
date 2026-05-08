@@ -3,6 +3,7 @@
 #include "AppSettings.h"
 #include "PageSearchBar.h"
 #include "PtySession.h"
+#include "TerminalScrollContainer.h"
 #include "TerminalWidget.h"
 #include "ThemeLoader.h"
 #include "remote/ServerConfig.h"
@@ -135,6 +136,9 @@ TerminalWidget *firstTerminalWidget(QWidget *widget) {
     if (auto *term = qobject_cast<TerminalWidget *>(widget))
         return term;
 
+    if (auto *container = qobject_cast<TerminalScrollContainer *>(widget))
+        return container->terminal();
+
     if (auto *splitter = qobject_cast<QSplitter *>(widget)) {
         for (int i = 0; i < splitter->count(); ++i) {
             if (auto *term = firstTerminalWidget(splitter->widget(i)))
@@ -154,10 +158,44 @@ void collectTerminalWidgetsInVisualOrder(QWidget *widget, QList<TerminalWidget *
         return;
     }
 
+    if (auto *container = qobject_cast<TerminalScrollContainer *>(widget)) {
+        terminals.append(container->terminal());
+        return;
+    }
+
     if (auto *splitter = qobject_cast<QSplitter *>(widget)) {
         for (int i = 0; i < splitter->count(); ++i)
             collectTerminalWidgetsInVisualOrder(splitter->widget(i), terminals);
     }
+}
+
+TerminalScrollContainer *containerForTerminal(TerminalWidget *term) {
+    return term ? qobject_cast<TerminalScrollContainer *>(term->parentWidget()) : nullptr;
+}
+
+QWidget *layoutWidgetForTerminal(TerminalWidget *term) {
+    if (auto *container = containerForTerminal(term))
+        return container;
+    return term;
+}
+
+QSplitter *splitterContainingWidget(QWidget *root, QWidget *target) {
+    if (!root || !target)
+        return nullptr;
+
+    auto *splitter = qobject_cast<QSplitter *>(root);
+    if (!splitter)
+        return nullptr;
+
+    for (int i = 0; i < splitter->count(); ++i) {
+        QWidget *child = splitter->widget(i);
+        if (child == target)
+            return splitter;
+        if (auto *nested = splitterContainingWidget(child, target))
+            return nested;
+    }
+
+    return nullptr;
 }
 
 class ScopedUpdatesBlocker {
@@ -186,8 +224,8 @@ TermPane::TermPane(const std::optional<PtySession::StartOptions> &initialSession
     m_layout->setContentsMargins(0, 0, 0, 0);
 
     auto *term = createTerminal();
-    m_layout->addWidget(term);
-    m_rootWidget = term;
+    m_layout->addWidget(layoutWidgetForTerminal(term));
+    m_rootWidget = layoutWidgetForTerminal(term);
     setCurrentTerminal(term);
 
     m_searchBar = new PageSearchBar(this);
@@ -244,7 +282,8 @@ TerminalWidget *TermPane::currentTerminal() const {
 }
 
 TerminalWidget *TermPane::createTerminal() {
-    auto *term = new TerminalWidget(this);
+    auto *container = new TerminalScrollContainer(this);
+    auto *term = container->terminal();
     term->setContentsMargins(kTerminalContentPadding, kTerminalContentPadding, kTerminalContentPadding,
                              kTerminalContentPadding);
 
@@ -335,15 +374,17 @@ void TermPane::removeTerminal(TerminalWidget *term) {
     if (!term)
         return;
 
-    auto *splitter = qobject_cast<QSplitter *>(term->parentWidget());
+    const bool removedTermWasCurrent = (m_currentTerm == term);
+    QWidget *termWidget = layoutWidgetForTerminal(term);
+    auto *splitter = splitterContainingWidget(m_rootWidget, termWidget);
     if (!splitter) {
         // This is the only terminal in the pane
-        if (m_currentTerm == term)
+        if (removedTermWasCurrent)
             m_currentTerm = nullptr;
-        if (m_rootWidget == term)
+        if (m_rootWidget == termWidget)
             m_rootWidget = nullptr;
-        m_layout->removeWidget(term);
-        term->deleteLater();
+        m_layout->removeWidget(termWidget);
+        termWidget->deleteLater();
         Q_EMIT sessionClosed();
         if (!m_currentTerm)
             Q_EMIT activePaneChanged({});
@@ -352,15 +393,17 @@ void TermPane::removeTerminal(TerminalWidget *term) {
     }
 
     ScopedUpdatesBlocker updatesBlocker(this);
-    int index = splitter->indexOf(term);
+    int index = splitter->indexOf(termWidget);
+    if (index < 0)
+        return;
     QList<int> sizes = splitter->sizes();
     const int removedSize = sizes.value(index, 0);
     TerminalWidget *replacementTerm = nullptr;
-    if (m_currentTerm == term) {
+    if (removedTermWasCurrent) {
         QList<QWidget *> remainingWidgets;
         for (int i = 0; i < splitter->count(); ++i) {
             QWidget *child = splitter->widget(i);
-            if (child != term)
+            if (child != termWidget)
                 remainingWidgets.append(child);
         }
 
@@ -370,8 +413,8 @@ void TermPane::removeTerminal(TerminalWidget *term) {
         }
     }
 
-    term->setParent(nullptr);
-    term->deleteLater();
+    termWidget->setParent(nullptr);
+    termWidget->deleteLater();
 
     sizes.removeAt(index);
     if (!sizes.isEmpty()) {
@@ -383,12 +426,18 @@ void TermPane::removeTerminal(TerminalWidget *term) {
     promoteSingleChildSplitter(splitter);
 
     // Update current terminal if the removed one was current
-    if (m_currentTerm == term) {
-        if (replacementTerm) {
+    if (removedTermWasCurrent) {
+        if (replacementTerm && replacementTerm != term) {
             setCurrentTerminal(replacementTerm);
         } else {
-            m_currentTerm = nullptr;
-            Q_EMIT activePaneChanged({});
+            QList<TerminalWidget *> remainingTerminals = terminalsInVisualOrder();
+            remainingTerminals.removeAll(term);
+            if (!remainingTerminals.isEmpty()) {
+                setCurrentTerminal(remainingTerminals.first());
+            } else {
+                m_currentTerm = nullptr;
+                Q_EMIT activePaneChanged({});
+            }
         }
     }
 
@@ -410,25 +459,30 @@ QList<TerminalWidget *> TermPane::terminalsInVisualOrder() const {
 }
 
 void TermPane::splitTerminal(TerminalWidget *term, TerminalWidget *newTerm, Qt::Orientation orientation) {
-    auto *splitter = qobject_cast<QSplitter *>(term->parentWidget());
-    ScopedUpdatesBlocker updatesBlocker(splitter ? static_cast<QWidget *>(term) : static_cast<QWidget *>(this));
+    QWidget *termWidget = layoutWidgetForTerminal(term);
+    QWidget *newTermWidget = layoutWidgetForTerminal(newTerm);
+    auto *splitter = splitterContainingWidget(m_rootWidget, termWidget);
+    ScopedUpdatesBlocker updatesBlocker(splitter ? static_cast<QWidget *>(splitter) : static_cast<QWidget *>(this));
 
     auto *newSplitter = createPaneSplitter(orientation);
     if (splitter) {
-        const int index = splitter->indexOf(term);
+        const int index = splitter->indexOf(termWidget);
+        if (index < 0)
+            return;
         const QList<int> sizes = splitter->sizes();
+        newSplitter->setGeometry(termWidget->geometry());
         splitter->replaceWidget(index, newSplitter);
-        newSplitter->addWidget(term);
-        newSplitter->addWidget(newTerm);
+        newSplitter->addWidget(termWidget);
+        newSplitter->addWidget(newTermWidget);
         newSplitter->setSizes({1, 1});
         splitter->setSizes(sizes);
         return;
     }
 
-    m_layout->removeWidget(term);
-    term->setParent(nullptr);
-    newSplitter->addWidget(term);
-    newSplitter->addWidget(newTerm);
+    m_layout->removeWidget(termWidget);
+    termWidget->setParent(nullptr);
+    newSplitter->addWidget(termWidget);
+    newSplitter->addWidget(newTermWidget);
     newSplitter->setSizes({1, 1});
 
     m_layout->addWidget(newSplitter);

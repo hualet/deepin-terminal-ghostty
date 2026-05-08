@@ -39,6 +39,7 @@ set(APP_TRANSLATABLE_SOURCES
   src/app/MainWindow.cpp
   src/app/AppSettings.cpp
   src/app/SettingsDialog.cpp
+  src/app/TerminalScrollContainer.cpp
   src/app/TermPane.cpp
   src/app/VerticalTabSidebar.cpp
   src/app/remote/ServerConfigManager.cpp
@@ -225,6 +226,7 @@ add_executable(deepin-terminal-ghostty
   src/app/AppSettings.cpp
   src/app/ThemeLoader.cpp
   src/app/SettingsDialog.cpp
+  src/app/TerminalScrollContainer.cpp
   src/app/TermPane.cpp
   src/app/VerticalTabSidebar.cpp
   src/app/PageSearchBar.cpp

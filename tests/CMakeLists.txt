@@ -105,6 +105,7 @@ add_executable(test_main_window
   ${CMAKE_SOURCE_DIR}/src/app/AppSettings.cpp
   ${CMAKE_SOURCE_DIR}/src/app/ThemeLoader.cpp
   ${CMAKE_SOURCE_DIR}/src/app/SettingsDialog.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/TerminalScrollContainer.cpp
   ${CMAKE_SOURCE_DIR}/src/app/TermPane.cpp
   ${CMAKE_SOURCE_DIR}/src/app/VerticalTabSidebar.cpp
   ${CMAKE_SOURCE_DIR}/src/app/PageSearchBar.cpp

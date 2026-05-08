@@ -17,6 +17,7 @@
 #include <array>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <vector>
@@ -522,6 +523,7 @@ bool TerminalWidget::initialize() {
         return false;
     }
 
+    updateViewportScrollState();
     qCInfo(terminalLog) << "Terminal widget initialized with size" << m_cols << "x" << m_rows;
     return true;
 }
@@ -536,6 +538,30 @@ int TerminalWidget::terminalRows() const {
 
 bool TerminalWidget::hasRunningProcess() const {
     return m_ptySession && m_ptySession->hasRunningProcess();
+}
+
+TerminalWidget::ViewportScrollState TerminalWidget::viewportScrollState() const {
+    return queryViewportScrollState();
+}
+
+void TerminalWidget::scrollViewportBy(int deltaRows) {
+    if (!m_terminal || deltaRows == 0)
+        return;
+
+    GhosttyTerminalScrollViewport sv = {
+        .tag = GHOSTTY_SCROLL_VIEWPORT_DELTA,
+        .value = {.delta = static_cast<intptr_t>(deltaRows)},
+    };
+    ghostty_terminal_scroll_viewport(m_terminal, sv);
+    m_renderStateDirty = true;
+    updateViewportScrollState();
+    update();
+}
+
+void TerminalWidget::scrollViewportToOffset(int offset) {
+    const ViewportScrollState state = queryViewportScrollState();
+    const int targetOffset = qBound(0, offset, state.maximumOffset());
+    scrollViewportBy(targetOffset - state.offset);
 }
 
 void TerminalWidget::updateCachedFonts() {
@@ -1848,6 +1874,7 @@ void TerminalWidget::setStartOptions(const PtySession::StartOptions &options) {
 
 void TerminalWidget::setScrollbackLines(int lines) {
     m_scrollbackLines = lines;
+    updateViewportScrollState();
 }
 
 qreal TerminalWidget::opacity() const {
@@ -1963,6 +1990,7 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
     };
     ghostty_terminal_scroll_viewport(m_terminal, sv);
     m_renderStateDirty = true;
+    updateViewportScrollState();
     update();
 }
 
@@ -2210,6 +2238,7 @@ void TerminalWidget::applyPendingResize() {
         ghostty_terminal_resize(m_terminal, m_cols, m_rows, static_cast<uint32_t>(m_cellWidth),
                                 static_cast<uint32_t>(m_cellHeight));
         m_renderStateDirty = true;
+        updateViewportScrollState();
     }
 
     if (m_ptySession)
@@ -2269,6 +2298,7 @@ bool TerminalWidget::flushPendingPtyData(QRect *repaintRegion) {
                               static_cast<size_t>(m_pendingPtyData.size()));
     m_pendingPtyData.clear();
     m_renderStateDirty = true;
+    updateViewportScrollState();
 
     if (canDetectCursorOnly && ghostty_render_state_update(m_renderState, m_terminal) == GHOSTTY_SUCCESS) {
         m_renderStateDirty = false;
@@ -2290,6 +2320,31 @@ bool TerminalWidget::flushPendingPtyData(QRect *repaintRegion) {
 
     notifyInputMethodCursorChange();
     return false;
+}
+
+TerminalWidget::ViewportScrollState TerminalWidget::queryViewportScrollState() const {
+    ViewportScrollState state;
+    if (!m_terminal)
+        return state;
+
+    GhosttyTerminalScrollbar scrollbar = {};
+    if (ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &scrollbar) != GHOSTTY_SUCCESS)
+        return state;
+
+    constexpr uint64_t kMaxInt = static_cast<uint64_t>(std::numeric_limits<int>::max());
+    state.offset = static_cast<int>(qMin(scrollbar.offset, kMaxInt));
+    state.totalRows = static_cast<int>(qMin(scrollbar.total, kMaxInt));
+    state.visibleRows = static_cast<int>(qMin(scrollbar.len, kMaxInt));
+    return state;
+}
+
+void TerminalWidget::updateViewportScrollState() {
+    const ViewportScrollState state = queryViewportScrollState();
+    if (state == m_viewportScrollState)
+        return;
+
+    m_viewportScrollState = state;
+    Q_EMIT viewportScrollStateChanged();
 }
 
 void TerminalWidget::onRenderTimerTimeout() {

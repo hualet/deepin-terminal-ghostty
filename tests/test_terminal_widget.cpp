@@ -87,6 +87,7 @@ private slots:
     void testZoomInClampsAtMaximum();
     void testZoomOutClampsAtMinimum();
     void testSetScrollbackLines();
+    void testViewportScrollStateAndAbsoluteScroll();
     void testSetOpacity();
     void testSetOpacityFullDisablesTranslucentBackground();
     void testSetOpacityPartialEnablesTranslucentBackground();
@@ -1520,6 +1521,31 @@ void TestTerminalWidget::testSetScrollbackLines() {
     QVERIFY(widget.initialize());
     widget.setScrollbackLines(5000);
     QVERIFY(true);
+}
+
+void TestTerminalWidget::testViewportScrollStateAndAbsoluteScroll() {
+    CountingTerminalWidget widget;
+    widget.resize(240, 80);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    feedTerminalOutput(widget, QByteArray("one\ntwo\nthree\nfour\nfive\nsix\n"));
+
+    const auto bottomState = widget.viewportScrollState();
+    QVERIFY(bottomState.totalRows > bottomState.visibleRows);
+    QCOMPARE(bottomState.offset, bottomState.maximumOffset());
+
+    QSignalSpy spy(&widget, &TerminalWidget::viewportScrollStateChanged);
+    QVERIFY(spy.isValid());
+
+    widget.scrollViewportToOffset(0);
+    QTRY_VERIFY(spy.count() > 0);
+    QCOMPARE(widget.viewportScrollState().offset, 0);
+
+    widget.scrollViewportToOffset(widget.viewportScrollState().maximumOffset());
+    QTRY_COMPARE(widget.viewportScrollState().offset, bottomState.maximumOffset());
 }
 
 void TestTerminalWidget::testSetOpacity() {

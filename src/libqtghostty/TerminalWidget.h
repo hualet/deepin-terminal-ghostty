@@ -24,6 +24,18 @@ class TerminalWidget : public QWidget {
 
 public:
     enum class CommandState { Idle = 0, Running = 1, Succeeded = 2, Failed = 3 };
+    struct ViewportScrollState {
+        int offset = 0;
+        int totalRows = 0;
+        int visibleRows = 0;
+
+        int maximumOffset() const { return qMax(0, totalRows - visibleRows); }
+        bool canScroll() const { return maximumOffset() > 0; }
+        bool operator==(const ViewportScrollState &other) const {
+            return offset == other.offset && totalRows == other.totalRows && visibleRows == other.visibleRows;
+        }
+        bool operator!=(const ViewportScrollState &other) const { return !(*this == other); }
+    };
 
     explicit TerminalWidget(QWidget *parent = nullptr);
     ~TerminalWidget() override;
@@ -42,6 +54,9 @@ public:
     void setOpacity(qreal opacity);
     void applyTheme(const TerminalTheme &theme);
     void setStartOptions(const PtySession::StartOptions &options);
+    ViewportScrollState viewportScrollState() const;
+    void scrollViewportBy(int deltaRows);
+    void scrollViewportToOffset(int offset);
 
     void selectAll();
     void copyToClipboard();
@@ -81,6 +96,7 @@ signals:
     void sessionClosed();
     void focusGained();
     void commandStateChanged(CommandState state);
+    void viewportScrollStateChanged();
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -136,6 +152,8 @@ private:
     void setShellCommand(const QString &command);
     void setShellCommandResult(int exitCode);
     void updateCommandState(CommandState newState);
+    ViewportScrollState queryViewportScrollState() const;
+    void updateViewportScrollState();
 
     void updateSearchHighlight();
     QString textForScreenRow(int row) const;
@@ -207,6 +225,7 @@ private:
 
     // Scrollback
     int m_scrollbackLines = 1000;
+    ViewportScrollState m_viewportScrollState;
     bool m_isDark = true;
     qreal m_opacity = 1.0;
 
