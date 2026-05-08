@@ -1,3 +1,20 @@
+deepin-terminal-ghostty (0.9.3-1) unstable; urgency=medium
+
+  * Add Kitty image protocol rendering for inline terminal graphics.
+  * Add a draggable terminal scrollbar so users can navigate scrollback with
+    the pointer.
+  * Inherit the current working directory when opening new tabs and split
+    panes.
+  * Add a new-tab button to the vertical tab sidebar and wrap tab switching
+    shortcuts at the first and last tabs.
+  * Fix Alt-modified key encoding, including Alt+Backspace.
+  * Fix inverse text rendering with default colors and keep styled text aligned
+    to the terminal cell grid.
+  * Reduce split-pane flicker during widget tree changes.
+  * Update the bundled Ghostty VT library and headers.
+
+ -- Deepin Packages <packages@deepin.org>  Fri, 08 May 2026 23:59:00 +0800
+
 deepin-terminal-ghostty (0.9.1-1) unstable; urgency=medium
 
   * Add command line help (--help) so users can discover available options.
