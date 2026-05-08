@@ -45,6 +45,7 @@ private slots:
     void testRendersPreeditTextAcrossMultipleCells();
     void testRendersWideCharactersAcrossTwoCells();
     void testRendersAnsiForegroundColors();
+    void testRendersInverseTextWithDefaultColors();
     void testRendersInlineKittyPngImage();
     void testRendersTextDecorations();
     void testStyledTextKeepsCharactersOnCellGrid();
@@ -220,6 +221,22 @@ int countRedPixels(const QImage &image, const QRect &rect) {
             const QColor color = QColor::fromRgba(image.pixel(x, y));
             if (color.red() > 180 && color.green() < 80 && color.blue() < 80 && color.alpha() > 180)
                 ++count;
+        }
+    }
+
+    return count;
+}
+
+int countPixelsNear(const QImage &image, const QRect &rect, const QColor &target, int tolerance) {
+    int count = 0;
+    const QRect bounded = rect.intersected(image.rect());
+    for (int y = bounded.top(); y <= bounded.bottom(); ++y) {
+        for (int x = bounded.left(); x <= bounded.right(); ++x) {
+            const QColor color = QColor::fromRgba(image.pixel(x, y));
+            if (qAbs(color.red() - target.red()) <= tolerance && qAbs(color.green() - target.green()) <= tolerance
+                && qAbs(color.blue() - target.blue()) <= tolerance && color.alpha() > 180) {
+                ++count;
+            }
         }
     }
 
@@ -600,6 +617,37 @@ void TestTerminalWidget::testRendersAnsiForegroundColors() {
     QVERIFY2(dominantColor.isValid(), "rendered ANSI text should produce visible colored pixels");
     QVERIFY2(dominantColor.red() > dominantColor.green() + 20 && dominantColor.red() > dominantColor.blue() + 20,
              "ANSI red foreground should render as a red-dominant color instead of grayscale");
+}
+
+void TestTerminalWidget::testRendersInverseTextWithDefaultColors() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    TerminalTheme theme;
+    theme.name = QStringLiteral("inverse-test");
+    theme.displayName = QStringLiteral("Inverse Test");
+    theme.isDark = true;
+    theme.foreground = QColor(240, 240, 240);
+    theme.background = QColor(5, 5, 5);
+    theme.cursor = QColor(240, 240, 240);
+    for (QColor &color : theme.ansi)
+        color = QColor(128, 128, 128);
+    widget.applyTheme(theme);
+
+    widget.resize(240, 120);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    feedTerminalOutput(widget, QByteArray("\x1b[7mX\x1b[0m"));
+    const QImage frame = renderWidgetImage(widget);
+
+    const QFontMetrics fm(widget.terminalFont());
+    const QRect firstCell(0, 0, fm.horizontalAdvance('M'), fm.height());
+    QVERIFY2(countPixelsNear(frame, firstCell, theme.foreground, 12) > firstCell.width() * firstCell.height() / 2,
+             "inverse cell should paint the default foreground as the background");
+    QVERIFY2(countPixelsNear(frame, firstCell, theme.background, 24) > 0,
+             "inverse text without an explicit foreground should use the default background color");
 }
 
 void TestTerminalWidget::testRendersInlineKittyPngImage() {

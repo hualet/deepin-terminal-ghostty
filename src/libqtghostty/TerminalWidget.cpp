@@ -1260,7 +1260,7 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
             cachedFont = &m_fontBold;
         else if (style.italic)
             cachedFont = &m_fontItalic;
-        QColor cellForeground = hasFg ? QColor(fgColor.r, fgColor.g, fgColor.b) : defaultForeground;
+        QColor cellForeground = (style.inverse || hasFg) ? QColor(fgColor.r, fgColor.g, fgColor.b) : defaultForeground;
         if (style.faint)
             cellForeground = faintForeground(cellForeground, QColor(bgColor.r, bgColor.g, bgColor.b));
         QColor decorationColor = cellForeground;
