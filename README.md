@@ -43,6 +43,7 @@ The current development branch already includes:
 - settings dialog backed by DTK settings
 - configurable font, cursor, scrollback, and shortcuts
 - built-in remote management entry and saved server configuration support
+- Kitty image protocol support for inline/direct image placements
 - application translations
 - automated tests for PTY, terminal widget, app settings, and main window behavior
 

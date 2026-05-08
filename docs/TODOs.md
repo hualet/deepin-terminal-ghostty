@@ -14,6 +14,12 @@
 - [x] shell standard keybindings
 - [ ] 现代扩展协议
   - [ ] kitty image protocol
+    - [x] inline/direct image storage
+    - [x] inline PNG decode callback
+    - [x] non-virtual placement rendering
+    - [x] below-background / below-text / above-text z-layer rendering
+    - [ ] Unicode placeholder / virtual placements (`U=1`, required by textual-image TGP)
+    - [ ] file / temporary-file / shared-memory media
 - [ ] 面向多 Agent 优化
   - [x] shell integration
   - [ ] 执行状态点的通知

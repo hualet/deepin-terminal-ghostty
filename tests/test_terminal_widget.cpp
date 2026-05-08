@@ -45,6 +45,7 @@ private slots:
     void testRendersPreeditTextAcrossMultipleCells();
     void testRendersWideCharactersAcrossTwoCells();
     void testRendersAnsiForegroundColors();
+    void testRendersInlineKittyPngImage();
     void testRendersTextDecorations();
     void testStyledTextKeepsCharactersOnCellGrid();
     void testConcealedTextDoesNotRenderGlyphs();
@@ -209,6 +210,20 @@ QColor dominantChangedColor(const QImage &before, const QImage &after, const QRe
     }
 
     return bestColor;
+}
+
+int countRedPixels(const QImage &image, const QRect &rect) {
+    int count = 0;
+    const QRect bounded = rect.intersected(image.rect());
+    for (int y = bounded.top(); y <= bounded.bottom(); ++y) {
+        for (int x = bounded.left(); x <= bounded.right(); ++x) {
+            const QColor color = QColor::fromRgba(image.pixel(x, y));
+            if (color.red() > 180 && color.green() < 80 && color.blue() < 80 && color.alpha() > 180)
+                ++count;
+        }
+    }
+
+    return count;
 }
 
 int firstPaintedColumnInCell(const QImage &image, const QRect &cellRect, const QColor &background) {
@@ -585,6 +600,25 @@ void TestTerminalWidget::testRendersAnsiForegroundColors() {
     QVERIFY2(dominantColor.isValid(), "rendered ANSI text should produce visible colored pixels");
     QVERIFY2(dominantColor.red() > dominantColor.green() + 20 && dominantColor.red() > dominantColor.blue() + 20,
              "ANSI red foreground should render as a red-dominant color instead of grayscale");
+}
+
+void TestTerminalWidget::testRendersInlineKittyPngImage() {
+    CountingTerminalWidget widget;
+    widget.resize(640, 400);
+    QVERIFY(widget.initialize());
+
+    static constexpr const char *kOneByOneRedPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAA"
+                                                         "DUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+    const QByteArray kittyImage =
+        QByteArray("\033_Ga=T,f=100,q=2,c=4,r=2;") + kOneByOneRedPngBase64 + QByteArray("\033\\");
+
+    feedTerminalOutput(widget, kittyImage);
+    const QImage frame = renderWidgetImage(widget);
+
+    const QFontMetrics fm(widget.terminalFont());
+    const QRect imageArea(0, 0, fm.horizontalAdvance('M') * 4, fm.height() * 2);
+    QVERIFY2(countRedPixels(frame, imageArea) > imageArea.width() * imageArea.height() / 2,
+             "inline Kitty PNG image should render into its placement cells");
 }
 
 void TestTerminalWidget::testRendersTextDecorations() {

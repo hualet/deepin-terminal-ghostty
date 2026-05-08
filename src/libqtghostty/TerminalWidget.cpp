@@ -16,6 +16,8 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstring>
+#include <mutex>
 #include <optional>
 #include <vector>
 
@@ -27,6 +29,8 @@ constexpr int kResizeCoalesceIntervalMs = 8;
 constexpr int kImmediatePtyFlushBytes = 32 * 1024;
 constexpr int kMaxOscScanBufferBytes = 16 * 1024;
 constexpr uint32_t kMaxCellGraphemeCodepoints = 4096;
+constexpr uint64_t kKittyImageStorageLimitBytes = 64 * 1024 * 1024;
+constexpr size_t kKittyApcMaxBytes = 80 * 1024 * 1024;
 
 QColor faintForeground(const QColor &foreground, const QColor &background) {
     return QColor((foreground.red() + background.red()) / 2, (foreground.green() + background.green()) / 2,
@@ -114,6 +118,46 @@ bool renderBoxDrawingCodepoint(QPainter &painter, const QRect &cellRect, uint32_
 
     painter.setPen(previousPen);
     return true;
+}
+
+bool decodeKittyPng(void *userdata, const GhosttyAllocator *allocator, const uint8_t *data, size_t data_len,
+                    GhosttySysImage *out) {
+    (void)userdata;
+    if (!data || data_len == 0 || !out)
+        return false;
+
+    QImage decoded = QImage::fromData(data, static_cast<int>(data_len), "PNG");
+    if (decoded.isNull())
+        return false;
+
+    QImage rgba = decoded.convertToFormat(QImage::Format_RGBA8888);
+    if (rgba.isNull() || rgba.width() <= 0 || rgba.height() <= 0)
+        return false;
+
+    const size_t rowBytes = static_cast<size_t>(rgba.width()) * 4;
+    const size_t dataLen = rowBytes * static_cast<size_t>(rgba.height());
+    uint8_t *pixels = ghostty_alloc(allocator, dataLen);
+    if (!pixels)
+        return false;
+
+    for (int y = 0; y < rgba.height(); ++y)
+        std::memcpy(pixels + rowBytes * static_cast<size_t>(y), rgba.constScanLine(y), rowBytes);
+
+    out->width = static_cast<uint32_t>(rgba.width());
+    out->height = static_cast<uint32_t>(rgba.height());
+    out->data = pixels;
+    out->data_len = dataLen;
+    return true;
+}
+
+void ensureGhosttySysCallbacks() {
+    static std::once_flag once;
+    std::call_once(once, []() {
+        const GhosttyResult result =
+            ghostty_sys_set(GHOSTTY_SYS_OPT_DECODE_PNG, reinterpret_cast<const void *>(decodeKittyPng));
+        if (result != GHOSTTY_SUCCESS)
+            qCWarning(terminalLog) << "Failed to install Ghostty PNG decoder callback" << result;
+    });
 }
 
 void appendCodepoint(QString &text, uint32_t codepoint) {
@@ -443,6 +487,8 @@ TerminalWidget::~TerminalWidget() {
         ghostty_render_state_row_cells_free(m_rowCells);
     if (m_rowIter)
         ghostty_render_state_row_iterator_free(m_rowIter);
+    if (m_kittyPlacementIter)
+        ghostty_kitty_graphics_placement_iterator_free(m_kittyPlacementIter);
     if (m_renderState)
         ghostty_render_state_free(m_renderState);
     if (m_terminal)
@@ -555,6 +601,8 @@ QString TerminalWidget::debugSelectedText() const {
 #endif
 
 bool TerminalWidget::setupTerminal() {
+    ensureGhosttySysCallbacks();
+
     GhosttyTerminalOptions opts = {
         .cols = m_cols,
         .rows = m_rows,
@@ -581,8 +629,16 @@ bool TerminalWidget::setupTerminal() {
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_COLOR_SCHEME,
                          reinterpret_cast<const void *>(effectColorScheme));
 
-    uint64_t kittyLimit = 64 * 1024 * 1024;
+    uint64_t kittyLimit = kKittyImageStorageLimitBytes;
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT, &kittyLimit);
+
+    size_t kittyApcMaxBytes = kKittyApcMaxBytes;
+    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_APC_MAX_BYTES_KITTY, &kittyApcMaxBytes);
+
+    bool fileMedium = false;
+    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_FILE, &fileMedium);
+    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_TEMP_FILE, &fileMedium);
+    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_SHARED_MEM, &fileMedium);
 
     return true;
 }
@@ -603,6 +659,12 @@ bool TerminalWidget::setupRenderState() {
     err = ghostty_render_state_row_cells_new(nullptr, &m_rowCells);
     if (err != GHOSTTY_SUCCESS) {
         std::fprintf(stderr, "ghostty_render_state_row_cells_new failed (%d)\n", err);
+        return false;
+    }
+
+    err = ghostty_kitty_graphics_placement_iterator_new(nullptr, &m_kittyPlacementIter);
+    if (err != GHOSTTY_SUCCESS) {
+        std::fprintf(stderr, "ghostty_kitty_graphics_placement_iterator_new failed (%d)\n", err);
         return false;
     }
 
@@ -797,6 +859,8 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     m_debugLastFrameLineDrawCount = 0;
 #endif
 
+    renderKittyGraphicsLayer(backPainter, GHOSTTY_KITTY_PLACEMENT_LAYER_BELOW_BG);
+
     int y = 0;
     while (ghostty_render_state_row_iterator_next(m_rowIter)) {
         bool rowDirty = true;
@@ -811,13 +875,34 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
         ++m_debugLastFrameRenderedRowCount;
 #endif
 
-        renderRow(backPainter, y, colors);
+        renderRow(backPainter, y, colors, RowRenderPass::Background);
+
+        y += m_cellHeight;
+    }
+
+    renderKittyGraphicsLayer(backPainter, GHOSTTY_KITTY_PLACEMENT_LAYER_BELOW_TEXT);
+
+    err = ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, &m_rowIter);
+    if (err != GHOSTTY_SUCCESS)
+        return;
+
+    y = 0;
+    while (ghostty_render_state_row_iterator_next(m_rowIter)) {
+        bool rowDirty = true;
+        ghostty_render_state_row_get(m_rowIter, GHOSTTY_RENDER_STATE_ROW_DATA_DIRTY, &rowDirty);
+        if (!fullRedraw && !rowDirty) {
+            y += m_cellHeight;
+            continue;
+        }
+
+        renderRow(backPainter, y, colors, RowRenderPass::Text);
 
         bool clean = false;
         ghostty_render_state_row_set(m_rowIter, GHOSTTY_RENDER_STATE_ROW_OPTION_DIRTY, &clean);
 
         y += m_cellHeight;
     }
+    renderKittyGraphicsLayer(backPainter, GHOSTTY_KITTY_PLACEMENT_LAYER_ABOVE_TEXT);
     GhosttyRenderStateDirty cleanState = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
     ghostty_render_state_set(m_renderState, GHOSTTY_RENDER_STATE_OPTION_DIRTY, &cleanState);
     painter.setCompositionMode(QPainter::CompositionMode_Source);
@@ -825,16 +910,176 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
 }
 
-void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStateColors &colors) {
+bool TerminalWidget::renderKittyGraphicsLayer(QPainter &painter, GhosttyKittyPlacementLayer layer) {
+    if (!m_terminal || !m_kittyPlacementIter)
+        return false;
+
+    GhosttyKittyGraphics graphics = nullptr;
+    if (ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS, &graphics) != GHOSTTY_SUCCESS
+        || !graphics) {
+        return false;
+    }
+
+    if (ghostty_kitty_graphics_get(graphics, GHOSTTY_KITTY_GRAPHICS_DATA_PLACEMENT_ITERATOR, &m_kittyPlacementIter)
+        != GHOSTTY_SUCCESS) {
+        return false;
+    }
+
+    if (ghostty_kitty_graphics_placement_iterator_set(m_kittyPlacementIter,
+                                                      GHOSTTY_KITTY_GRAPHICS_PLACEMENT_ITERATOR_OPTION_LAYER, &layer)
+        != GHOSTTY_SUCCESS) {
+        return false;
+    }
+
+    bool rendered = false;
+    painter.save();
+    painter.setClipRect(QRect(QPoint(0, 0), terminalContentRect().size()));
+    while (ghostty_kitty_graphics_placement_next(m_kittyPlacementIter))
+        rendered = renderKittyPlacement(painter, graphics) || rendered;
+    painter.restore();
+    return rendered;
+}
+
+bool TerminalWidget::renderKittyPlacement(QPainter &painter, GhosttyKittyGraphics graphics) {
+    uint32_t imageId = 0;
+    if (ghostty_kitty_graphics_placement_get(m_kittyPlacementIter, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_IMAGE_ID,
+                                             &imageId)
+        != GHOSTTY_SUCCESS) {
+        return false;
+    }
+
+    GhosttyKittyGraphicsImage image = ghostty_kitty_graphics_image(graphics, imageId);
+    if (!image)
+        return false;
+
+    GhosttyKittyGraphicsPlacementRenderInfo renderInfo = GHOSTTY_INIT_SIZED(GhosttyKittyGraphicsPlacementRenderInfo);
+    if (ghostty_kitty_graphics_placement_render_info(m_kittyPlacementIter, image, m_terminal, &renderInfo)
+            != GHOSTTY_SUCCESS
+        || !renderInfo.viewport_visible || renderInfo.pixel_width == 0 || renderInfo.pixel_height == 0
+        || renderInfo.source_width == 0 || renderInfo.source_height == 0) {
+        return false;
+    }
+
+    uint32_t xOffset = 0;
+    uint32_t yOffset = 0;
+    ghostty_kitty_graphics_placement_get(m_kittyPlacementIter, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_X_OFFSET,
+                                         &xOffset);
+    ghostty_kitty_graphics_placement_get(m_kittyPlacementIter, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_Y_OFFSET,
+                                         &yOffset);
+
+    const QImage qtImage = imageForKittyImage(image);
+    if (qtImage.isNull())
+        return false;
+
+    const QRectF sourceRect(renderInfo.source_x, renderInfo.source_y, renderInfo.source_width,
+                            renderInfo.source_height);
+    const QRectF targetRect(static_cast<qreal>(renderInfo.viewport_col) * m_cellWidth + xOffset,
+                            static_cast<qreal>(renderInfo.viewport_row) * m_cellHeight + yOffset,
+                            renderInfo.pixel_width, renderInfo.pixel_height);
+    painter.drawImage(targetRect, qtImage, sourceRect);
+    return true;
+}
+
+QImage TerminalWidget::imageForKittyImage(GhosttyKittyGraphicsImage image) {
+    uint32_t imageId = 0;
+    if (ghostty_kitty_graphics_image_get(image, GHOSTTY_KITTY_IMAGE_DATA_ID, &imageId) != GHOSTTY_SUCCESS)
+        return {};
+
+    const auto cached = m_kittyImageCache.constFind(imageId);
+    if (cached != m_kittyImageCache.constEnd())
+        return cached.value();
+
+    uint32_t width = 0;
+    uint32_t height = 0;
+    GhosttyKittyImageFormat format = GHOSTTY_KITTY_IMAGE_FORMAT_RGBA;
+    GhosttyKittyImageCompression compression = GHOSTTY_KITTY_IMAGE_COMPRESSION_NONE;
+    const uint8_t *data = nullptr;
+    size_t dataLen = 0;
+    constexpr GhosttyKittyGraphicsImageData kImageDataKeys[] = {
+        GHOSTTY_KITTY_IMAGE_DATA_WIDTH,       GHOSTTY_KITTY_IMAGE_DATA_HEIGHT,   GHOSTTY_KITTY_IMAGE_DATA_FORMAT,
+        GHOSTTY_KITTY_IMAGE_DATA_COMPRESSION, GHOSTTY_KITTY_IMAGE_DATA_DATA_PTR, GHOSTTY_KITTY_IMAGE_DATA_DATA_LEN,
+    };
+    void *imageDataValues[] = {&width, &height, &format, &compression, &data, &dataLen};
+    size_t written = 0;
+    if (ghostty_kitty_graphics_image_get_multi(image, std::size(kImageDataKeys), kImageDataKeys, imageDataValues,
+                                               &written)
+            != GHOSTTY_SUCCESS
+        || written != std::size(kImageDataKeys) || width == 0 || height == 0 || !data
+        || compression != GHOSTTY_KITTY_IMAGE_COMPRESSION_NONE) {
+        return {};
+    }
+
+    QImage qtImage;
+    const qsizetype w = static_cast<qsizetype>(width);
+    const qsizetype h = static_cast<qsizetype>(height);
+    switch (format) {
+        case GHOSTTY_KITTY_IMAGE_FORMAT_RGB: {
+            const qsizetype stride = w * 3;
+            if (dataLen < static_cast<size_t>(stride * h))
+                return {};
+            qtImage = QImage(data, static_cast<int>(width), static_cast<int>(height), static_cast<int>(stride),
+                             QImage::Format_RGB888)
+                          .copy();
+            break;
+        }
+        case GHOSTTY_KITTY_IMAGE_FORMAT_RGBA: {
+            const qsizetype stride = w * 4;
+            if (dataLen < static_cast<size_t>(stride * h))
+                return {};
+            qtImage = QImage(data, static_cast<int>(width), static_cast<int>(height), static_cast<int>(stride),
+                             QImage::Format_RGBA8888)
+                          .copy();
+            break;
+        }
+        case GHOSTTY_KITTY_IMAGE_FORMAT_GRAY: {
+            const qsizetype stride = w;
+            if (dataLen < static_cast<size_t>(stride * h))
+                return {};
+            qtImage = QImage(data, static_cast<int>(width), static_cast<int>(height), static_cast<int>(stride),
+                             QImage::Format_Grayscale8)
+                          .convertToFormat(QImage::Format_RGBA8888);
+            break;
+        }
+        case GHOSTTY_KITTY_IMAGE_FORMAT_GRAY_ALPHA: {
+            const qsizetype stride = w * 2;
+            if (dataLen < static_cast<size_t>(stride * h))
+                return {};
+            qtImage = QImage(static_cast<int>(width), static_cast<int>(height), QImage::Format_RGBA8888);
+            for (uint32_t y = 0; y < height; ++y) {
+                auto *dst = qtImage.scanLine(static_cast<int>(y));
+                const uint8_t *src = data + static_cast<size_t>(y) * static_cast<size_t>(stride);
+                for (uint32_t x = 0; x < width; ++x) {
+                    dst[x * 4 + 0] = src[x * 2 + 0];
+                    dst[x * 4 + 1] = src[x * 2 + 0];
+                    dst[x * 4 + 2] = src[x * 2 + 0];
+                    dst[x * 4 + 3] = src[x * 2 + 1];
+                }
+            }
+            break;
+        }
+        default:
+            return {};
+    }
+
+    if (!qtImage.isNull())
+        m_kittyImageCache.insert(imageId, qtImage);
+    return qtImage;
+}
+
+void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStateColors &colors, RowRenderPass pass) {
     if (ghostty_render_state_row_get(m_rowIter, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &m_rowCells) != GHOSTTY_SUCCESS)
         return;
 
+    const bool drawBackground = pass == RowRenderPass::Background || pass == RowRenderPass::Full;
+    const bool drawText = pass == RowRenderPass::Text || pass == RowRenderPass::Full;
     const QColor defaultBackground(colors.background.r, colors.background.g, colors.background.b,
                                    qRound(m_opacity * 255));
     const QColor defaultForeground(colors.foreground.r, colors.foreground.g, colors.foreground.b);
-    painter.setCompositionMode(QPainter::CompositionMode_Source);
-    painter.fillRect(0, y, terminalContentRect().width(), m_cellHeight, defaultBackground);
-    painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+    if (drawBackground) {
+        painter.setCompositionMode(QPainter::CompositionMode_Source);
+        painter.fillRect(0, y, terminalContentRect().width(), m_cellHeight, defaultBackground);
+        painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+    }
 
     constexpr GhosttyRenderStateRowCellsData kCellDataKeys[] = {
         GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW,
@@ -992,13 +1237,20 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
             == GHOSTTY_SUCCESS;
 
         if (style.inverse) {
-            flushTextRun();
             std::swap(fgColor, bgColor);
-            if (!isWideTail)
+            if (drawText)
+                flushTextRun();
+            if (drawBackground && !isWideTail)
                 painter.fillRect(x, y, cellRenderWidth, m_cellHeight, QColor(bgColor.r, bgColor.g, bgColor.b));
-        } else if (hasBg && !isWideTail) {
-            flushTextRun();
+        } else if (drawBackground && hasBg && !isWideTail) {
+            if (drawText)
+                flushTextRun();
             painter.fillRect(x, y, cellRenderWidth, m_cellHeight, QColor(bgColor.r, bgColor.g, bgColor.b));
+        }
+
+        if (!drawText) {
+            x += m_cellWidth;
+            continue;
         }
 
         const QFont *cachedFont = &m_font;
@@ -2012,6 +2264,7 @@ bool TerminalWidget::flushPendingPtyData(QRect *repaintRegion) {
 #ifdef QTGHOSTTY_TESTING
     ++m_debugPtyFlushCount;
 #endif
+    m_kittyImageCache.clear();
     ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(m_pendingPtyData.constData()),
                               static_cast<size_t>(m_pendingPtyData.size()));
     m_pendingPtyData.clear();

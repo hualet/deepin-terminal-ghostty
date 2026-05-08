@@ -5,6 +5,7 @@
 
 #include <QElapsedTimer>
 #include <QFont>
+#include <QHash>
 #include <QImage>
 #include <QInputMethodEvent>
 #include <QTimer>
@@ -111,7 +112,11 @@ private:
     void updateGridSize();
     void renderTerminal(QPainter &painter);
     void renderOverlays(QPainter &painter) const;
-    void renderRow(QPainter &painter, int y, const GhosttyRenderStateColors &colors);
+    enum class RowRenderPass { Background, Text, Full };
+    void renderRow(QPainter &painter, int y, const GhosttyRenderStateColors &colors, RowRenderPass pass);
+    bool renderKittyGraphicsLayer(QPainter &painter, GhosttyKittyPlacementLayer layer);
+    bool renderKittyPlacement(QPainter &painter, GhosttyKittyGraphics graphics);
+    QImage imageForKittyImage(GhosttyKittyGraphicsImage image);
     void renderPreeditText(QPainter &painter);
     void sendFocusEvent(bool gained);
     QRect inputMethodCursorRect() const;
@@ -155,6 +160,7 @@ private:
     GhosttyRenderState m_renderState = nullptr;
     GhosttyRenderStateRowIterator m_rowIter = nullptr;
     GhosttyRenderStateRowCells m_rowCells = nullptr;
+    GhosttyKittyGraphicsPlacementIterator m_kittyPlacementIter = nullptr;
     GhosttyKeyEncoder m_keyEncoder = nullptr;
     GhosttyKeyEvent m_keyEvent = nullptr;
     GhosttyMouseEncoder m_mouseEncoder = nullptr;
@@ -169,6 +175,7 @@ private:
     int m_pendingExitCode = -1;
     CommandState m_commandState = CommandState::Idle;
     QByteArray m_pendingPtyData;
+    QHash<uint32_t, QImage> m_kittyImageCache;
     QTimer *m_renderTimer = nullptr;
     QTimer *m_resizeTimer = nullptr;
     QElapsedTimer m_lastRenderTime;
