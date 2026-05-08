@@ -1693,7 +1693,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     // without going through the encoder. This also handles the case where
     // Qt reports the key as Qt::Key_unknown but the text is a control char.
     QByteArray text = event->text().toUtf8();
-    if (text.size() == 1) {
+    if (text.size() == 1 && !(event->modifiers() & Qt::AltModifier)) {
         unsigned char c = static_cast<unsigned char>(text.at(0));
         if (c <= 0x1F || c == 0x7F) {
             m_ptySession->write(text);
