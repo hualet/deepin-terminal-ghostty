@@ -2638,6 +2638,19 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
                 break;
         }
         update();
+
+        QString text = selectedText();
+        if (!text.isEmpty())
+            QGuiApplication::clipboard()->setText(text, QClipboard::Selection);
+    }
+
+    if (event->button() == Qt::MiddleButton) {
+        if (!m_ptySession)
+            return;
+        QString text = QGuiApplication::clipboard()->text(QClipboard::Selection);
+        if (!text.isEmpty())
+            m_ptySession->write(text.toUtf8());
+        event->accept();
     }
 }
 
