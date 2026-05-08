@@ -503,7 +503,6 @@ void TermPane::promoteSingleChildSplitter(QSplitter *splitter) {
     if (!splitter || splitter->count() != 1)
         return;
 
-    const int promotedSize = splitter->sizes().value(0, 1);
     QWidget *remaining = splitter->widget(0);
 
     auto *parentSplitter = qobject_cast<QSplitter *>(splitter->parentWidget());
@@ -511,8 +510,6 @@ void TermPane::promoteSingleChildSplitter(QSplitter *splitter) {
         const int parentIndex = parentSplitter->indexOf(splitter);
         QList<int> sizes = parentSplitter->sizes();
         parentSplitter->replaceWidget(parentIndex, remaining);
-        sizes.removeAt(parentIndex);
-        sizes.insert(parentIndex, promotedSize);
         parentSplitter->setSizes(sizes);
     } else {
         remaining->setParent(nullptr);

@@ -70,6 +70,7 @@ private slots:
     void testCloseSplitSuppressesIntermediateRepaintWhileReparenting();
     void testNestedSplitDoesNotRepaintUnchangedSiblingTerminal();
     void testClosingCurrentSplitFocusesSiblingTerminal();
+    void testClosingNestedSplitPreservesParentSplitterSizes();
     void testClosingRepeatedSameDirectionSplitsPreservesSiblings();
     void testCloseOtherTerminalsPublishesSingleStructureChange();
     void testTermPaneReportsProcessIconNames();
@@ -641,6 +642,43 @@ void TestMainWindow::testClosingCurrentSplitFocusesSiblingTerminal() {
     QCOMPARE(pane.currentTerminal(), terminalForPaneId(pane, firstPaneId));
     QCOMPARE(QApplication::focusWidget(), pane.currentTerminal());
     QVERIFY(terminalForPaneId(pane, secondPaneId));
+}
+
+void TestMainWindow::testClosingNestedSplitPreservesParentSplitterSizes() {
+    ExposedTermPane pane;
+    pane.resize(1200, 800);
+    pane.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&pane));
+
+    const QUuid firstPaneId = pane.activePaneId();
+    pane.splitCurrent(Qt::Horizontal);
+    const QUuid secondPaneId = pane.activePaneId();
+    pane.splitCurrent(Qt::Vertical);
+    const QUuid thirdPaneId = pane.activePaneId();
+    QVERIFY(!thirdPaneId.isNull());
+    QCoreApplication::processEvents();
+
+    auto *firstTerminal = terminalForPaneId(pane, firstPaneId);
+    auto *secondTerminal = terminalForPaneId(pane, secondPaneId);
+    QVERIFY(firstTerminal);
+    QVERIFY(secondTerminal);
+
+    const int firstWidthBeforeClose = firstTerminal->width();
+    const int secondWidthBeforeClose = secondTerminal->width();
+
+    pane.closeCurrentSplit();
+    QCoreApplication::processEvents();
+
+    QCOMPARE(pane.paneInfos().size(), 2);
+    QCOMPARE(pane.activePaneId(), secondPaneId);
+    QVERIFY2(qAbs(firstTerminal->width() - firstWidthBeforeClose) <= 2,
+             qPrintable(QStringLiteral("first pane width changed from %1 to %2")
+                            .arg(firstWidthBeforeClose)
+                            .arg(firstTerminal->width())));
+    QVERIFY2(qAbs(secondTerminal->width() - secondWidthBeforeClose) <= 2,
+             qPrintable(QStringLiteral("second pane width changed from %1 to %2")
+                            .arg(secondWidthBeforeClose)
+                            .arg(secondTerminal->width())));
 }
 
 void TestMainWindow::testClosingRepeatedSameDirectionSplitsPreservesSiblings() {
