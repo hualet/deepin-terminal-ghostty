@@ -20,9 +20,14 @@
     - [x] below-background / below-text / above-text z-layer rendering
     - [ ] Unicode placeholder / virtual placements (`U=1`, required by textual-image TGP)
     - [ ] file / temporary-file / shared-memory media
+- [ ] Quake 模式
+- [x] shell integration
+- [x] 标签页状态信息展示
+  - [x] 显示当前执行命令的图标
+  - [x] 显示当前执行命令的状态
 - [ ] 面向多 Agent 优化
-  - [x] shell integration
-  - [ ] 执行状态点的通知
+  - [x] 支持 Agent 图标显示
+  - [ ] ACP：获取 Agent 执行状态
 - [ ] SE
   - [x] 添加单元测试
   - [x] 添加日志系统
