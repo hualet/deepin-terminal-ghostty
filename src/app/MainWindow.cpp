@@ -420,7 +420,13 @@ void MainWindow::addTab(bool activate, const std::optional<PtySession::StartOpti
 }
 
 void MainWindow::onTabAddRequested() {
-    addTab(true);
+    std::optional<PtySession::StartOptions> options;
+    if (auto *term = currentTerminal()) {
+        QString cwd = term->workingDirectory();
+        if (!cwd.isEmpty())
+            options = PtySession::StartOptions{{}, cwd};
+    }
+    addTab(true, options);
 }
 
 void MainWindow::onTabCloseRequested(int index, bool hasConfirmed) {

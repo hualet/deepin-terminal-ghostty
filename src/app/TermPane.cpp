@@ -281,9 +281,8 @@ TerminalWidget *TermPane::currentTerminal() const {
     return m_currentTerm;
 }
 
-TerminalWidget *TermPane::createTerminal() {
-    auto *container = new TerminalScrollContainer(this);
-    auto *term = container->terminal();
+TerminalWidget *TermPane::createTerminal(const std::optional<PtySession::StartOptions> &options) {
+    auto *term = new TerminalWidget(this);
     term->setContentsMargins(kTerminalContentPadding, kTerminalContentPadding, kTerminalContentPadding,
                              kTerminalContentPadding);
 
@@ -292,6 +291,8 @@ TerminalWidget *TermPane::createTerminal() {
         term->setStartOptions(*m_initialSessionOptions);
         m_startupTerminal = term;
         m_initialSessionOptions.reset();
+    } else if (options) {
+        term->setStartOptions(*options);
     }
     term->initialize();
 
@@ -360,7 +361,12 @@ void TermPane::splitCurrent(Qt::Orientation orientation) {
     if (!m_currentTerm)
         return;
 
-    TerminalWidget *newTerm = createTerminal();
+    std::optional<PtySession::StartOptions> options;
+    QString cwd = m_currentTerm->workingDirectory();
+    if (!cwd.isEmpty())
+        options = PtySession::StartOptions{{}, cwd};
+
+    TerminalWidget *newTerm = createTerminal(options);
     splitTerminal(m_currentTerm, newTerm, orientation);
     setCurrentTerminal(newTerm);
     notifyPaneStructureChanged();

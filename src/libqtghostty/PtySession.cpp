@@ -279,6 +279,20 @@ bool PtySession::hasRunningProcess() const {
     return fgPgid != m_childPid;
 }
 
+QString PtySession::workingDirectory() const {
+    if (m_childPid <= 0)
+        return {};
+
+    QByteArray link = "/proc/" + QByteArray::number(m_childPid) + "/cwd";
+    char buf[PATH_MAX];
+    ssize_t len = ::readlink(link.constData(), buf, sizeof(buf) - 1);
+    if (len <= 0)
+        return {};
+
+    buf[len] = '\0';
+    return QString::fromUtf8(buf);
+}
+
 void PtySession::write(const QByteArray &data) {
     if (m_masterFd < 0 || data.isEmpty()) {
         return;

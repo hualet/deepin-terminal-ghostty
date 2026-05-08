@@ -44,6 +44,7 @@ public:
     int terminalColumns() const;
     int terminalRows() const;
     bool hasRunningProcess() const;
+    QString workingDirectory() const;
 
     void setTerminalFont(const QFont &font);
     QFont terminalFont() const;

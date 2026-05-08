@@ -61,7 +61,7 @@ signals:
     void requestSettings();
 
 private:
-    TerminalWidget *createTerminal();
+    TerminalWidget *createTerminal(const std::optional<PtySession::StartOptions> &options = std::nullopt);
     void setupTerminalConnections(TerminalWidget *term);
     void setCurrentTerminal(TerminalWidget *term);
     void removeTerminal(TerminalWidget *term);

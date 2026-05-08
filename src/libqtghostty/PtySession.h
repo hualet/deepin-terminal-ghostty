@@ -27,6 +27,7 @@ public:
     void write(const QByteArray &data);
     void resize(int cols, int rows, int cellWidthPx, int cellHeightPx);
     bool hasRunningProcess() const;
+    QString workingDirectory() const;
 
 signals:
     void dataReceived(const QByteArray &data);

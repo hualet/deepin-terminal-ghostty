@@ -564,6 +564,12 @@ void TerminalWidget::scrollViewportToOffset(int offset) {
     scrollViewportBy(targetOffset - state.offset);
 }
 
+QString TerminalWidget::workingDirectory() const {
+    if (!m_ptySession)
+        return {};
+    return m_ptySession->workingDirectory();
+}
+
 void TerminalWidget::updateCachedFonts() {
     m_fontBold = m_font;
     m_fontBold.setBold(true);
