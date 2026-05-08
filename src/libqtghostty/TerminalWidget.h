@@ -199,6 +199,7 @@ private:
     QTimer *m_resizeTimer = nullptr;
     QElapsedTimer m_lastRenderTime;
     QImage m_backBuffer;
+    int m_backBufferViewportOffset = 0;
     uint16_t m_pendingResizeCols = 80;
     uint16_t m_pendingResizeRows = 24;
 

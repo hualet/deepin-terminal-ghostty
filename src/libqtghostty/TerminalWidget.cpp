@@ -32,6 +32,8 @@ constexpr int kMaxOscScanBufferBytes = 16 * 1024;
 constexpr uint32_t kMaxCellGraphemeCodepoints = 4096;
 constexpr uint64_t kKittyImageStorageLimitBytes = 64 * 1024 * 1024;
 constexpr size_t kKittyApcMaxBytes = 80 * 1024 * 1024;
+constexpr size_t kBytesPerScrollbackLine = 20 * 1024;
+constexpr size_t kMinimumScrollbackBytes = 100 * 1000 * 1000;
 
 QColor faintForeground(const QColor &foreground, const QColor &background) {
     return QColor((foreground.red() + background.red()) / 2, (foreground.green() + background.green()) / 2,
@@ -635,10 +637,12 @@ QString TerminalWidget::debugSelectedText() const {
 bool TerminalWidget::setupTerminal() {
     ensureGhosttySysCallbacks();
 
+    const size_t scrollbackBytes =
+        std::max<size_t>(kMinimumScrollbackBytes, static_cast<size_t>(m_scrollbackLines) * kBytesPerScrollbackLine);
     GhosttyTerminalOptions opts = {
         .cols = m_cols,
         .rows = m_rows,
-        .max_scrollback = static_cast<uint32_t>(m_scrollbackLines),
+        .max_scrollback = scrollbackBytes,
     };
 
     GhosttyResult err = ghostty_terminal_new(nullptr, &m_terminal, opts);
@@ -867,7 +871,9 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     GhosttyRenderStateDirty dirtyState = GHOSTTY_RENDER_STATE_DIRTY_FULL;
     ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_DIRTY, &dirtyState);
 
-    const bool fullRedraw = bufferRecreated || (dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FULL);
+    const int currentViewportOffset = viewportScrollState().offset;
+    const bool viewportChanged = currentViewportOffset != m_backBufferViewportOffset;
+    const bool fullRedraw = bufferRecreated || viewportChanged || (dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FULL);
     if (!fullRedraw && dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FALSE) {
         painter.setCompositionMode(QPainter::CompositionMode_Source);
         painter.drawImage(contentOrigin, m_backBuffer);
@@ -937,6 +943,7 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     renderKittyGraphicsLayer(backPainter, GHOSTTY_KITTY_PLACEMENT_LAYER_ABOVE_TEXT);
     GhosttyRenderStateDirty cleanState = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
     ghostty_render_state_set(m_renderState, GHOSTTY_RENDER_STATE_OPTION_DIRTY, &cleanState);
+    m_backBufferViewportOffset = currentViewportOffset;
     painter.setCompositionMode(QPainter::CompositionMode_Source);
     painter.drawImage(contentOrigin, m_backBuffer);
     painter.setCompositionMode(QPainter::CompositionMode_SourceOver);

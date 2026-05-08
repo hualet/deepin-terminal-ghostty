@@ -88,6 +88,12 @@ private slots:
     void testZoomOutClampsAtMinimum();
     void testSetScrollbackLines();
     void testViewportScrollStateAndAbsoluteScroll();
+    void testOutputDoesNotFollowBottomWhenViewportScrolledBack();
+    void testOutputDoesNotRepaintScrolledBackViewportContent();
+    void testContinuousOutputDoesNotMoveScrolledBackViewportContent();
+    void testContinuousOutputDoesNotFollowBottomWhenScrollbackPrunes();
+    void testOutputDoesNotFollowBottomAfterMouseWheelScrollback();
+    void testPendingOutputDoesNotFollowBottomAfterMouseWheelScrollback();
     void testSetOpacity();
     void testSetOpacityRepaintsCachedBackground();
     void testSetOpacityFullDisablesTranslucentBackground();
@@ -1547,6 +1553,182 @@ void TestTerminalWidget::testViewportScrollStateAndAbsoluteScroll() {
 
     widget.scrollViewportToOffset(widget.viewportScrollState().maximumOffset());
     QTRY_COMPARE(widget.viewportScrollState().offset, bottomState.maximumOffset());
+}
+
+void TestTerminalWidget::testOutputDoesNotFollowBottomWhenViewportScrolledBack() {
+    CountingTerminalWidget widget;
+    widget.resize(240, 80);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    feedTerminalOutput(widget, QByteArray("one\ntwo\nthree\nfour\nfive\nsix\n"));
+
+    const auto bottomState = widget.viewportScrollState();
+    QVERIFY(bottomState.totalRows > bottomState.visibleRows);
+    QCOMPARE(bottomState.offset, bottomState.maximumOffset());
+
+    widget.scrollViewportToOffset(0);
+    QCOMPARE(widget.viewportScrollState().offset, 0);
+
+    feedTerminalOutput(widget, QByteArray("seven\n"));
+
+    const auto afterOutput = widget.viewportScrollState();
+    QCOMPARE(afterOutput.offset, 0);
+    QVERIFY(afterOutput.maximumOffset() > bottomState.maximumOffset());
+}
+
+void TestTerminalWidget::testOutputDoesNotRepaintScrolledBackViewportContent() {
+    CountingTerminalWidget widget;
+    widget.resize(240, 80);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    QByteArray lines;
+    for (int i = 0; i < 40; ++i)
+        lines += QByteArray("line ") + QByteArray::number(i) + '\n';
+    feedTerminalOutput(widget, lines);
+
+    const auto bottomState = widget.viewportScrollState();
+    QVERIFY(bottomState.totalRows > bottomState.visibleRows);
+    QCOMPARE(bottomState.offset, bottomState.maximumOffset());
+
+    const int scrolledOffset = qMax(0, bottomState.maximumOffset() - 3);
+    QVERIFY(scrolledOffset < bottomState.maximumOffset());
+    widget.scrollViewportToOffset(scrolledOffset);
+    QCOMPARE(widget.viewportScrollState().offset, scrolledOffset);
+    QApplication::processEvents();
+
+    const QImage before = renderWidgetImage(widget);
+    feedTerminalOutput(widget, QByteArray("tail\n"));
+    const QImage after = renderWidgetImage(widget);
+
+    QCOMPARE(widget.viewportScrollState().offset, scrolledOffset);
+    QCOMPARE(changedBounds(before, after), QRect());
+}
+
+void TestTerminalWidget::testContinuousOutputDoesNotMoveScrolledBackViewportContent() {
+    CountingTerminalWidget widget;
+    widget.resize(240, 80);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    QByteArray lines;
+    for (int i = 0; i < 120; ++i)
+        lines += QByteArray("line ") + QByteArray::number(i) + '\n';
+    feedTerminalOutput(widget, lines);
+
+    const auto bottomState = widget.viewportScrollState();
+    QVERIFY(bottomState.totalRows > bottomState.visibleRows);
+
+    const int scrolledOffset = qMax(0, bottomState.maximumOffset() - 3);
+    QVERIFY(scrolledOffset < bottomState.maximumOffset());
+    widget.scrollViewportToOffset(scrolledOffset);
+    QCOMPARE(widget.viewportScrollState().offset, scrolledOffset);
+    QApplication::processEvents();
+
+    const QImage before = renderWidgetImage(widget);
+    for (int i = 0; i < 30; ++i)
+        feedTerminalOutput(widget, QByteArray("tail ") + QByteArray::number(i) + '\n');
+    const QImage after = renderWidgetImage(widget);
+
+    QCOMPARE(widget.viewportScrollState().offset, scrolledOffset);
+    QCOMPARE(changedBounds(before, after), QRect());
+}
+
+void TestTerminalWidget::testContinuousOutputDoesNotFollowBottomWhenScrollbackPrunes() {
+    CountingTerminalWidget widget;
+    widget.resize(240, 80);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    QByteArray lines;
+    const QByteArray payload(512, 'x');
+    for (int i = 0; i < 22000; ++i)
+        lines += QByteArray("line ") + QByteArray::number(i) + ' ' + payload + '\n';
+    feedTerminalOutput(widget, lines);
+
+    const auto bottomState = widget.viewportScrollState();
+    QVERIFY(bottomState.totalRows > bottomState.visibleRows);
+
+    const int scrolledOffset = qMax(0, bottomState.maximumOffset() - 3);
+    QVERIFY(scrolledOffset < bottomState.maximumOffset());
+    widget.scrollViewportToOffset(scrolledOffset);
+    QCOMPARE(widget.viewportScrollState().offset, scrolledOffset);
+    QApplication::processEvents();
+
+    for (int i = 0; i < 200; ++i)
+        feedTerminalOutput(widget, QByteArray("tail ") + QByteArray::number(i) + ' ' + payload + '\n');
+
+    const auto afterOutput = widget.viewportScrollState();
+    QVERIFY(afterOutput.offset < afterOutput.maximumOffset());
+}
+
+void TestTerminalWidget::testOutputDoesNotFollowBottomAfterMouseWheelScrollback() {
+    CountingTerminalWidget widget;
+    widget.resize(240, 80);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    feedTerminalOutput(widget, QByteArray("one\ntwo\nthree\nfour\nfive\nsix\n"));
+
+    const auto bottomState = widget.viewportScrollState();
+    QVERIFY(bottomState.totalRows > bottomState.visibleRows);
+    QCOMPARE(bottomState.offset, bottomState.maximumOffset());
+
+    QWheelEvent wheelEvent(QPointF(10, 10), QPointF(10, 10), QPoint(), QPoint(0, 120), Qt::NoButton, Qt::NoModifier,
+                           Qt::ScrollUpdate, false);
+    QApplication::sendEvent(&widget, &wheelEvent);
+    const auto scrolledState = widget.viewportScrollState();
+    QVERIFY(scrolledState.offset < bottomState.offset);
+
+    feedTerminalOutput(widget, QByteArray("seven\n"));
+
+    const auto afterOutput = widget.viewportScrollState();
+    QCOMPARE(afterOutput.offset, scrolledState.offset);
+    QVERIFY(afterOutput.offset < afterOutput.maximumOffset());
+}
+
+void TestTerminalWidget::testPendingOutputDoesNotFollowBottomAfterMouseWheelScrollback() {
+    CountingTerminalWidget widget;
+    widget.resize(240, 80);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    feedTerminalOutput(widget, QByteArray("one\ntwo\nthree\nfour\nfive\nsix\n"));
+
+    const auto bottomState = widget.viewportScrollState();
+    QVERIFY(bottomState.totalRows > bottomState.visibleRows);
+    QCOMPARE(bottomState.offset, bottomState.maximumOffset());
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    const bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                                   Q_ARG(QByteArray, QByteArray("seven\n")));
+    QVERIFY(invoked);
+    QCOMPARE(widget.debugPtyFlushCount(), flushBefore);
+
+    QWheelEvent wheelEvent(QPointF(10, 10), QPointF(10, 10), QPoint(), QPoint(0, 120), Qt::NoButton, Qt::NoModifier,
+                           Qt::ScrollUpdate, false);
+    QApplication::sendEvent(&widget, &wheelEvent);
+    const auto scrolledState = widget.viewportScrollState();
+    QVERIFY(scrolledState.offset < bottomState.offset);
+
+    waitForNextPtyFlush(widget, flushBefore);
+
+    const auto afterOutput = widget.viewportScrollState();
+    QCOMPARE(afterOutput.offset, scrolledState.offset);
+    QVERIFY(afterOutput.offset < afterOutput.maximumOffset());
 }
 
 void TestTerminalWidget::testSetOpacity() {

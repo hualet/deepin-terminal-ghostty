@@ -76,6 +76,7 @@ private slots:
     void testTermPaneReportsProcessIconNames();
     void testAppTerminalsSetTerminalContentMargins();
     void testTermPaneWrapsTerminalWithFloatingScrollBar();
+    void testScrollBarPositionDoesNotFollowBottomAfterOutput();
     void testVerticalTabsActionReflectsAndUpdatesSettings();
     void testVerticalTabsActionTracksExternalSettingChanges();
     void testVerticalTabsActionReflectsStartupSetting();
@@ -840,6 +841,50 @@ void TestMainWindow::testTermPaneWrapsTerminalWithFloatingScrollBar() {
 
     scrollBar->setValue(0);
     QTRY_COMPARE(terminal->viewportScrollState().offset, 0);
+}
+
+void TestMainWindow::testScrollBarPositionDoesNotFollowBottomAfterOutput() {
+    ExposedTermPane pane;
+    pane.resize(360, 160);
+    pane.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&pane));
+
+    auto *terminal = pane.currentTerminal();
+    QVERIFY(terminal);
+
+    auto *container = qobject_cast<TerminalScrollContainer *>(terminal->parentWidget());
+    QVERIFY(container);
+    auto *scrollBar = container->scrollBar();
+    QVERIFY(scrollBar);
+
+    QSignalSpy spy(terminal, &TerminalWidget::viewportScrollStateChanged);
+    QVERIFY(spy.isValid());
+
+    QByteArray lines;
+    for (int i = 0; i < 200; ++i)
+        lines += QByteArray::number(i) + '\n';
+    bool invoked =
+        QMetaObject::invokeMethod(terminal, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, lines));
+    QVERIFY(invoked);
+    QTRY_VERIFY(spy.count() > 0);
+
+    const int bottomOffset = terminal->viewportScrollState().maximumOffset();
+    QVERIFY(bottomOffset > 0);
+    QCOMPARE(terminal->viewportScrollState().offset, bottomOffset);
+    QCOMPARE(scrollBar->value(), bottomOffset);
+
+    scrollBar->setValue(bottomOffset / 2);
+    QTRY_COMPARE(terminal->viewportScrollState().offset, bottomOffset / 2);
+
+    spy.clear();
+    invoked =
+        QMetaObject::invokeMethod(terminal, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, "tail\n"));
+    QVERIFY(invoked);
+    QTRY_VERIFY(spy.count() > 0);
+
+    QCOMPARE(terminal->viewportScrollState().offset, bottomOffset / 2);
+    QCOMPARE(scrollBar->value(), bottomOffset / 2);
+    QVERIFY(terminal->viewportScrollState().maximumOffset() > bottomOffset);
 }
 
 void TestMainWindow::testVerticalTabsActionReflectsAndUpdatesSettings() {
