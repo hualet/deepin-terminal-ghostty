@@ -89,6 +89,7 @@ private slots:
     void testSetScrollbackLines();
     void testViewportScrollStateAndAbsoluteScroll();
     void testSetOpacity();
+    void testSetOpacityRepaintsCachedBackground();
     void testSetOpacityFullDisablesTranslucentBackground();
     void testSetOpacityPartialEnablesTranslucentBackground();
     void testHasRunningProcessReturnsFalseForShell();
@@ -1553,6 +1554,28 @@ void TestTerminalWidget::testSetOpacity() {
     QVERIFY(widget.initialize());
     widget.setOpacity(0.5);
     QCOMPARE(widget.opacity(), qreal(0.5));
+}
+
+void TestTerminalWidget::testSetOpacityRepaintsCachedBackground() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+    widget.resize(640, 400);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    widget.setCursorBlinkEnabled(false);
+    QApplication::processEvents();
+
+    const QImage opaqueFrame = renderWidgetImage(widget);
+    const QColor opaquePixel = QColor::fromRgba(opaqueFrame.pixel(opaqueFrame.width() / 2, opaqueFrame.height() / 2));
+    QVERIFY(opaquePixel.alpha() > 240);
+
+    widget.setOpacity(0.5);
+    const QImage translucentFrame = renderWidgetImage(widget);
+    const QColor translucentPixel =
+        QColor::fromRgba(translucentFrame.pixel(translucentFrame.width() / 2, translucentFrame.height() / 2));
+
+    QVERIFY2(translucentPixel.alpha() < opaquePixel.alpha(),
+             "opacity changes should repaint the cached terminal background with the new alpha");
 }
 
 void TestTerminalWidget::testSetOpacityFullDisablesTranslucentBackground() {

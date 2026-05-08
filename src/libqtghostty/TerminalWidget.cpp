@@ -1888,8 +1888,12 @@ qreal TerminalWidget::opacity() const {
 }
 
 void TerminalWidget::setOpacity(qreal opacity) {
+    if (qFuzzyCompare(m_opacity, opacity))
+        return;
+
     m_opacity = opacity;
     setAttribute(Qt::WA_TranslucentBackground, m_opacity < 1.0);
+    m_backBuffer = QImage();
     update();
 }
 
