@@ -216,15 +216,17 @@ private slots:
 
         ServerConfig cfg = makeConfig("fileserver", "172.16.0.1", "fileuser", "2222");
         cfg.m_group = "filegroup";
-        QSettings settings(path, QSettings::IniFormat);
-        settings.beginGroup(cfg.uniqueKey());
-        settings.setValue("userName", cfg.m_userName);
-        settings.setValue("address", cfg.m_address);
-        settings.setValue("port", cfg.m_port);
-        settings.setValue("Name", cfg.m_serverName);
-        settings.setValue("GroupName", cfg.m_group);
-        settings.endGroup();
-        settings.sync();
+        {
+            QSettings settings(path, QSettings::IniFormat);
+            settings.beginGroup(cfg.uniqueKey());
+            settings.setValue("userName", cfg.m_userName);
+            settings.setValue("address", cfg.m_address);
+            settings.setValue("port", cfg.m_port);
+            settings.setValue("Name", cfg.m_serverName);
+            settings.setValue("GroupName", cfg.m_group);
+            settings.endGroup();
+            settings.sync();
+        }
 
         auto *mgr = ServerConfigManager::instance();
         mgr->initServerConfig();
@@ -251,6 +253,10 @@ private slots:
 };
 
 int main(int argc, char *argv[]) {
+    const QByteArray testHome = "/tmp/deepin-terminal-ghostty-test-home-server-config";
+    QDir(QString::fromLocal8Bit(testHome)).removeRecursively();
+    qputenv("HOME", testHome);
+
     QCoreApplication app(argc, argv);
     TestServerConfigManager tc;
     QTEST_SET_MAIN_SOURCE_PATH

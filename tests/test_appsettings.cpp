@@ -1,6 +1,7 @@
 #include "AppSettings.h"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QFile>
 #include <QFont>
 #include <QGuiApplication>
@@ -174,6 +175,10 @@ private slots:
 };
 
 int main(int argc, char *argv[]) {
+    const QByteArray testHome = "/tmp/deepin-terminal-ghostty-test-home-appsettings";
+    QDir(QString::fromLocal8Bit(testHome)).removeRecursively();
+    qputenv("HOME", testHome);
+
     QGuiApplication app(argc, argv);
     TestAppSettings tc;
     QTEST_SET_MAIN_SOURCE_PATH

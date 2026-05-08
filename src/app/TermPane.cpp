@@ -282,7 +282,8 @@ TerminalWidget *TermPane::currentTerminal() const {
 }
 
 TerminalWidget *TermPane::createTerminal(const std::optional<PtySession::StartOptions> &options) {
-    auto *term = new TerminalWidget(this);
+    auto *container = new TerminalScrollContainer(this);
+    auto *term = container->terminal();
     term->setContentsMargins(kTerminalContentPadding, kTerminalContentPadding, kTerminalContentPadding,
                              kTerminalContentPadding);
 
