@@ -2658,8 +2658,29 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
         if (!m_ptySession)
             return;
         QString text = QGuiApplication::clipboard()->text(QClipboard::Selection);
-        if (!text.isEmpty())
-            m_ptySession->write(text.toUtf8());
+        if (!text.isEmpty()) {
+            QByteArray data = text.toUtf8();
+            bool bracketed = false;
+            ghostty_terminal_mode_get(m_terminal, GHOSTTY_MODE_BRACKETED_PASTE, &bracketed);
+            if (bracketed) {
+                size_t required = 0;
+                QByteArray mutableData(data);
+                GhosttyResult err = ghostty_paste_encode(mutableData.data(), static_cast<size_t>(mutableData.size()),
+                                                         true, nullptr, 0, &required);
+                if (err == GHOSTTY_OUT_OF_SPACE && required > 0) {
+                    QByteArray buf(static_cast<int>(required), '\0');
+                    size_t written = 0;
+                    if (ghostty_paste_encode(mutableData.data(), static_cast<size_t>(mutableData.size()), true,
+                                             buf.data(), static_cast<size_t>(buf.size()), &written)
+                        == GHOSTTY_SUCCESS) {
+                        m_ptySession->write(QByteArray(buf.constData(), static_cast<int>(written)));
+                        event->accept();
+                        return;
+                    }
+                }
+            }
+            m_ptySession->write(data);
+        }
         event->accept();
     }
 }
@@ -2707,6 +2728,20 @@ QString TerminalWidget::selectedText() const {
     int topCol = (m_selection.startRow <= m_selection.endRow) ? m_selection.startCol : m_selection.endCol;
     int bottomCol = (m_selection.startRow <= m_selection.endRow) ? m_selection.endCol : m_selection.startCol;
 
+    auto isRowWrapped = [&](int row) -> bool {
+        GhosttyPoint wp = {.tag = GHOSTTY_POINT_TAG_SCREEN,
+                           .value = {.coordinate = {.x = 0, .y = static_cast<uint32_t>(row)}}};
+        GhosttyGridRef wref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+        if (ghostty_terminal_grid_ref(m_terminal, wp, &wref) != GHOSTTY_SUCCESS)
+            return false;
+        GhosttyRow row_ = 0;
+        if (ghostty_grid_ref_row(&wref, &row_) != GHOSTTY_SUCCESS || row_ == 0)
+            return false;
+        bool wrapped = false;
+        ghostty_row_get(row_, GHOSTTY_ROW_DATA_WRAP, &wrapped);
+        return wrapped;
+    };
+
     QStringList lines;
     for (int row = top; row <= bottom; ++row) {
         QString line;
@@ -2737,7 +2772,14 @@ QString TerminalWidget::selectedText() const {
                     appendCodepoint(line, graphemes[i]);
             }
         }
-        lines.append(line);
+        if (row > top && isRowWrapped(row - 1)) {
+            if (!lines.isEmpty())
+                lines.last().append(line);
+            else
+                lines.append(line);
+        } else {
+            lines.append(line);
+        }
     }
     return lines.join("\n");
 }
@@ -2753,11 +2795,34 @@ void TerminalWidget::copyToClipboard() {
 }
 
 void TerminalWidget::pasteFromClipboard() {
-    if (!m_ptySession)
+    if (!m_ptySession || !m_terminal)
         return;
     QString text = QGuiApplication::clipboard()->text();
-    if (!text.isEmpty())
-        m_ptySession->write(text.toUtf8());
+    if (text.isEmpty())
+        return;
+    QByteArray data = text.toUtf8();
+
+    bool bracketed = false;
+    ghostty_terminal_mode_get(m_terminal, GHOSTTY_MODE_BRACKETED_PASTE, &bracketed);
+
+    if (bracketed) {
+        size_t required = 0;
+        QByteArray mutableData(data);
+        GhosttyResult err = ghostty_paste_encode(mutableData.data(), static_cast<size_t>(mutableData.size()), true,
+                                                 nullptr, 0, &required);
+        if (err == GHOSTTY_OUT_OF_SPACE && required > 0) {
+            QByteArray buf(static_cast<int>(required), '\0');
+            size_t written = 0;
+            if (ghostty_paste_encode(mutableData.data(), static_cast<size_t>(mutableData.size()), true, buf.data(),
+                                     static_cast<size_t>(buf.size()), &written)
+                == GHOSTTY_SUCCESS) {
+                m_ptySession->write(QByteArray(buf.constData(), static_cast<int>(written)));
+                return;
+            }
+        }
+    }
+
+    m_ptySession->write(data);
 }
 
 void TerminalWidget::selectAll() {
@@ -2872,10 +2937,62 @@ void TerminalWidget::selectWordAt(int screenRow, int col) {
 }
 
 void TerminalWidget::selectLineAt(int screenRow) {
+    if (!m_terminal) {
+        m_selection.active = true;
+        m_selection.startRow = screenRow;
+        m_selection.startCol = 0;
+        m_selection.endRow = screenRow;
+        m_selection.endCol = m_cols - 1;
+        return;
+    }
+
+    size_t totalRows = 0;
+    ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_TOTAL_ROWS, &totalRows);
+
+    auto isRowWrapped = [&](int row) -> bool {
+        if (row < 0 || row >= static_cast<int>(totalRows))
+            return false;
+        GhosttyPoint point = {.tag = GHOSTTY_POINT_TAG_SCREEN,
+                              .value = {.coordinate = {.x = 0, .y = static_cast<uint32_t>(row)}}};
+        GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+        if (ghostty_terminal_grid_ref(m_terminal, point, &ref) != GHOSTTY_SUCCESS)
+            return false;
+        GhosttyRow row_ = 0;
+        if (ghostty_grid_ref_row(&ref, &row_) != GHOSTTY_SUCCESS || row_ == 0)
+            return false;
+        bool wrapped = false;
+        ghostty_row_get(row_, GHOSTTY_ROW_DATA_WRAP, &wrapped);
+        return wrapped;
+    };
+
+    auto isRowContinuation = [&](int row) -> bool {
+        if (row < 0 || row >= static_cast<int>(totalRows))
+            return false;
+        GhosttyPoint point = {.tag = GHOSTTY_POINT_TAG_SCREEN,
+                              .value = {.coordinate = {.x = 0, .y = static_cast<uint32_t>(row)}}};
+        GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+        if (ghostty_terminal_grid_ref(m_terminal, point, &ref) != GHOSTTY_SUCCESS)
+            return false;
+        GhosttyRow row_ = 0;
+        if (ghostty_grid_ref_row(&ref, &row_) != GHOSTTY_SUCCESS || row_ == 0)
+            return false;
+        bool cont = false;
+        ghostty_row_get(row_, GHOSTTY_ROW_DATA_WRAP_CONTINUATION, &cont);
+        return cont;
+    };
+
+    int startRow = screenRow;
+    while (startRow > 0 && isRowContinuation(startRow))
+        --startRow;
+
+    int endRow = screenRow;
+    while (isRowWrapped(endRow) && endRow < static_cast<int>(totalRows) - 1)
+        ++endRow;
+
     m_selection.active = true;
-    m_selection.startRow = screenRow;
+    m_selection.startRow = startRow;
     m_selection.startCol = 0;
-    m_selection.endRow = screenRow;
+    m_selection.endRow = endRow;
     m_selection.endCol = m_cols - 1;
 }
 
@@ -2899,15 +3016,85 @@ void TerminalWidget::extendWordSelection(int screenRow, int col) {
 }
 
 void TerminalWidget::extendLineSelection(int screenRow) {
-    if (screenRow < m_clickAnchorRow) {
-        m_selection.startRow = screenRow;
+    if (!m_terminal) {
+        if (screenRow < m_clickAnchorRow) {
+            m_selection.startRow = screenRow;
+            m_selection.startCol = 0;
+            m_selection.endRow = m_clickAnchorRow;
+            m_selection.endCol = m_cols - 1;
+        } else {
+            m_selection.startRow = m_clickAnchorRow;
+            m_selection.startCol = 0;
+            m_selection.endRow = screenRow;
+            m_selection.endCol = m_cols - 1;
+        }
+        m_selection.active = true;
+        return;
+    }
+
+    size_t totalRows = 0;
+    ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_TOTAL_ROWS, &totalRows);
+
+    auto isRowWrapped = [&](int row) -> bool {
+        if (row < 0 || row >= static_cast<int>(totalRows))
+            return false;
+        GhosttyPoint point = {.tag = GHOSTTY_POINT_TAG_SCREEN,
+                              .value = {.coordinate = {.x = 0, .y = static_cast<uint32_t>(row)}}};
+        GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+        if (ghostty_terminal_grid_ref(m_terminal, point, &ref) != GHOSTTY_SUCCESS)
+            return false;
+        GhosttyRow row_ = 0;
+        if (ghostty_grid_ref_row(&ref, &row_) != GHOSTTY_SUCCESS || row_ == 0)
+            return false;
+        bool wrapped = false;
+        ghostty_row_get(row_, GHOSTTY_ROW_DATA_WRAP, &wrapped);
+        return wrapped;
+    };
+
+    auto isRowContinuation = [&](int row) -> bool {
+        if (row < 0 || row >= static_cast<int>(totalRows))
+            return false;
+        GhosttyPoint point = {.tag = GHOSTTY_POINT_TAG_SCREEN,
+                              .value = {.coordinate = {.x = 0, .y = static_cast<uint32_t>(row)}}};
+        GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+        if (ghostty_terminal_grid_ref(m_terminal, point, &ref) != GHOSTTY_SUCCESS)
+            return false;
+        GhosttyRow row_ = 0;
+        if (ghostty_grid_ref_row(&ref, &row_) != GHOSTTY_SUCCESS || row_ == 0)
+            return false;
+        bool cont = false;
+        ghostty_row_get(row_, GHOSTTY_ROW_DATA_WRAP_CONTINUATION, &cont);
+        return cont;
+    };
+
+    auto logicalLineStart = [&](int row) -> int {
+        int r = row;
+        while (r > 0 && isRowContinuation(r))
+            --r;
+        return r;
+    };
+
+    auto logicalLineEnd = [&](int row) -> int {
+        int r = row;
+        while (isRowWrapped(r) && r < static_cast<int>(totalRows) - 1)
+            ++r;
+        return r;
+    };
+
+    int anchorStart = logicalLineStart(m_clickAnchorRow);
+    int anchorEnd = logicalLineEnd(m_clickAnchorRow);
+    int dragStart = logicalLineStart(screenRow);
+    int dragEnd = logicalLineEnd(screenRow);
+
+    if (dragStart < anchorStart) {
+        m_selection.startRow = dragStart;
         m_selection.startCol = 0;
-        m_selection.endRow = m_clickAnchorRow;
+        m_selection.endRow = anchorEnd;
         m_selection.endCol = m_cols - 1;
     } else {
-        m_selection.startRow = m_clickAnchorRow;
+        m_selection.startRow = anchorStart;
         m_selection.startCol = 0;
-        m_selection.endRow = screenRow;
+        m_selection.endRow = dragEnd;
         m_selection.endCol = m_cols - 1;
     }
     m_selection.active = true;
