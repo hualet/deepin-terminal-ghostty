@@ -39,9 +39,9 @@
                             "key": "scrollbackLines",
                             "name": "Scrollback lines",
                             "type": "spinbutton",
-                            "default": 1000,
+                            "default": 5000,
                             "min": 100,
-                            "max": 50000,
+                            "max": 20000,
                             "step": 100
                         },
                         {

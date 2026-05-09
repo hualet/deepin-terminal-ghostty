@@ -81,6 +81,8 @@ public:
     int debugResizeApplyCount() const;
     int debugPtyFlushCount() const;
     int debugCursorOnlyRepaintCount() const;
+    int debugScrollbackLines() const;
+    size_t debugScrollbackByteBudget() const;
     void debugSetSelection(int startRow, int startCol, int endRow, int endCol, bool active);
     bool debugCellInSelection(int screenRow, int col) const;
     QString debugSelectedText() const;
@@ -149,6 +151,7 @@ private:
     void updateAfterPtyFlush(const QRect &repaintRegion);
     QRect cursorPaintRect() const;
     void clearRenderStateDirtyRows();
+    size_t scrollbackByteBudget() const;
     void scanShellIntegrationSequences(const QByteArray &data);
     void setShellCommand(const QString &command);
     void setShellCommandResult(int exitCode);
@@ -226,7 +229,7 @@ private:
     QTimer *m_blinkTimer = nullptr;
 
     // Scrollback
-    int m_scrollbackLines = 1000;
+    int m_scrollbackLines = 5000;
     ViewportScrollState m_viewportScrollState;
     bool m_isDark = true;
     qreal m_opacity = 1.0;

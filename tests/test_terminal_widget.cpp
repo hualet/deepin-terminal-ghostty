@@ -87,6 +87,7 @@ private slots:
     void testZoomInClampsAtMaximum();
     void testZoomOutClampsAtMinimum();
     void testSetScrollbackLines();
+    void testScrollbackLineCountMapsToByteBudget();
     void testViewportScrollStateAndAbsoluteScroll();
     void testOutputDoesNotFollowBottomWhenViewportScrolledBack();
     void testOutputDoesNotRepaintScrolledBackViewportContent();
@@ -1528,6 +1529,17 @@ void TestTerminalWidget::testSetScrollbackLines() {
     QVERIFY(widget.initialize());
     widget.setScrollbackLines(5000);
     QVERIFY(true);
+}
+
+void TestTerminalWidget::testScrollbackLineCountMapsToByteBudget() {
+    TerminalWidget widget;
+
+    QCOMPARE(widget.debugScrollbackLines(), 5000);
+    QCOMPARE(widget.debugScrollbackByteBudget(), size_t(100 * 1000 * 1000));
+
+    widget.setScrollbackLines(20000);
+    QCOMPARE(widget.debugScrollbackLines(), 20000);
+    QCOMPARE(widget.debugScrollbackByteBudget(), size_t(400 * 1000 * 1000));
 }
 
 void TestTerminalWidget::testViewportScrollStateAndAbsoluteScroll() {

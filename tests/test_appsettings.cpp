@@ -5,6 +5,9 @@
 #include <QFile>
 #include <QFont>
 #include <QGuiApplication>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTest>
@@ -18,6 +21,24 @@ QString settingsStorePath() {
 
 void clearVerticalTabsSetting() {
     QFile::remove(settingsStorePath());
+}
+
+QJsonObject findOptionByKey(const QJsonArray &groups, const QString &key) {
+    for (const QJsonValue &groupValue : groups) {
+        const QJsonObject group = groupValue.toObject();
+        const QJsonArray options = group.value(QStringLiteral("options")).toArray();
+        for (const QJsonValue &optionValue : options) {
+            const QJsonObject option = optionValue.toObject();
+            if (option.value(QStringLiteral("key")).toString() == key)
+                return option;
+        }
+
+        const QJsonObject nested = findOptionByKey(group.value(QStringLiteral("groups")).toArray(), key);
+        if (!nested.isEmpty())
+            return nested;
+    }
+
+    return {};
 }
 
 } // namespace
@@ -64,6 +85,23 @@ private slots:
         auto *s = AppSettings::instance();
         s->setScrollbackLines(5000);
         QCOMPARE(s->scrollbackLines(), 5000);
+    }
+
+    void testScrollbackLinesDefaultAndRange() {
+        auto *s = AppSettings::instance();
+        QCOMPARE(s->scrollbackLines(), 5000);
+
+        QFile file(QStringLiteral(":/settings/default-config.json"));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        QVERIFY(doc.isObject());
+
+        const QJsonArray groups = doc.object().value(QStringLiteral("groups")).toArray();
+        const QJsonObject scrollbackOption = findOptionByKey(groups, QStringLiteral("scrollbackLines"));
+
+        QVERIFY(!scrollbackOption.isEmpty());
+        QCOMPARE(scrollbackOption.value(QStringLiteral("default")).toInt(), 5000);
+        QCOMPARE(scrollbackOption.value(QStringLiteral("max")).toInt(), 20000);
     }
 
     void testVerticalTabsEnabled() {

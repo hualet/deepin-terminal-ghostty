@@ -32,7 +32,7 @@ constexpr int kMaxOscScanBufferBytes = 16 * 1024;
 constexpr uint32_t kMaxCellGraphemeCodepoints = 4096;
 constexpr uint64_t kKittyImageStorageLimitBytes = 64 * 1024 * 1024;
 constexpr size_t kKittyApcMaxBytes = 80 * 1024 * 1024;
-constexpr size_t kBytesPerScrollbackLine = 20 * 1024;
+constexpr size_t kBytesPerScrollbackLine = 20 * 1000;
 constexpr size_t kMinimumScrollbackBytes = 100 * 1000 * 1000;
 
 QColor faintForeground(const QColor &foreground, const QColor &background) {
@@ -617,6 +617,14 @@ int TerminalWidget::debugCursorOnlyRepaintCount() const {
     return m_debugCursorOnlyRepaintCount;
 }
 
+int TerminalWidget::debugScrollbackLines() const {
+    return m_scrollbackLines;
+}
+
+size_t TerminalWidget::debugScrollbackByteBudget() const {
+    return scrollbackByteBudget();
+}
+
 void TerminalWidget::debugSetSelection(int startRow, int startCol, int endRow, int endCol, bool active) {
     m_selection.startRow = startRow;
     m_selection.startCol = startCol;
@@ -637,12 +645,10 @@ QString TerminalWidget::debugSelectedText() const {
 bool TerminalWidget::setupTerminal() {
     ensureGhosttySysCallbacks();
 
-    const size_t scrollbackBytes =
-        std::max<size_t>(kMinimumScrollbackBytes, static_cast<size_t>(m_scrollbackLines) * kBytesPerScrollbackLine);
     GhosttyTerminalOptions opts = {
         .cols = m_cols,
         .rows = m_rows,
-        .max_scrollback = scrollbackBytes,
+        .max_scrollback = scrollbackByteBudget(),
     };
 
     GhosttyResult err = ghostty_terminal_new(nullptr, &m_terminal, opts);
@@ -2296,6 +2302,10 @@ void TerminalWidget::clearRenderStateDirtyRows() {
 
     GhosttyRenderStateDirty cleanState = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
     ghostty_render_state_set(m_renderState, GHOSTTY_RENDER_STATE_OPTION_DIRTY, &cleanState);
+}
+
+size_t TerminalWidget::scrollbackByteBudget() const {
+    return std::max<size_t>(kMinimumScrollbackBytes, static_cast<size_t>(m_scrollbackLines) * kBytesPerScrollbackLine);
 }
 
 bool TerminalWidget::flushPendingPtyData(QRect *repaintRegion) {
