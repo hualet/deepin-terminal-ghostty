@@ -42,6 +42,8 @@ set(APP_TRANSLATABLE_SOURCES
   src/app/TerminalScrollContainer.cpp
   src/app/TermPane.cpp
   src/app/VerticalTabSidebar.cpp
+  src/app/SessionManager.cpp
+  src/app/SessionSnapshot.cpp
   src/app/remote/ServerConfigManager.cpp
   src/app/remote/ServerConfigOptDlg.cpp
   src/app/remote/RemoteManagementPanel.cpp
@@ -230,6 +232,8 @@ add_executable(deepin-terminal-ghostty
   src/app/TermPane.cpp
   src/app/VerticalTabSidebar.cpp
   src/app/PageSearchBar.cpp
+  src/app/SessionManager.cpp
+  src/app/SessionSnapshot.cpp
   src/app/remote/ServerConfigManager.cpp
   src/app/remote/ServerConfigOptDlg.cpp
   src/app/remote/RemoteManagementPanel.cpp

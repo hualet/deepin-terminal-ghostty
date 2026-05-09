@@ -109,6 +109,8 @@ add_executable(test_main_window
   ${CMAKE_SOURCE_DIR}/src/app/TermPane.cpp
   ${CMAKE_SOURCE_DIR}/src/app/VerticalTabSidebar.cpp
   ${CMAKE_SOURCE_DIR}/src/app/PageSearchBar.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/SessionManager.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/SessionSnapshot.cpp
   ${CMAKE_SOURCE_DIR}/src/app/remote/ServerConfigManager.cpp
   ${CMAKE_SOURCE_DIR}/src/app/remote/ServerConfigOptDlg.cpp
   ${CMAKE_SOURCE_DIR}/src/app/remote/RemoteManagementPanel.cpp
