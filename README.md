@@ -37,15 +37,19 @@ The current development branch already includes:
 - PTY-based local shell sessions
 - Ghostty VT parsing and terminal state management
 - Qt/DTK desktop application integration
-- tabbed terminal workflow
+- tabbed terminal workflow with horizontal and vertical tab modes
 - split panes inside a tab
-- configurable vertical tab mode
-- settings dialog backed by DTK settings
-- configurable font, cursor, scrollback, and shortcuts
+- session save and restore — preserves tabs, split layouts, working directories, and terminal content (including colors) across restarts; configurable via settings
+- settings dialog backed by DTK settings (font, cursor, scrollback, opacity, theme, shortcuts, and session behavior)
+- built-in light/dark/system themes with custom theme support
 - built-in remote management entry and saved server configuration support
-- Kitty image protocol support for inline/direct image placements
-- application translations
-- automated tests for PTY, terminal widget, app settings, and main window behavior
+- terminal scrollbar and scrollback navigation
+- inline terminal content search
+- Kitty image protocol support for inline image placements
+- X11 PRIMARY selection support (copy-on-select, middle-click paste)
+- bracketed paste mode
+- application translations (zh_CN, es)
+- automated tests for PTY, terminal widget, app settings, session snapshot/manager, and main window behavior
 
 ## Project Status
 
@@ -73,10 +77,13 @@ This layer is designed to stay reusable and free of app-specific UI concepts suc
 The application layer in `src/app/` provides the product experience:
 
 - DTK main window and titlebar integration
-- tab management
+- tab management (horizontal and vertical modes)
 - split-pane orchestration
+- session save and restore
+- theme management and application
 - settings UI
 - remote management panel
+- inline search
 - application-level actions and shortcuts
 
 ## Repository Layout
@@ -142,6 +149,9 @@ Individual test binaries:
 ./build/tests/test_pty_session
 ./build/tests/test_terminal_widget
 ./build/tests/test_main_window
+./build/tests/test_session_snapshot
+./build/tests/test_session_manager
+./build/tests/test_server_config_manager
 ```
 
 ## Packaging
@@ -159,7 +169,6 @@ The resulting `.deb` files will be generated in the parent directory.
 The long-term direction includes:
 
 - continuing feature parity work with `deepin-terminal`
-- improving text rendering and terminal fidelity
 - expanding mouse, selection, clipboard, and search workflows
 - maturing remote and session management features
 - exploring a future GPU-backed rendering path
