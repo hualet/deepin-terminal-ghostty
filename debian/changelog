@@ -1,3 +1,15 @@
+deepin-terminal-ghostty (0.9.4-1) unstable; urgency=medium
+
+  * Triple-click selects the full logical line across soft-wrapped rows.
+  * Paste multi-line content using bracketed paste mode so shells treat it
+    as one input instead of executing each line separately.
+  * Copy-on-select with X11 PRIMARY selection and middle-click paste.
+  * Preserve scrollback position and split sizes during output and layout
+    changes.
+  * Map scrollback line count to a byte budget for correct memory usage.
+
+ -- Deepin Packages <packages@deepin.org>  Sat, 09 May 2026 23:59:00 +0800
+
 deepin-terminal-ghostty (0.9.3-1) unstable; urgency=medium
 
   * Add Kitty image protocol rendering for inline terminal graphics.
