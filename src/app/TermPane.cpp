@@ -1005,17 +1005,21 @@ QList<QPair<QString, TerminalWidget *>> TermPane::restoreFromSplitTree(const Spl
         return result;
 
     auto firstChild = node.children.first();
-    std::optional<PtySession::StartOptions> firstOpts;
-    if (!firstChild.workingDirectory.isEmpty())
-        firstOpts = PtySession::StartOptions{{}, firstChild.workingDirectory};
-    auto *firstTerm = createTerminalWithUuid(firstChild.uuid, firstOpts);
-    m_layout->addWidget(layoutWidgetForTerminal(firstTerm));
-    m_rootWidget = layoutWidgetForTerminal(firstTerm);
-    setCurrentTerminal(firstTerm);
-    result.append({firstChild.uuid, firstTerm});
+    if (firstChild.type == SplitNode::Type::Split) {
+        result.append(restoreFromSplitTree(firstChild));
+    } else {
+        std::optional<PtySession::StartOptions> firstOpts;
+        if (!firstChild.workingDirectory.isEmpty())
+            firstOpts = PtySession::StartOptions{{}, firstChild.workingDirectory};
+        auto *firstTerm = createTerminalWithUuid(firstChild.uuid, firstOpts);
+        m_layout->addWidget(layoutWidgetForTerminal(firstTerm));
+        m_rootWidget = layoutWidgetForTerminal(firstTerm);
+        setCurrentTerminal(firstTerm);
+        result.append({firstChild.uuid, firstTerm});
+    }
 
     for (int i = 1; i < node.children.size(); ++i)
-        result.append(rebuildTreeRecursive(node.children[i], firstTerm, node.orientation));
+        result.append(rebuildTreeRecursive(node.children[i], m_currentTerm, node.orientation));
 
     if (auto *splitter = qobject_cast<QSplitter *>(m_rootWidget))
         splitter->setSizes(node.sizes);
@@ -1041,19 +1045,29 @@ QList<QPair<QString, TerminalWidget *>> TermPane::rebuildTreeRecursive(const Spl
         return result;
 
     auto firstChild = node.children.first();
-    std::optional<PtySession::StartOptions> firstOpts;
-    if (!firstChild.workingDirectory.isEmpty())
-        firstOpts = PtySession::StartOptions{{}, firstChild.workingDirectory};
-    auto *firstTerm = createTerminalWithUuid(firstChild.uuid, firstOpts);
-    splitTerminal(sibling, firstTerm, parentOrientation);
-    result.append({firstChild.uuid, firstTerm});
+    TerminalWidget *firstTerm = nullptr;
+    if (firstChild.type == SplitNode::Type::Split) {
+        auto nested = rebuildTreeRecursive(firstChild, sibling, parentOrientation);
+        result.append(nested);
+        if (!nested.isEmpty())
+            firstTerm = nested.last().second;
+    } else {
+        std::optional<PtySession::StartOptions> firstOpts;
+        if (!firstChild.workingDirectory.isEmpty())
+            firstOpts = PtySession::StartOptions{{}, firstChild.workingDirectory};
+        firstTerm = createTerminalWithUuid(firstChild.uuid, firstOpts);
+        splitTerminal(sibling, firstTerm, parentOrientation);
+        result.append({firstChild.uuid, firstTerm});
+    }
 
     for (int i = 1; i < node.children.size(); ++i)
         result.append(rebuildTreeRecursive(node.children[i], firstTerm, node.orientation));
 
-    QWidget *termWidget = layoutWidgetForTerminal(firstTerm);
-    if (auto *splitter = qobject_cast<QSplitter *>(termWidget->parentWidget()))
-        splitter->setSizes(node.sizes);
+    if (firstTerm) {
+        QWidget *termWidget = layoutWidgetForTerminal(firstTerm);
+        if (auto *splitter = qobject_cast<QSplitter *>(termWidget->parentWidget()))
+            splitter->setSizes(node.sizes);
+    }
 
     return result;
 }

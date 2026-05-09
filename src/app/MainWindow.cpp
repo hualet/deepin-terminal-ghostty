@@ -1204,8 +1204,10 @@ void MainWindow::closeEvent(QCloseEvent *event) {
 }
 
 void MainWindow::saveSessionState() {
-    if (m_tabs.isEmpty())
+    if (m_tabs.isEmpty()) {
+        SessionManager::instance().clearSnapshot();
         return;
+    }
 
     WindowSnapshot snapshot;
     snapshot.width = width();

@@ -2,6 +2,7 @@
 
 #include "SessionSnapshot.h"
 
+#include <QByteArray>
 #include <QDir>
 #include <QList>
 #include <QPair>
