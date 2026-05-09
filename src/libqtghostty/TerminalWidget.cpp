@@ -566,6 +566,66 @@ void TerminalWidget::scrollViewportToOffset(int offset) {
     scrollViewportBy(targetOffset - state.offset);
 }
 
+QByteArray TerminalWidget::exportVtContent() const {
+    if (!m_terminal)
+        return {};
+
+    GhosttyFormatterScreenExtra screenExtra = {
+        .size = sizeof(GhosttyFormatterScreenExtra),
+        .cursor = true,
+        .style = true,
+        .hyperlink = true,
+        .protection = true,
+        .kitty_keyboard = true,
+        .charsets = true,
+    };
+    GhosttyFormatterTerminalExtra terminalExtra = {
+        .size = sizeof(GhosttyFormatterTerminalExtra),
+        .palette = true,
+        .modes = true,
+        .scrolling_region = true,
+        .tabstops = true,
+        .pwd = true,
+        .keyboard = true,
+        .screen = screenExtra,
+    };
+    GhosttyFormatterTerminalOptions opts = {
+        .size = sizeof(GhosttyFormatterTerminalOptions),
+        .emit = GHOSTTY_FORMATTER_FORMAT_VT,
+        .unwrap = false,
+        .trim = false,
+        .extra = terminalExtra,
+        .selection = nullptr,
+    };
+
+    GhosttyFormatter formatter = nullptr;
+    GhosttyResult err = ghostty_formatter_terminal_new(nullptr, &formatter, m_terminal, opts);
+    if (err != GHOSTTY_SUCCESS || !formatter)
+        return {};
+
+    uint8_t *outPtr = nullptr;
+    size_t outLen = 0;
+    err = ghostty_formatter_format_alloc(formatter, nullptr, &outPtr, &outLen);
+    ghostty_formatter_free(formatter);
+
+    if (err != GHOSTTY_SUCCESS || !outPtr || outLen == 0)
+        return {};
+
+    QByteArray result(reinterpret_cast<const char *>(outPtr), static_cast<int>(outLen));
+    ghostty_free(nullptr, outPtr, outLen);
+    return result;
+}
+
+void TerminalWidget::importVtContent(const QByteArray &data) {
+    if (!m_terminal || data.isEmpty())
+        return;
+
+    ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(data.constData()),
+                              static_cast<size_t>(data.size()));
+    m_renderStateDirty = true;
+    update();
+}
+
 QString TerminalWidget::workingDirectory() const {
     if (!m_ptySession)
         return {};

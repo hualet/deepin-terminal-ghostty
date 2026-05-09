@@ -59,6 +59,9 @@ public:
     void scrollViewportBy(int deltaRows);
     void scrollViewportToOffset(int offset);
 
+    QByteArray exportVtContent() const;
+    void importVtContent(const QByteArray &data);
+
     void selectAll();
     void copyToClipboard();
     void pasteFromClipboard();
