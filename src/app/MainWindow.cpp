@@ -132,6 +132,7 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
         setVerticalTabsEnabled(enabled);
     });
     connect(settings, &AppSettings::colorSchemeChanged, this, [this]() {
+        m_previewColorScheme.clear();
         applyThemeToAll();
         if (m_themeGroup) {
             QString scheme = AppSettings::instance()->colorScheme();
@@ -142,7 +143,9 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
         }
     });
     connect(DGuiApplicationHelper::instance(), &DGuiApplicationHelper::themeTypeChanged, this, [this]() {
-        if (AppSettings::instance()->colorScheme() == QStringLiteral("system"))
+        const QString scheme =
+            m_previewColorScheme.isEmpty() ? AppSettings::instance()->colorScheme() : m_previewColorScheme;
+        if (scheme == QStringLiteral("system"))
             applyThemeToAll();
     });
 
@@ -312,8 +315,7 @@ void MainWindow::setupTitleBar() {
     lightAction->setChecked(currentScheme == QStringLiteral("light"));
     lightAction->setData(QStringLiteral("light"));
     themeGroup->addAction(lightAction);
-    connect(lightAction, &QAction::triggered, this,
-            [this]() { AppSettings::instance()->setColorScheme(QStringLiteral("light")); });
+    connect(lightAction, &QAction::triggered, this, [this]() { commitThemeScheme(QStringLiteral("light")); });
 
     auto *darkAction = themeMenu->addAction(tr("Dark"));
     darkAction->setObjectName(QStringLiteral("darkThemeAction"));
@@ -321,8 +323,7 @@ void MainWindow::setupTitleBar() {
     darkAction->setChecked(currentScheme == QStringLiteral("dark"));
     darkAction->setData(QStringLiteral("dark"));
     themeGroup->addAction(darkAction);
-    connect(darkAction, &QAction::triggered, this,
-            [this]() { AppSettings::instance()->setColorScheme(QStringLiteral("dark")); });
+    connect(darkAction, &QAction::triggered, this, [this]() { commitThemeScheme(QStringLiteral("dark")); });
 
     auto *systemAction = themeMenu->addAction(tr("System"));
     systemAction->setObjectName(QStringLiteral("systemThemeAction"));
@@ -330,8 +331,7 @@ void MainWindow::setupTitleBar() {
     systemAction->setChecked(currentScheme == QStringLiteral("system"));
     systemAction->setData(QStringLiteral("system"));
     themeGroup->addAction(systemAction);
-    connect(systemAction, &QAction::triggered, this,
-            [this]() { AppSettings::instance()->setColorScheme(QStringLiteral("system")); });
+    connect(systemAction, &QAction::triggered, this, [this]() { commitThemeScheme(QStringLiteral("system")); });
 
     themeMenu->addSeparator();
 
@@ -351,7 +351,6 @@ void MainWindow::setupTitleBar() {
         return dispA.localeAwareCompare(dispB) < 0;
     });
 
-    QList<QAction *> extraActions;
     for (const QString &name : extraNames) {
         QString displayName;
         for (const auto &t : themes) {
@@ -365,9 +364,17 @@ void MainWindow::setupTitleBar() {
         act->setChecked(currentScheme == name);
         act->setData(name);
         themeGroup->addAction(act);
-        extraActions.append(act);
-        connect(act, &QAction::triggered, this, [this, name]() { AppSettings::instance()->setColorScheme(name); });
+        connect(act, &QAction::triggered, this, [this, name]() { commitThemeScheme(name); });
     }
+
+    connect(themeMenu, &QMenu::hovered, this, [this](QAction *action) {
+        if (!action || action->isSeparator())
+            return;
+        const QString scheme = action->data().toString();
+        if (!scheme.isEmpty())
+            previewThemeScheme(scheme);
+    });
+    connect(themeMenu, &QMenu::aboutToHide, this, &MainWindow::clearThemePreview);
 
     menu->addSeparator();
 
@@ -1105,16 +1112,21 @@ void MainWindow::onCompositorCapabilitiesChanged() {
     setWindowBlurEnabled(settings->backgroundBlur());
 }
 
-TerminalTheme MainWindow::resolveTheme() const {
+TerminalTheme MainWindow::resolveTheme(const QString &scheme) const {
     if (m_themes.isEmpty())
         const_cast<MainWindow *>(this)->m_themes = ThemeLoader::loadThemes();
-    QString setting = AppSettings::instance()->colorScheme();
-    if (setting == QStringLiteral("system")) {
+    if (scheme == QStringLiteral("system")) {
         auto colorType = DGuiApplicationHelper::instance()->themeType();
         return ThemeLoader::findTheme(m_themes, colorType == DGuiApplicationHelper::DarkType ? QStringLiteral("dark")
                                                                                              : QStringLiteral("light"));
     }
-    return ThemeLoader::findTheme(m_themes, setting);
+    return ThemeLoader::findTheme(m_themes, scheme);
+}
+
+TerminalTheme MainWindow::resolveTheme() const {
+    const QString scheme =
+        m_previewColorScheme.isEmpty() ? AppSettings::instance()->colorScheme() : m_previewColorScheme;
+    return resolveTheme(scheme);
 }
 
 void MainWindow::applyThemeToAll() {
@@ -1128,11 +1140,42 @@ void MainWindow::applyThemeToAll() {
     }
 
     auto *helper = DGuiApplicationHelper::instance();
-    QString setting = AppSettings::instance()->colorScheme();
+    const QString setting =
+        m_previewColorScheme.isEmpty() ? AppSettings::instance()->colorScheme() : m_previewColorScheme;
     if (setting == QStringLiteral("system"))
         helper->setPaletteType(DGuiApplicationHelper::UnknownType);
     else
         helper->setPaletteType(theme.isDark ? DGuiApplicationHelper::DarkType : DGuiApplicationHelper::LightType);
+}
+
+void MainWindow::previewThemeScheme(const QString &scheme) {
+    if (scheme.isEmpty() || m_previewColorScheme == scheme)
+        return;
+
+    m_previewColorScheme = scheme;
+    applyThemeToAll();
+}
+
+void MainWindow::clearThemePreview() {
+    if (m_previewColorScheme.isEmpty())
+        return;
+
+    m_previewColorScheme.clear();
+    applyThemeToAll();
+}
+
+void MainWindow::commitThemeScheme(const QString &scheme) {
+    if (scheme.isEmpty())
+        return;
+
+    m_previewColorScheme.clear();
+    auto *settings = AppSettings::instance();
+    if (settings->colorScheme() == scheme) {
+        applyThemeToAll();
+        return;
+    }
+
+    settings->setColorScheme(scheme);
 }
 
 void MainWindow::resizeEvent(QResizeEvent *event) {

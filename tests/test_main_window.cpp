@@ -22,6 +22,7 @@
 #include <QAbstractButton>
 #include <QAccessible>
 #include <QAction>
+#include <QDir>
 #include <QFile>
 #include <QIcon>
 #include <QImage>
@@ -108,6 +109,7 @@ private slots:
     void testThemeLoaderFindsThemeByName();
     void testThemeSettingDefaultIsSystem();
     void testThemeChangeAppliesToAllTerminals();
+    void testThemeMenuHoverPreviewsAndRestoresTheme();
     void testNextTabShortcutSwitchesInVerticalMode();
     void testPrevTabShortcutSwitchesInVerticalMode();
     void testGotoTabShortcutSwitchesInVerticalMode();
@@ -163,6 +165,16 @@ VerticalTabSidebar *sidebar(MainWindow &window) {
 
 DTitlebar *titlebar(MainWindow &window) {
     return window.findChild<DTitlebar *>();
+}
+
+QAction *findMenuActionByText(QMenu *menu, const QString &text) {
+    if (!menu)
+        return nullptr;
+    for (auto *action : menu->actions()) {
+        if (action->text() == text)
+            return action;
+    }
+    return nullptr;
 }
 
 bool waitForTabCount(DTabBar *tabs, int expectedCount, int timeoutMs = 5000) {
@@ -1628,12 +1640,14 @@ void TestMainWindow::testTerminalProcessBadgeHasVisibleColoredArtwork() {
 
 void TestMainWindow::testThemeLoaderLoadsAllThemes() {
     auto themes = ThemeLoader::loadThemes();
-    QCOMPARE(themes.size(), 8);
+    const auto themeFiles = QDir(QStringLiteral(":/themes")).entryList({QStringLiteral("*.json")}, QDir::Files);
+    QCOMPARE(themes.size(), themeFiles.size());
 
     QStringList names;
     for (const auto &t : themes)
         names.append(t.name);
 
+    QCOMPARE(names.removeDuplicates(), 0);
     QVERIFY(names.contains(QStringLiteral("dark")));
     QVERIFY(names.contains(QStringLiteral("light")));
     QVERIFY(names.contains(QStringLiteral("bim")));
@@ -1686,6 +1700,48 @@ void TestMainWindow::testThemeChangeAppliesToAllTerminals() {
 
     settings->setColorScheme(QStringLiteral("system"));
     QTRY_COMPARE(settings->colorScheme(), QStringLiteral("system"));
+}
+
+void TestMainWindow::testThemeMenuHoverPreviewsAndRestoresTheme() {
+    auto *settings = AppSettings::instance();
+    settings->setColorScheme(QStringLiteral("light"));
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *terminal = currentTerminal(window);
+    QVERIFY(terminal);
+    QTRY_COMPARE(terminal->debugAppliedForeground(), QColor(0, 0, 0));
+    QTRY_COMPARE(terminal->debugAppliedBackground(), QColor(248, 248, 248));
+
+    auto *tb = titlebar(window);
+    QVERIFY(tb);
+    auto *rootMenu = tb->menu();
+    QVERIFY(rootMenu);
+    auto *themeAction = findMenuActionByText(rootMenu, QStringLiteral("Theme"));
+    QVERIFY(themeAction);
+    auto *themeMenu = themeAction->menu();
+    QVERIFY(themeMenu);
+
+    auto *bimAction = findMenuActionByText(themeMenu, QStringLiteral("Bim"));
+    QVERIFY(bimAction);
+    QMetaObject::invokeMethod(themeMenu, "hovered", Qt::DirectConnection, Q_ARG(QAction *, bimAction));
+
+    QCOMPARE(settings->colorScheme(), QStringLiteral("light"));
+    QTRY_COMPARE(terminal->debugAppliedForeground(), QColor(255, 213, 0));
+    QTRY_COMPARE(terminal->debugAppliedBackground(), QColor(1, 40, 73));
+
+    QMetaObject::invokeMethod(themeMenu, "aboutToHide", Qt::DirectConnection);
+    QTRY_COMPARE(terminal->debugAppliedForeground(), QColor(0, 0, 0));
+    QTRY_COMPARE(terminal->debugAppliedBackground(), QColor(248, 248, 248));
+    QCOMPARE(settings->colorScheme(), QStringLiteral("light"));
+
+    QMetaObject::invokeMethod(themeMenu, "hovered", Qt::DirectConnection, Q_ARG(QAction *, bimAction));
+    bimAction->trigger();
+    QCOMPARE(settings->colorScheme(), QStringLiteral("bim"));
+    QTRY_COMPARE(terminal->debugAppliedForeground(), QColor(255, 213, 0));
+    QTRY_COMPARE(terminal->debugAppliedBackground(), QColor(1, 40, 73));
 }
 
 void TestMainWindow::testNextTabShortcutSwitchesInVerticalMode() {

@@ -88,8 +88,12 @@ private:
     void onShortcutCustomCommand();
     void onShortcutRemoteManagement();
     void onConnectRemoteServer(const ServerConfig &config);
+    TerminalTheme resolveTheme(const QString &scheme) const;
     TerminalTheme resolveTheme() const;
     void applyThemeToAll();
+    void previewThemeScheme(const QString &scheme);
+    void clearThemePreview();
+    void commitThemeScheme(const QString &scheme);
     void showExitConfirmDialog(const QString &title, const QString &body, std::function<void()> onConfirm);
     void saveSessionState();
     void restoreSession();
@@ -113,6 +117,7 @@ private:
     bool m_startupSessionHandled = false;
     bool m_hasConfirmedClose = false;
     bool m_compositorHasBlur = false;
+    QString m_previewColorScheme;
     void initWindowEffects();
     void applyOpacityToAll();
     void setWindowBlurEnabled(bool enabled);
