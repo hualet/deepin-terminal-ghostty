@@ -1,3 +1,15 @@
+deepin-terminal-ghostty (0.9.5-1) unstable; urgency=medium
+
+  * Add session restore settings so terminal windows, tabs, splits, and
+    scrollback can be saved and restored across restarts.
+  * Add 33 new terminal themes inspired by opencode palettes for broader
+    built-in appearance choices.
+  * Preview themes while hovering theme menu entries, restoring the saved
+    theme when no selection is made.
+  * Reorganize settings categories for a clearer preferences layout.
+
+ -- Deepin Packages <packages@deepin.org>  Sun, 10 May 2026 23:59:00 +0800
+
 deepin-terminal-ghostty (0.9.4-1) unstable; urgency=medium
 
   * Triple-click selects the full logical line across soft-wrapped rows.
