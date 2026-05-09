@@ -1,5 +1,6 @@
 #include "SessionManager.h"
 
+#include <QDir>
 #include <QStandardPaths>
 #include <QTest>
 
@@ -55,5 +56,15 @@ private slots:
     void cleanupTestCase() { SessionManager::instance().clearSnapshot(); }
 };
 
-QTEST_MAIN(TestSessionManager)
+int main(int argc, char *argv[]) {
+    const QByteArray testHome = "/tmp/deepin-terminal-ghostty-test-home-session-manager";
+    QDir(QString::fromLocal8Bit(testHome)).removeRecursively();
+    qputenv("HOME", testHome);
+
+    QGuiApplication app(argc, argv);
+    TestSessionManager tc;
+    QTEST_SET_MAIN_SOURCE_PATH
+    return QTest::qExec(&tc, argc, argv);
+}
+
 #include "test_session_manager.moc"
