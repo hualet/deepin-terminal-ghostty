@@ -164,6 +164,21 @@ target_link_libraries(test_server_config_manager PRIVATE
 
 add_test(NAME ServerConfigManager COMMAND test_server_config_manager)
 
+# ---------------------------------------------------------------------------
+# test_session_snapshot
+# ---------------------------------------------------------------------------
+add_executable(test_session_snapshot
+  test_session_snapshot.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/SessionSnapshot.cpp
+)
+
+target_link_libraries(test_session_snapshot PRIVATE
+  Qt6::Core
+  Qt6::Test
+)
+
+add_test(NAME SessionSnapshot COMMAND test_session_snapshot)
+
 add_test(NAME StartupCommandIntegration
   COMMAND /bin/bash ${CMAKE_SOURCE_DIR}/tests/test_startup_command_integration.sh
 )
