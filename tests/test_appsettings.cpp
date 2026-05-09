@@ -41,6 +41,46 @@ QJsonObject findOptionByKey(const QJsonArray &groups, const QString &key) {
     return {};
 }
 
+QStringList groupKeys(const QJsonObject &group) {
+    QStringList keys;
+    const QJsonArray nestedGroups = group.value(QStringLiteral("groups")).toArray();
+    for (const QJsonValue &groupValue : nestedGroups)
+        keys.append(groupValue.toObject().value(QStringLiteral("key")).toString());
+    return keys;
+}
+
+QJsonObject findGroupByKey(const QJsonArray &groups, const QString &key) {
+    for (const QJsonValue &groupValue : groups) {
+        const QJsonObject group = groupValue.toObject();
+        if (group.value(QStringLiteral("key")).toString() == key)
+            return group;
+
+        const QJsonObject nested = findGroupByKey(group.value(QStringLiteral("groups")).toArray(), key);
+        if (!nested.isEmpty())
+            return nested;
+    }
+
+    return {};
+}
+
+QJsonObject findDirectGroupByKey(const QJsonArray &groups, const QString &key) {
+    for (const QJsonValue &groupValue : groups) {
+        const QJsonObject group = groupValue.toObject();
+        if (group.value(QStringLiteral("key")).toString() == key)
+            return group;
+    }
+
+    return {};
+}
+
+QStringList optionKeys(const QJsonObject &group) {
+    QStringList keys;
+    const QJsonArray options = group.value(QStringLiteral("options")).toArray();
+    for (const QJsonValue &optionValue : options)
+        keys.append(optionValue.toObject().value(QStringLiteral("key")).toString());
+    return keys;
+}
+
 } // namespace
 
 class TestAppSettings : public QObject {
@@ -102,6 +142,39 @@ private slots:
         QVERIFY(!scrollbackOption.isEmpty());
         QCOMPARE(scrollbackOption.value(QStringLiteral("default")).toInt(), 5000);
         QCOMPARE(scrollbackOption.value(QStringLiteral("max")).toInt(), 20000);
+    }
+
+    void testSettingsGroupsMatchIssue17Layout() {
+        QFile file(QStringLiteral(":/settings/default-config.json"));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        QVERIFY(doc.isObject());
+
+        const QJsonArray groups = doc.object().value(QStringLiteral("groups")).toArray();
+        const QJsonObject basic = findDirectGroupByKey(groups, QStringLiteral("basic"));
+        const QJsonObject shortcuts = findDirectGroupByKey(groups, QStringLiteral("shortcuts"));
+        const QJsonObject advanced = findDirectGroupByKey(groups, QStringLiteral("advanced"));
+
+        QVERIFY(!basic.isEmpty());
+        QVERIFY(!shortcuts.isEmpty());
+        QVERIFY(!advanced.isEmpty());
+        QCOMPARE(groupKeys(basic),
+                 QStringList({QStringLiteral("interface"), QStringLiteral("cursor"), QStringLiteral("layout")}));
+        QCOMPARE(groupKeys(shortcuts),
+                 QStringList({QStringLiteral("terminal"), QStringLiteral("tab"), QStringLiteral("advanced")}));
+        QCOMPARE(groupKeys(advanced), QStringList({QStringLiteral("session"), QStringLiteral("scrolling")}));
+
+        QCOMPARE(optionKeys(findGroupByKey(groups, QStringLiteral("interface"))),
+                 QStringList({QStringLiteral("colorScheme"), QStringLiteral("fontFamily"), QStringLiteral("fontSize"),
+                              QStringLiteral("opacity"), QStringLiteral("blurred_background")}));
+        QCOMPARE(optionKeys(findGroupByKey(groups, QStringLiteral("cursor"))),
+                 QStringList({QStringLiteral("cursorShape"), QStringLiteral("cursorBlink")}));
+        QCOMPARE(optionKeys(findGroupByKey(groups, QStringLiteral("layout"))),
+                 QStringList({QStringLiteral("verticalTabs")}));
+        QCOMPARE(optionKeys(findGroupByKey(groups, QStringLiteral("session"))),
+                 QStringList({QStringLiteral("sessionRestore"), QStringLiteral("sessionRestoreBehavior")}));
+        QCOMPARE(optionKeys(findGroupByKey(groups, QStringLiteral("scrolling"))),
+                 QStringList({QStringLiteral("scrollbackLines")}));
     }
 
     void testVerticalTabsEnabled() {

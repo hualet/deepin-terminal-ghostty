@@ -16,6 +16,18 @@ AppSettings *AppSettings::s_instance = nullptr;
 
 namespace {
 
+constexpr auto kFontFamilyPath = "basic.interface.fontFamily";
+constexpr auto kFontSizePath = "basic.interface.fontSize";
+constexpr auto kCursorShapePath = "basic.cursor.cursorShape";
+constexpr auto kCursorBlinkPath = "basic.cursor.cursorBlink";
+constexpr auto kScrollbackLinesPath = "advanced.scrolling.scrollbackLines";
+constexpr auto kVerticalTabsPath = "basic.layout.verticalTabs";
+constexpr auto kColorSchemePath = "basic.interface.colorScheme";
+constexpr auto kOpacityPath = "basic.interface.opacity";
+constexpr auto kBackgroundBlurPath = "basic.interface.blurred_background";
+constexpr auto kSessionRestorePath = "advanced.session.sessionRestore";
+constexpr auto kSessionRestoreBehaviorPath = "advanced.session.sessionRestoreBehavior";
+
 QString shortcutPath(Dtk::Core::DSettings *settings, const QString &name) {
     static const QStringList kGroups = {"terminal", "tab", "advanced"};
 
@@ -66,7 +78,7 @@ void AppSettings::init() {
     m_dsettings->setBackend(m_backend);
 
     // Populate font family combobox items with system monospace fonts
-    auto fontOption = m_dsettings->option("basic.interface.fontFamily");
+    auto fontOption = m_dsettings->option(kFontFamilyPath);
     if (fontOption) {
         QMap<QString, QVariant> items;
         QStringList keys;
@@ -83,7 +95,7 @@ void AppSettings::init() {
     }
 
     // Populate cursor shape combobox items
-    auto shapeOption = m_dsettings->option("basic.interface.cursorShape");
+    auto shapeOption = m_dsettings->option(kCursorShapePath);
     if (shapeOption) {
         QMap<QString, QVariant> items;
         items.insert("keys", QStringList() << "0"
@@ -93,7 +105,7 @@ void AppSettings::init() {
         shapeOption->setData("items", items);
     }
 
-    auto themeOption = m_dsettings->option("basic.interface.colorScheme");
+    auto themeOption = m_dsettings->option(kColorSchemePath);
     if (themeOption) {
         QMap<QString, QVariant> items;
         QStringList keys;
@@ -110,7 +122,7 @@ void AppSettings::init() {
         themeOption->setData(QStringLiteral("items"), items);
     }
 
-    auto behaviorOption = m_dsettings->option("basic.session.sessionRestoreBehavior");
+    auto behaviorOption = m_dsettings->option(kSessionRestoreBehaviorPath);
     if (behaviorOption) {
         QMap<QString, QVariant> items;
         items.insert(QStringLiteral("keys"), QStringList() << QStringLiteral("ask") << QStringLiteral("auto"));
@@ -119,21 +131,21 @@ void AppSettings::init() {
     }
 
     connect(m_dsettings, &Dtk::Core::DSettings::valueChanged, this, [this](const QString &key, const QVariant &) {
-        if (key == "basic.interface.fontFamily" || key == "basic.interface.fontSize")
+        if (key == kFontFamilyPath || key == kFontSizePath)
             emit terminalFontChanged(terminalFont());
-        else if (key == "basic.interface.cursorShape")
+        else if (key == kCursorShapePath)
             emit cursorShapeChanged(cursorShape());
-        else if (key == "basic.interface.cursorBlink")
+        else if (key == kCursorBlinkPath)
             emit cursorBlinkChanged(cursorBlink());
-        else if (key == "basic.interface.scrollbackLines")
+        else if (key == kScrollbackLinesPath)
             emit scrollbackLinesChanged(scrollbackLines());
-        else if (key == "basic.interface.verticalTabs")
+        else if (key == kVerticalTabsPath)
             emit verticalTabsEnabledChanged(verticalTabsEnabled());
-        else if (key == "basic.interface.colorScheme")
+        else if (key == kColorSchemePath)
             emit colorSchemeChanged(colorScheme());
-        else if (key == "basic.interface.opacity")
+        else if (key == kOpacityPath)
             emit opacityChanged(opacity());
-        else if (key == "basic.interface.blurred_background")
+        else if (key == kBackgroundBlurPath)
             emit backgroundBlurChanged(backgroundBlur());
     });
 }
@@ -144,8 +156,8 @@ Dtk::Core::DSettings *AppSettings::dsettings() const {
 
 QFont AppSettings::terminalFont() const {
     QFont font;
-    font.setFamily(m_dsettings->value("basic.interface.fontFamily").toString());
-    font.setPointSize(m_dsettings->value("basic.interface.fontSize").toInt());
+    font.setFamily(m_dsettings->value(kFontFamilyPath).toString());
+    font.setPointSize(m_dsettings->value(kFontSizePath).toInt());
     font.setStyleHint(QFont::Monospace);
     font.setFixedPitch(true);
     return font;
@@ -153,58 +165,58 @@ QFont AppSettings::terminalFont() const {
 
 QFont AppSettings::defaultTerminalFont() const {
     QFont font = terminalFont();
-    auto sizeOpt = m_dsettings->option("basic.interface.fontSize");
+    auto sizeOpt = m_dsettings->option(kFontSizePath);
     font.setPointSize(sizeOpt ? sizeOpt->defaultValue().toInt() : 11);
     return font;
 }
 
 void AppSettings::resetFontSize() {
-    auto sizeOpt = m_dsettings->option("basic.interface.fontSize");
+    auto sizeOpt = m_dsettings->option(kFontSizePath);
     int defaultSize = sizeOpt ? sizeOpt->defaultValue().toInt() : 11;
-    m_dsettings->setOption("basic.interface.fontSize", defaultSize);
+    m_dsettings->setOption(kFontSizePath, defaultSize);
 }
 
 void AppSettings::setTerminalFont(const QFont &font) {
     m_dsettings->blockSignals(true);
-    m_dsettings->setOption("basic.interface.fontFamily", font.family());
-    m_dsettings->setOption("basic.interface.fontSize", font.pointSize());
+    m_dsettings->setOption(kFontFamilyPath, font.family());
+    m_dsettings->setOption(kFontSizePath, font.pointSize());
     m_dsettings->blockSignals(false);
     emit terminalFontChanged(font);
 }
 
 int AppSettings::cursorShape() const {
-    return m_dsettings->value("basic.interface.cursorShape").toInt();
+    return m_dsettings->value(kCursorShapePath).toInt();
 }
 
 void AppSettings::setCursorShape(int shape) {
-    m_dsettings->setOption("basic.interface.cursorShape", shape);
+    m_dsettings->setOption(kCursorShapePath, shape);
 }
 
 bool AppSettings::cursorBlink() const {
-    return m_dsettings->value("basic.interface.cursorBlink").toBool();
+    return m_dsettings->value(kCursorBlinkPath).toBool();
 }
 
 void AppSettings::setCursorBlink(bool blink) {
-    m_dsettings->setOption("basic.interface.cursorBlink", blink);
+    m_dsettings->setOption(kCursorBlinkPath, blink);
 }
 
 int AppSettings::scrollbackLines() const {
-    return m_dsettings->value("basic.interface.scrollbackLines").toInt();
+    return m_dsettings->value(kScrollbackLinesPath).toInt();
 }
 
 void AppSettings::setScrollbackLines(int lines) {
-    m_dsettings->setOption("basic.interface.scrollbackLines", lines);
+    m_dsettings->setOption(kScrollbackLinesPath, lines);
 }
 
 bool AppSettings::verticalTabsEnabled() const {
-    return m_dsettings->value("basic.interface.verticalTabs").toBool();
+    return m_dsettings->value(kVerticalTabsPath).toBool();
 }
 
 void AppSettings::setVerticalTabsEnabled(bool enabled) {
     if (verticalTabsEnabled() == enabled)
         return;
 
-    m_dsettings->setOption("basic.interface.verticalTabs", enabled);
+    m_dsettings->setOption(kVerticalTabsPath, enabled);
     m_dsettings->sync();
 }
 
@@ -243,30 +255,30 @@ void AppSettings::setShortcut(const QString &name, const QKeySequence &seq) {
 }
 
 QString AppSettings::colorScheme() const {
-    return m_dsettings->value("basic.interface.colorScheme").toString();
+    return m_dsettings->value(kColorSchemePath).toString();
 }
 
 void AppSettings::setColorScheme(const QString &scheme) {
-    m_dsettings->setOption("basic.interface.colorScheme", scheme);
+    m_dsettings->setOption(kColorSchemePath, scheme);
 }
 
 qreal AppSettings::opacity() const {
-    return m_dsettings->value("basic.interface.opacity").toInt() / 100.0;
+    return m_dsettings->value(kOpacityPath).toInt() / 100.0;
 }
 
 bool AppSettings::backgroundBlur() const {
-    return m_dsettings->value("basic.interface.blurred_background").toBool();
+    return m_dsettings->value(kBackgroundBlurPath).toBool();
 }
 
 void AppSettings::setOpacity(qreal opacity) {
     int val = qBound(20, qRound(opacity * 100.0), 100);
-    m_dsettings->setOption("basic.interface.opacity", val);
+    m_dsettings->setOption(kOpacityPath, val);
 }
 
 bool AppSettings::sessionRestore() const {
-    return m_dsettings->value("basic.session.sessionRestore").toBool();
+    return m_dsettings->value(kSessionRestorePath).toBool();
 }
 
 QString AppSettings::sessionRestoreBehavior() const {
-    return m_dsettings->value("basic.session.sessionRestoreBehavior").toString();
+    return m_dsettings->value(kSessionRestoreBehaviorPath).toString();
 }

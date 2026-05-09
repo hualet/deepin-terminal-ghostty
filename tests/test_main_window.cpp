@@ -918,7 +918,7 @@ void TestMainWindow::testVerticalTabsActionTracksExternalSettingChanges() {
     QVERIFY(action);
     QCOMPARE(action->isChecked(), false);
 
-    settings->dsettings()->setOption("basic.interface.verticalTabs", true);
+    settings->dsettings()->setOption("basic.layout.verticalTabs", true);
 
     QTRY_VERIFY(action->isChecked());
     QTRY_VERIFY(AppSettings::instance()->verticalTabsEnabled());

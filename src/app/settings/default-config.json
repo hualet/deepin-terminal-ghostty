@@ -9,6 +9,12 @@
                     "name": "Interface",
                     "options": [
                         {
+                            "key": "colorScheme",
+                            "name": "Theme",
+                            "type": "combobox",
+                            "default": "system"
+                        },
+                        {
                             "key": "fontFamily",
                             "name": "Font family",
                             "type": "combobox",
@@ -22,39 +28,6 @@
                             "min": 5,
                             "max": 72,
                             "step": 1
-                        },
-                        {
-                            "key": "cursorShape",
-                            "name": "Cursor shape",
-                            "type": "combobox",
-                            "default": 0
-                        },
-                        {
-                            "key": "cursorBlink",
-                            "text": "Cursor blink",
-                            "type": "checkbox",
-                            "default": true
-                        },
-                        {
-                            "key": "scrollbackLines",
-                            "name": "Scrollback lines",
-                            "type": "spinbutton",
-                            "default": 5000,
-                            "min": 100,
-                            "max": 20000,
-                            "step": 100
-                        },
-                        {
-                            "key": "verticalTabs",
-                            "text": "Vertical Tabs",
-                            "type": "checkbox",
-                            "default": false
-                        },
-                        {
-                            "key": "colorScheme",
-                            "name": "Theme",
-                            "type": "combobox",
-                            "default": "system"
                         },
                         {
                             "key": "opacity",
@@ -73,20 +46,32 @@
                     ]
                 },
                 {
-                    "key": "session",
-                    "name": "Session",
+                    "key": "cursor",
+                    "name": "Cursor",
                     "options": [
                         {
-                            "key": "sessionRestore",
-                            "text": "Save and restore session",
-                            "type": "checkbox",
-                            "default": false
+                            "key": "cursorShape",
+                            "name": "Cursor shape",
+                            "type": "combobox",
+                            "default": 0
                         },
                         {
-                            "key": "sessionRestoreBehavior",
-                            "name": "Restore behavior",
-                            "type": "combobox",
-                            "default": "ask"
+                            "key": "cursorBlink",
+                            "text": "Cursor blink",
+                            "type": "checkbox",
+                            "default": true
+                        }
+                    ]
+                },
+                {
+                    "key": "layout",
+                    "name": "Layout",
+                    "options": [
+                        {
+                            "key": "verticalTabs",
+                            "text": "Vertical Tabs",
+                            "type": "checkbox",
+                            "default": false
                         }
                     ]
                 }
@@ -316,6 +301,45 @@
                             "name": "Remote management",
                             "type": "shortcut",
                             "default": "Alt+Del"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "key": "advanced",
+            "name": "Advanced",
+            "groups": [
+                {
+                    "key": "session",
+                    "name": "Session Management",
+                    "options": [
+                        {
+                            "key": "sessionRestore",
+                            "text": "Save and restore session",
+                            "type": "checkbox",
+                            "default": false
+                        },
+                        {
+                            "key": "sessionRestoreBehavior",
+                            "name": "Restore behavior",
+                            "type": "combobox",
+                            "default": "ask"
+                        }
+                    ]
+                },
+                {
+                    "key": "scrolling",
+                    "name": "Scrolling",
+                    "options": [
+                        {
+                            "key": "scrollbackLines",
+                            "name": "Scrollback lines",
+                            "type": "spinbutton",
+                            "default": 5000,
+                            "min": 100,
+                            "max": 20000,
+                            "step": 100
                         }
                     ]
                 }
