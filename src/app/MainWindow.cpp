@@ -149,21 +149,28 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
     ensureTabBar();
 
     bool restored = false;
-    if (m_startupOptions.execute.isEmpty() && m_startupOptions.workingDirectory.isEmpty()) {
+    if (AppSettings::instance()->sessionRestore() && m_startupOptions.execute.isEmpty()
+        && m_startupOptions.workingDirectory.isEmpty()) {
         auto &mgr = SessionManager::instance();
         if (mgr.hasSnapshot()) {
-            auto *dlg = new DDialog(this);
-            dlg->setWindowTitle(tr("Restore Session"));
-            dlg->setMessage(tr("A previous terminal session was found. Restore it?"));
-            dlg->addButton(tr("New Terminal"), false, DDialog::ButtonNormal);
-            dlg->addButton(tr("Restore Session"), true, DDialog::ButtonRecommend);
-            int result = dlg->exec();
-            dlg->deleteLater();
-            if (result == 1) {
+            QString behavior = AppSettings::instance()->sessionRestoreBehavior();
+            if (behavior == QStringLiteral("auto")) {
                 restoreSession();
                 restored = true;
             } else {
-                mgr.clearSnapshot();
+                auto *dlg = new DDialog(this);
+                dlg->setWindowTitle(tr("Restore Session"));
+                dlg->setMessage(tr("A previous terminal session was found. Restore it?"));
+                dlg->addButton(tr("New Terminal"), false, DDialog::ButtonNormal);
+                dlg->addButton(tr("Restore Session"), true, DDialog::ButtonRecommend);
+                int result = dlg->exec();
+                dlg->deleteLater();
+                if (result == 1) {
+                    restoreSession();
+                    restored = true;
+                } else {
+                    mgr.clearSnapshot();
+                }
             }
         }
     }
@@ -1193,7 +1200,10 @@ void MainWindow::closeEvent(QCloseEvent *event) {
         }
     }
 
-    saveSessionState();
+    if (AppSettings::instance()->sessionRestore())
+        saveSessionState();
+    else
+        SessionManager::instance().clearSnapshot();
 
     while (m_stackWidget->count() > 0) {
         QWidget *w = m_stackWidget->widget(0);

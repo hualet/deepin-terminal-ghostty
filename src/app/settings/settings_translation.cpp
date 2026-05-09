@@ -12,8 +12,11 @@ void GenerateSettingTranslate() {
     auto basic_interface_opacityName = QObject::tr("Opacity");
     auto basic_interface_scrollbackLinesName = QObject::tr("Scrollback lines");
     auto basic_interface_verticalTabsText = QObject::tr("Vertical Tabs");
+    auto basic_session_sessionRestoreText = QObject::tr("Save and restore session");
+    auto basic_session_sessionRestoreBehaviorName = QObject::tr("Restore behavior");
     auto group_basicName = QObject::tr("Basic");
     auto group_basic_interfaceName = QObject::tr("Interface");
+    auto group_basic_sessionName = QObject::tr("Session");
     auto group_shortcutsName = QObject::tr("Shortcuts");
     auto group_shortcuts_advancedName = QObject::tr("Advanced");
     auto group_shortcuts_tabName = QObject::tr("Tabs");

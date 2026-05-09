@@ -71,6 +71,24 @@
                             "default": false
                         }
                     ]
+                },
+                {
+                    "key": "session",
+                    "name": "Session",
+                    "options": [
+                        {
+                            "key": "sessionRestore",
+                            "text": "Save and restore session",
+                            "type": "checkbox",
+                            "default": false
+                        },
+                        {
+                            "key": "sessionRestoreBehavior",
+                            "name": "Restore behavior",
+                            "type": "combobox",
+                            "default": "ask"
+                        }
+                    ]
                 }
             ]
         },

@@ -23,6 +23,14 @@
         <source>System</source>
         <translation>跟随系统</translation>
     </message>
+    <message>
+        <source>Ask</source>
+        <translation>每次询问</translation>
+    </message>
+    <message>
+        <source>Restore automatically</source>
+        <translation>自动恢复</translation>
+    </message>
 </context>
 <context>
     <name>MainWindow</name>
@@ -267,6 +275,18 @@
         <location filename="../src/app/MainWindow.cpp" line="1103"/>
         <source>There are still processes running in this window. Closing the window will kill all of them.</source>
         <translation>此窗口中仍有进程正在运行。关闭窗口将终止所有进程。</translation>
+    </message>
+    <message>
+        <source>Restore Session</source>
+        <translation>恢复会话</translation>
+    </message>
+    <message>
+        <source>A previous terminal session was found. Restore it?</source>
+        <translation>发现上次的终端会话。是否恢复？</translation>
+    </message>
+    <message>
+        <source>New Terminal</source>
+        <translation>新建终端</translation>
     </message>
 </context>
 <context>
@@ -519,6 +539,18 @@
         <location filename="../src/app/settings/settings_translation.cpp" line="55"/>
         <source>Zoom out</source>
         <translation>缩小</translation>
+    </message>
+    <message>
+        <source>Save and restore session</source>
+        <translation>保存并恢复会话</translation>
+    </message>
+    <message>
+        <source>Restore behavior</source>
+        <translation>恢复方式</translation>
+    </message>
+    <message>
+        <source>Session</source>
+        <translation>会话</translation>
     </message>
     <message>
         <location filename="../src/app/ApplicationMetadata.cpp" line="8"/>

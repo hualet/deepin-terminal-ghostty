@@ -46,6 +46,9 @@ public:
     bool backgroundBlur() const;
     void setOpacity(qreal opacity);
 
+    bool sessionRestore() const;
+    QString sessionRestoreBehavior() const;
+
     QSize windowSize() const;
     void saveWindowSize(const QSize &size);
 

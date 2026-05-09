@@ -23,6 +23,14 @@
         <source>System</source>
         <translation>Sistema</translation>
     </message>
+    <message>
+        <source>Ask</source>
+        <translation>Preguntar</translation>
+    </message>
+    <message>
+        <source>Restore automatically</source>
+        <translation>Restaurar automáticamente</translation>
+    </message>
 </context>
 <context>
     <name>MainWindow</name>
@@ -267,6 +275,18 @@
         <location filename="../src/app/MainWindow.cpp" line="1103"/>
         <source>There are still processes running in this window. Closing the window will kill all of them.</source>
         <translation>Todavía hay procesos ejecutándose en esta ventana. Cerrar la ventana los terminará todos.</translation>
+    </message>
+    <message>
+        <source>Restore Session</source>
+        <translation>Restaurar sesión</translation>
+    </message>
+    <message>
+        <source>A previous terminal session was found. Restore it?</source>
+        <translation>Se encontró una sesión de terminal anterior. ¿Restaurarla?</translation>
+    </message>
+    <message>
+        <source>New Terminal</source>
+        <translation>Nueva terminal</translation>
     </message>
 </context>
 <context>
@@ -519,6 +539,18 @@
         <location filename="../src/app/settings/settings_translation.cpp" line="55"/>
         <source>Zoom out</source>
         <translation>Reducir</translation>
+    </message>
+    <message>
+        <source>Save and restore session</source>
+        <translation>Guardar y restaurar sesión</translation>
+    </message>
+    <message>
+        <source>Restore behavior</source>
+        <translation>Comportamiento de restauración</translation>
+    </message>
+    <message>
+        <source>Session</source>
+        <translation>Sesión</translation>
     </message>
     <message>
         <location filename="../src/app/ApplicationMetadata.cpp" line="8"/>

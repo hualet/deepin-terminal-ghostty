@@ -110,6 +110,14 @@ void AppSettings::init() {
         themeOption->setData(QStringLiteral("items"), items);
     }
 
+    auto behaviorOption = m_dsettings->option("basic.session.sessionRestoreBehavior");
+    if (behaviorOption) {
+        QMap<QString, QVariant> items;
+        items.insert(QStringLiteral("keys"), QStringList() << QStringLiteral("ask") << QStringLiteral("auto"));
+        items.insert(QStringLiteral("values"), QStringList() << tr("Ask") << tr("Restore automatically"));
+        behaviorOption->setData(QStringLiteral("items"), items);
+    }
+
     connect(m_dsettings, &Dtk::Core::DSettings::valueChanged, this, [this](const QString &key, const QVariant &) {
         if (key == "basic.interface.fontFamily" || key == "basic.interface.fontSize")
             emit terminalFontChanged(terminalFont());
@@ -253,4 +261,12 @@ bool AppSettings::backgroundBlur() const {
 void AppSettings::setOpacity(qreal opacity) {
     int val = qBound(20, qRound(opacity * 100.0), 100);
     m_dsettings->setOption("basic.interface.opacity", val);
+}
+
+bool AppSettings::sessionRestore() const {
+    return m_dsettings->value("basic.session.sessionRestore").toBool();
+}
+
+QString AppSettings::sessionRestoreBehavior() const {
+    return m_dsettings->value("basic.session.sessionRestoreBehavior").toString();
 }
