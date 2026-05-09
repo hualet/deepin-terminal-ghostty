@@ -91,6 +91,8 @@ private:
     TerminalTheme resolveTheme() const;
     void applyThemeToAll();
     void showExitConfirmDialog(const QString &title, const QString &body, std::function<void()> onConfirm);
+    void saveSessionState();
+    void restoreSession();
 
     QPointer<DTabBar> m_tabBar;
     QStackedWidget *m_stackWidget = nullptr;

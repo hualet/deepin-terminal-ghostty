@@ -2,6 +2,8 @@
 
 #include "AppSettings.h"
 #include "ApplicationMetadata.h"
+#include "SessionManager.h"
+#include "SessionSnapshot.h"
 #include "SettingsDialog.h"
 #include "TermPane.h"
 #include "TerminalWidget.h"
@@ -144,18 +146,38 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
             applyThemeToAll();
     });
 
-    // Tab bar configuration
     ensureTabBar();
 
-    // First tab
-    std::optional<PtySession::StartOptions> initialSessionOptions;
-    if (!m_startupOptions.execute.isEmpty() || !m_startupOptions.workingDirectory.isEmpty()) {
-        initialSessionOptions = PtySession::StartOptions{
-            .command = m_startupOptions.execute,
-            .workingDirectory = m_startupOptions.workingDirectory,
-        };
+    bool restored = false;
+    if (m_startupOptions.execute.isEmpty() && m_startupOptions.workingDirectory.isEmpty()) {
+        auto &mgr = SessionManager::instance();
+        if (mgr.hasSnapshot()) {
+            auto *dlg = new DDialog(this);
+            dlg->setWindowTitle(tr("Restore Session"));
+            dlg->setMessage(tr("A previous terminal session was found. Restore it?"));
+            dlg->addButton(tr("New Terminal"), false, DDialog::ButtonNormal);
+            dlg->addButton(tr("Restore Session"), true, DDialog::ButtonRecommend);
+            int result = dlg->exec();
+            dlg->deleteLater();
+            if (result == 1) {
+                restoreSession();
+                restored = true;
+            } else {
+                mgr.clearSnapshot();
+            }
+        }
     }
-    addTab(true, initialSessionOptions);
+
+    if (!restored) {
+        std::optional<PtySession::StartOptions> initialSessionOptions;
+        if (!m_startupOptions.execute.isEmpty() || !m_startupOptions.workingDirectory.isEmpty()) {
+            initialSessionOptions = PtySession::StartOptions{
+                .command = m_startupOptions.execute,
+                .workingDirectory = m_startupOptions.workingDirectory,
+            };
+        }
+        addTab(true, initialSessionOptions);
+    }
 
     m_themes = ThemeLoader::loadThemes();
     applyThemeToAll();
@@ -1171,10 +1193,80 @@ void MainWindow::closeEvent(QCloseEvent *event) {
         }
     }
 
+    saveSessionState();
+
     while (m_stackWidget->count() > 0) {
         QWidget *w = m_stackWidget->widget(0);
         m_stackWidget->removeWidget(w);
         w->deleteLater();
     }
     DMainWindow::closeEvent(event);
+}
+
+void MainWindow::saveSessionState() {
+    if (m_tabs.isEmpty())
+        return;
+
+    WindowSnapshot snapshot;
+    snapshot.width = width();
+    snapshot.height = height();
+    snapshot.isMaximized = isMaximized();
+
+    QList<QPair<QString, TerminalWidget *>> allTerminals;
+
+    for (const auto &rec : m_tabs) {
+        if (!rec.pane)
+            continue;
+        TabSnapshot tabSnap;
+        tabSnap.id = rec.id;
+        tabSnap.title = rec.title;
+        tabSnap.pane = rec.pane->buildSplitTree();
+        snapshot.tabs.append(tabSnap);
+
+        for (auto *term : rec.pane->findChildren<TerminalWidget *>()) {
+            QString uuid = term->property("paneId").toUuid().toString(QUuid::WithoutBraces);
+            if (!uuid.isEmpty())
+                allTerminals.append({uuid, term});
+        }
+    }
+
+    SessionManager::instance().save(snapshot, allTerminals);
+}
+
+void MainWindow::restoreSession() {
+    auto &mgr = SessionManager::instance();
+    if (!mgr.hasSnapshot())
+        return;
+
+    WindowSnapshot snapshot = mgr.loadSnapshot();
+    if (snapshot.tabs.isEmpty())
+        return;
+
+    if (snapshot.isMaximized)
+        showMaximized();
+    else if (snapshot.width > 0 && snapshot.height > 0)
+        resize(snapshot.width, snapshot.height);
+
+    for (const auto &tabSnap : snapshot.tabs) {
+        addTab(false, std::nullopt);
+        auto *pane = qobject_cast<TermPane *>(m_stackWidget->widget(m_stackWidget->count() - 1));
+        if (!pane)
+            continue;
+
+        QList<QPair<QString, TerminalWidget *>> terminals = pane->restoreFromSplitTree(tabSnap.pane);
+
+        for (const auto &[uuid, term] : terminals) {
+            QByteArray vtData = mgr.loadVtContent(uuid);
+            if (!vtData.isEmpty())
+                term->importVtContent(vtData);
+        }
+
+        if (auto *record = tabRecordForPane(pane)) {
+            record->title = tabSnap.title;
+        }
+    }
+
+    syncTabWidgetsFromRecords();
+    if (m_tabBar && m_tabBar->count() > 0)
+        m_tabBar->setCurrentIndex(0);
 }
