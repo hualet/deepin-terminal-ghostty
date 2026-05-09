@@ -1,9 +1,11 @@
 #pragma once
 
 #include "PtySession.h"
+#include "SessionSnapshot.h"
 #include "TerminalWidget.h"
 
 #include <QList>
+#include <QPair>
 #include <QUuid>
 #include <QWidget>
 
@@ -45,6 +47,9 @@ public:
     void setOpacity(qreal opacity);
     void connectToRemoteServer(const ServerConfig &config);
 
+    SplitNode buildSplitTree() const;
+    QList<QPair<QString, TerminalWidget *>> restoreFromSplitTree(const SplitNode &node);
+
 protected:
     void resizeEvent(QResizeEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -76,6 +81,11 @@ private:
     void onSearchKeywordChanged(const QString &keyword);
     void onSearchFindNext();
     void onSearchFindPrev();
+
+    TerminalWidget *createTerminalWithUuid(const QString &uuid,
+                                           const std::optional<PtySession::StartOptions> &options = std::nullopt);
+    QList<QPair<QString, TerminalWidget *>> rebuildTreeRecursive(const SplitNode &node, TerminalWidget *sibling,
+                                                                 Qt::Orientation parentOrientation);
 
     QVBoxLayout *m_layout = nullptr;
     QWidget *m_rootWidget = nullptr;

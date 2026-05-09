@@ -215,6 +215,25 @@ private:
     bool m_wasUpdatesEnabled = false;
 };
 
+SplitNode buildSplitTreeFromWidget(QWidget *widget) {
+    if (auto *container = qobject_cast<TerminalScrollContainer *>(widget)) {
+        auto *term = container->terminal();
+        return SplitNode::terminal(term->property("paneId").toUuid().toString(QUuid::WithoutBraces),
+                                   term->workingDirectory(), term->property("currentTitle").toString());
+    }
+    if (auto *term = qobject_cast<TerminalWidget *>(widget)) {
+        return SplitNode::terminal(term->property("paneId").toUuid().toString(QUuid::WithoutBraces),
+                                   term->workingDirectory(), term->property("currentTitle").toString());
+    }
+    if (auto *splitter = qobject_cast<QSplitter *>(widget)) {
+        QList<SplitNode> children;
+        for (int i = 0; i < splitter->count(); ++i)
+            children.append(buildSplitTreeFromWidget(splitter->widget(i)));
+        return SplitNode::split(splitter->orientation(), splitter->sizes(), children);
+    }
+    return SplitNode::terminal({}, {}, {});
+}
+
 } // namespace
 
 TermPane::TermPane(const std::optional<PtySession::StartOptions> &initialSessionOptions, QWidget *parent)
@@ -915,4 +934,126 @@ void TermPane::connectToRemoteServer(const ServerConfig &config) {
     // Set custom title to reflect remote connection
     if (!config.m_serverName.isEmpty())
         setCustomTitle(config.m_serverName);
+}
+
+SplitNode TermPane::buildSplitTree() const {
+    if (!m_rootWidget)
+        return SplitNode::terminal({}, {}, {});
+    return buildSplitTreeFromWidget(m_rootWidget);
+}
+
+TerminalWidget *TermPane::createTerminalWithUuid(const QString &uuid,
+                                                 const std::optional<PtySession::StartOptions> &options) {
+    auto *container = new TerminalScrollContainer(this);
+    auto *term = container->terminal();
+    term->setContentsMargins(kTerminalContentPadding, kTerminalContentPadding, kTerminalContentPadding,
+                             kTerminalContentPadding);
+
+    term->setProperty("paneId", QUuid(uuid));
+    if (options) {
+        term->setStartOptions(*options);
+    }
+    term->initialize();
+
+    auto *settings = AppSettings::instance();
+    term->setTerminalFont(settings->terminalFont());
+    term->setCursorShape(settings->cursorShape());
+    term->setCursorBlinkEnabled(settings->cursorBlink());
+    term->setScrollbackLines(settings->scrollbackLines());
+
+    auto themes = ThemeLoader::loadThemes();
+    QString scheme = settings->colorScheme();
+    if (scheme == QStringLiteral("system")) {
+        auto colorType = DGuiApplicationHelper::instance()->themeType();
+        scheme = colorType == DGuiApplicationHelper::DarkType ? QStringLiteral("dark") : QStringLiteral("light");
+    }
+    term->applyTheme(ThemeLoader::findTheme(themes, scheme));
+
+    term->installEventFilter(this);
+    setupTerminalConnections(term);
+
+    if (m_currentTerm)
+        term->setOpacity(m_currentTerm->opacity());
+
+    return term;
+}
+
+QList<QPair<QString, TerminalWidget *>> TermPane::restoreFromSplitTree(const SplitNode &node) {
+    QList<QPair<QString, TerminalWidget *>> result;
+
+    if (m_rootWidget) {
+        QWidget *old = m_rootWidget;
+        m_layout->removeWidget(old);
+        old->deleteLater();
+        m_rootWidget = nullptr;
+        m_currentTerm = nullptr;
+    }
+
+    if (node.type == SplitNode::Type::Terminal) {
+        std::optional<PtySession::StartOptions> opts;
+        if (!node.workingDirectory.isEmpty())
+            opts = PtySession::StartOptions{{}, node.workingDirectory};
+        auto *term = createTerminalWithUuid(node.uuid, opts);
+        m_layout->addWidget(layoutWidgetForTerminal(term));
+        m_rootWidget = layoutWidgetForTerminal(term);
+        setCurrentTerminal(term);
+        result.append({node.uuid, term});
+        return result;
+    }
+
+    if (node.children.isEmpty())
+        return result;
+
+    auto firstChild = node.children.first();
+    std::optional<PtySession::StartOptions> firstOpts;
+    if (!firstChild.workingDirectory.isEmpty())
+        firstOpts = PtySession::StartOptions{{}, firstChild.workingDirectory};
+    auto *firstTerm = createTerminalWithUuid(firstChild.uuid, firstOpts);
+    m_layout->addWidget(layoutWidgetForTerminal(firstTerm));
+    m_rootWidget = layoutWidgetForTerminal(firstTerm);
+    setCurrentTerminal(firstTerm);
+    result.append({firstChild.uuid, firstTerm});
+
+    for (int i = 1; i < node.children.size(); ++i)
+        result.append(rebuildTreeRecursive(node.children[i], firstTerm, node.orientation));
+
+    if (auto *splitter = qobject_cast<QSplitter *>(m_rootWidget))
+        splitter->setSizes(node.sizes);
+
+    return result;
+}
+
+QList<QPair<QString, TerminalWidget *>> TermPane::rebuildTreeRecursive(const SplitNode &node, TerminalWidget *sibling,
+                                                                       Qt::Orientation parentOrientation) {
+    QList<QPair<QString, TerminalWidget *>> result;
+
+    if (node.type == SplitNode::Type::Terminal) {
+        std::optional<PtySession::StartOptions> opts;
+        if (!node.workingDirectory.isEmpty())
+            opts = PtySession::StartOptions{{}, node.workingDirectory};
+        auto *term = createTerminalWithUuid(node.uuid, opts);
+        splitTerminal(sibling, term, parentOrientation);
+        result.append({node.uuid, term});
+        return result;
+    }
+
+    if (node.children.isEmpty())
+        return result;
+
+    auto firstChild = node.children.first();
+    std::optional<PtySession::StartOptions> firstOpts;
+    if (!firstChild.workingDirectory.isEmpty())
+        firstOpts = PtySession::StartOptions{{}, firstChild.workingDirectory};
+    auto *firstTerm = createTerminalWithUuid(firstChild.uuid, firstOpts);
+    splitTerminal(sibling, firstTerm, parentOrientation);
+    result.append({firstChild.uuid, firstTerm});
+
+    for (int i = 1; i < node.children.size(); ++i)
+        result.append(rebuildTreeRecursive(node.children[i], firstTerm, node.orientation));
+
+    QWidget *termWidget = layoutWidgetForTerminal(firstTerm);
+    if (auto *splitter = qobject_cast<QSplitter *>(termWidget->parentWidget()))
+        splitter->setSizes(node.sizes);
+
+    return result;
 }
