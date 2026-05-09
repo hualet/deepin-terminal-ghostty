@@ -179,6 +179,43 @@ target_link_libraries(test_session_snapshot PRIVATE
 
 add_test(NAME SessionSnapshot COMMAND test_session_snapshot)
 
+# ---------------------------------------------------------------------------
+# test_session_manager
+# ---------------------------------------------------------------------------
+add_executable(test_session_manager
+  test_session_manager.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/SessionManager.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/SessionSnapshot.cpp
+  ${CMAKE_SOURCE_DIR}/src/logging/Logging.cpp
+  ${CMAKE_SOURCE_DIR}/src/libqtghostty/PtySession.cpp
+  ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalWidget.cpp
+)
+
+target_include_directories(test_session_manager PRIVATE
+  ${CMAKE_SOURCE_DIR}/src
+  ${CMAKE_SOURCE_DIR}/src/app
+  ${GHOSTTY_STAGED_INCLUDE_DIR}
+)
+
+target_link_libraries(test_session_manager PRIVATE
+  Qt6::Widgets
+  Qt6::Test
+  Dtk6::Core
+  ghostty-vt
+  util
+)
+
+add_dependencies(test_session_manager ghostty-vt-stage ghostty-headers-stage)
+
+add_custom_command(TARGET test_session_manager POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${GHOSTTY_STAGED_LIBRARY}"
+          "$<TARGET_FILE_DIR:test_session_manager>/${GHOSTTY_SONAME}"
+  VERBATIM
+)
+
+add_test(NAME SessionManager COMMAND test_session_manager)
+
 add_test(NAME StartupCommandIntegration
   COMMAND /bin/bash ${CMAKE_SOURCE_DIR}/tests/test_startup_command_integration.sh
 )
