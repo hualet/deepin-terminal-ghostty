@@ -361,12 +361,7 @@ void TermPane::setupTerminalConnections(TerminalWidget *term) {
         Q_EMIT paneCommandStateChanged(ensurePaneId(term), state);
     });
     connect(term, &TerminalWidget::sessionClosed, this, [this, term]() { removeTerminal(term); });
-    connect(term, &TerminalWidget::focusGained, this, [this, term]() {
-        setCurrentTerminal(term);
-        if (term->m_commandState == TerminalWidget::CommandState::Succeeded
-            || term->m_commandState == TerminalWidget::CommandState::Failed)
-            term->updateCommandState(TerminalWidget::CommandState::Idle);
-    });
+    connect(term, &TerminalWidget::focusGained, this, [this, term]() { setCurrentTerminal(term); });
 }
 
 void TermPane::setCurrentTerminal(TerminalWidget *term) {

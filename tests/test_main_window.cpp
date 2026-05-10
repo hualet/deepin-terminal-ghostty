@@ -117,6 +117,8 @@ private slots:
     void testVerticalSidebarAddTabButtonCreatesNewTab();
     void testCommandStatusDotNotShownAfterSwitchingFromTabWhereCommandRan();
     void testCommandStatusDotShownWhenCommandFinishesInBackgroundTab();
+    void testCommandStatusDotNotShownForInactivePaneInCurrentTab();
+    void testPaneActivationDoesNotClearCommandState();
 
 private:
     DGuiApplicationHelper::ColorType m_originalPaletteType;
@@ -1871,6 +1873,15 @@ void triggerCommandSucceeded(TerminalWidget *terminal) {
     QCoreApplication::processEvents();
 }
 
+int visibleCommandStatusDotCount(QWidget *root) {
+    int count = 0;
+    for (auto *dot : root->findChildren<QLabel *>(QStringLiteral("commandStatusDot"))) {
+        if (dot->isVisibleTo(root))
+            ++count;
+    }
+    return count;
+}
+
 void TestMainWindow::testCommandStatusDotNotShownAfterSwitchingFromTabWhereCommandRan() {
     AppSettings::instance()->setVerticalTabsEnabled(true);
 
@@ -1946,6 +1957,78 @@ void TestMainWindow::testCommandStatusDotShownWhenCommandFinishesInBackgroundTab
     QTRY_VERIFY_WITH_TIMEOUT(verticalSidebar->items().size() > static_cast<int>(firstTabIndex)
                                  && verticalSidebar->items().at(firstTabIndex).hasPendingCommandResult,
                              1000);
+}
+
+void TestMainWindow::testCommandStatusDotNotShownForInactivePaneInCurrentTab() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *pane = currentPane(window);
+    QVERIFY(pane);
+    pane->splitCurrent(Qt::Vertical);
+    QCoreApplication::processEvents();
+
+    const auto panes = pane->paneInfos();
+    QCOMPARE(panes.size(), 2);
+
+    const QUuid shellPaneId = pane->activePaneId();
+    auto *shellTerminal = pane->currentTerminal();
+    QVERIFY(shellTerminal);
+
+    triggerCommandSucceeded(shellTerminal);
+    QTRY_COMPARE(shellTerminal->property("commandState").toInt(),
+                 static_cast<int>(TerminalWidget::CommandState::Succeeded));
+
+    const QUuid otherPaneId = panes.first().id == shellPaneId ? panes.last().id : panes.first().id;
+    QVERIFY(pane->focusPane(otherPaneId));
+    QCoreApplication::processEvents();
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+    QCOMPARE(verticalSidebar->items().size(), 1);
+    QVERIFY(verticalSidebar->items().first().isCurrent);
+    QTRY_COMPARE(visibleCommandStatusDotCount(verticalSidebar), 0);
+}
+
+void TestMainWindow::testPaneActivationDoesNotClearCommandState() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *pane = currentPane(window);
+    QVERIFY(pane);
+    pane->splitCurrent(Qt::Vertical);
+    QCoreApplication::processEvents();
+
+    const auto panes = pane->paneInfos();
+    QCOMPARE(panes.size(), 2);
+
+    const QUuid shellPaneId = pane->activePaneId();
+    auto *shellTerminal = pane->currentTerminal();
+    QVERIFY(shellTerminal);
+
+    triggerCommandSucceeded(shellTerminal);
+    QTRY_COMPARE(shellTerminal->property("commandState").toInt(),
+                 static_cast<int>(TerminalWidget::CommandState::Succeeded));
+
+    const QUuid otherPaneId = panes.first().id == shellPaneId ? panes.last().id : panes.first().id;
+    QVERIFY(pane->focusPane(otherPaneId));
+    QCoreApplication::processEvents();
+
+    QSignalSpy commandStateSpy(shellTerminal, &TerminalWidget::commandStateChanged);
+    QVERIFY(commandStateSpy.isValid());
+
+    QVERIFY(pane->focusPane(shellPaneId));
+    QCoreApplication::processEvents();
+
+    QCOMPARE(commandStateSpy.count(), 0);
+    QCOMPARE(shellTerminal->property("commandState").toInt(),
+             static_cast<int>(TerminalWidget::CommandState::Succeeded));
 }
 
 int main(int argc, char *argv[]) {

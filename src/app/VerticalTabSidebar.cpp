@@ -504,7 +504,8 @@ void VerticalTabSidebar::rebuild() {
                 paneButton->setProperty("active", pane.isActive);
                 paneButton->setAttribute(Qt::WA_TransparentForMouseEvents, true);
 
-                auto *paneStatusDot = createCommandStatusDot(paneRow, pane.commandState, pane.isActive, !pane.isActive);
+                auto *paneStatusDot = createCommandStatusDot(paneRow, pane.commandState, tab.isCurrent,
+                                                             !tab.isCurrent && tab.hasPendingCommandResult);
                 paneStatusDot->setAttribute(Qt::WA_TransparentForMouseEvents, true);
 
                 paneRowLayout->addWidget(paneBadge, 0, Qt::AlignVCenter);
