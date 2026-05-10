@@ -1,3 +1,15 @@
+deepin-terminal-ghostty (0.9.6-1) unstable; urgency=medium
+
+  * Keep the titlebar menu available when horizontal tabs are enabled.
+  * Improve session restore so fresh shell prompts do not leave stray markers
+    or overwrite restored terminal content.
+  * Only show command status indicators when a non-active tab has pending
+    command state that needs attention.
+  * Return to the latest prompt when the user types or pastes while viewing
+    scrollback history.
+
+ -- Deepin Packages <packages@deepin.org>  Sun, 10 May 2026 23:59:00 +0800
+
 deepin-terminal-ghostty (0.9.5-1) unstable; urgency=medium
 
   * Add session restore settings so terminal windows, tabs, splits, and
