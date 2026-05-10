@@ -625,9 +625,20 @@ void TerminalWidget::importVtContent(const QByteArray &data) {
     // initialize() will have already emitted its prompt and PROMPT_SP markers
     // (the "%" characters visible in zsh), which then interleave with the
     // restored content and produce garbled output.
+    m_pendingPtyData.clear();
+    m_oscScanBuffer.clear();
+    m_pendingExitCode = -1;
+    setProperty("shellCommand", QString());
+    updateCommandState(CommandState::Idle);
+    m_kittyImageCache.clear();
     ghostty_terminal_reset(m_terminal);
     ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(data.constData()),
                               static_cast<size_t>(data.size()));
+    // A restored snapshot also restores the old cursor position. Move the live
+    // shell to a fresh line after the snapshot so its prompt cannot overwrite it.
+    const QByteArray promptBoundary("\033[999;1H\r\n");
+    ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(promptBoundary.constData()),
+                              static_cast<size_t>(promptBoundary.size()));
     m_renderStateDirty = true;
     update();
 }
@@ -677,6 +688,14 @@ int TerminalWidget::debugResizeApplyCount() const {
 
 int TerminalWidget::debugPtyFlushCount() const {
     return m_debugPtyFlushCount;
+}
+
+int TerminalWidget::debugPendingPtyDataSize() const {
+    return m_pendingPtyData.size();
+}
+
+QString TerminalWidget::debugTextForScreenRow(int row) const {
+    return textForScreenRow(row);
 }
 
 int TerminalWidget::debugCursorOnlyRepaintCount() const {

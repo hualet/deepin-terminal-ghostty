@@ -83,6 +83,8 @@ public:
     int debugLastFrameLineDrawCount() const;
     int debugResizeApplyCount() const;
     int debugPtyFlushCount() const;
+    int debugPendingPtyDataSize() const;
+    QString debugTextForScreenRow(int row) const;
     int debugCursorOnlyRepaintCount() const;
     int debugScrollbackLines() const;
     size_t debugScrollbackByteBudget() const;

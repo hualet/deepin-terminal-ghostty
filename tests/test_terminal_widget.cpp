@@ -111,6 +111,9 @@ private slots:
     void testFindPreviousCycles();
     void testFindNextOnEmptyMatchesIsNoop();
     void testFindPreviousOnEmptyMatchesIsNoop();
+    void testImportVtContentDropsPendingPtyOutput();
+    void testImportVtContentClearsStaleShellIntegrationState();
+    void testImportVtContentKeepsFuturePtyOutputAfterRestoredScreen();
 };
 
 namespace {
@@ -198,6 +201,15 @@ void feedTerminalOutput(CountingTerminalWidget &widget, const QByteArray &data) 
         QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, data));
     QVERIFY(invoked);
     waitForNextPtyFlush(widget, previousFlushCount);
+}
+
+int firstScreenRowContaining(const CountingTerminalWidget &widget, QStringView text) {
+    for (int row = 0; row < 200; ++row) {
+        if (widget.debugTextForScreenRow(row).contains(text))
+            return row;
+    }
+
+    return -1;
 }
 
 QColor dominantChangedColor(const QImage &before, const QImage &after, const QRect &rect) {
@@ -1993,6 +2005,92 @@ void TestTerminalWidget::testFindPreviousOnEmptyMatchesIsNoop() {
     QVERIFY(widget.initialize());
     widget.findPrevious();
     QVERIFY(!widget.hasSearchMatches());
+}
+
+void TestTerminalWidget::testImportVtContentDropsPendingPtyOutput() {
+    CountingTerminalWidget saved;
+    saved.resize(960, 640);
+    QVERIFY(saved.initialize());
+    saved.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&saved));
+
+    feedTerminalOutput(saved, QByteArray("RESTORED_CONTENT\n"));
+    const QByteArray vtData = saved.exportVtContent();
+    QVERIFY(!vtData.isEmpty());
+
+    CountingTerminalWidget restored;
+    restored.resize(960, 640);
+    QVERIFY(restored.initialize());
+    restored.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&restored));
+
+    const int flushBefore = restored.debugPtyFlushCount();
+    const bool invoked = QMetaObject::invokeMethod(&restored, "onPtyDataReceived", Qt::DirectConnection,
+                                                   Q_ARG(QByteArray, QByteArray("STALE_PROMPT_MARKER\n")));
+    QVERIFY(invoked);
+    QCOMPARE(restored.debugPtyFlushCount(), flushBefore);
+    QVERIFY(restored.debugPendingPtyDataSize() >= QByteArray("STALE_PROMPT_MARKER\n").size());
+
+    restored.importVtContent(vtData);
+
+    QCOMPARE(restored.debugPendingPtyDataSize(), 0);
+    restored.performSearch(QStringLiteral("RESTORED_CONTENT"));
+    QVERIFY(restored.hasSearchMatches());
+    restored.performSearch(QStringLiteral("STALE_PROMPT_MARKER"));
+    QVERIFY(!restored.hasSearchMatches());
+}
+
+void TestTerminalWidget::testImportVtContentClearsStaleShellIntegrationState() {
+    CountingTerminalWidget saved;
+    saved.resize(960, 640);
+    QVERIFY(saved.initialize());
+    saved.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&saved));
+
+    feedTerminalOutput(saved, QByteArray("RESTORED_CONTENT\n"));
+    const QByteArray vtData = saved.exportVtContent();
+    QVERIFY(!vtData.isEmpty());
+
+    CountingTerminalWidget restored;
+    restored.resize(960, 640);
+    QVERIFY(restored.initialize());
+    restored.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&restored));
+
+    const QByteArray command = QByteArray("\033]777;ShellCommand=") + QByteArray("enNo") + QByteArray("\033\\");
+    const bool invoked =
+        QMetaObject::invokeMethod(&restored, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, command));
+    QVERIFY(invoked);
+    QCOMPARE(restored.property("shellCommand").toString(), QStringLiteral("zsh"));
+    QCOMPARE(restored.property("commandState").toInt(), static_cast<int>(TerminalWidget::CommandState::Running));
+
+    restored.importVtContent(vtData);
+
+    QCOMPARE(restored.property("shellCommand").toString(), QString());
+    QCOMPARE(restored.property("commandState").toInt(), static_cast<int>(TerminalWidget::CommandState::Idle));
+}
+
+void TestTerminalWidget::testImportVtContentKeepsFuturePtyOutputAfterRestoredScreen() {
+    CountingTerminalWidget restored;
+    restored.resize(960, 640);
+    QVERIFY(restored.initialize());
+    restored.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&restored));
+
+    restored.importVtContent(QByteArray("RESTORED_LINE\033[1;1H"));
+    const int restoredRow = firstScreenRowContaining(restored, QStringLiteral("RESTORED_LINE"));
+    QVERIFY(restoredRow >= 0);
+
+    const int flushBefore = restored.debugPtyFlushCount();
+    const bool invoked = QMetaObject::invokeMethod(&restored, "onPtyDataReceived", Qt::DirectConnection,
+                                                   Q_ARG(QByteArray, QByteArray("LIVE_PROMPT")));
+    QVERIFY(invoked);
+    QTRY_VERIFY_WITH_TIMEOUT(restored.debugPtyFlushCount() > flushBefore, 100);
+    QApplication::processEvents();
+
+    const QString restoredLine = restored.debugTextForScreenRow(restoredRow);
+    QVERIFY(restoredLine.contains(QStringLiteral("RESTORED_LINE")));
+    QVERIFY(!restoredLine.contains(QStringLiteral("LIVE_PROMPT")));
 }
 
 // We need QApplication for QWidget tests
