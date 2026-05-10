@@ -378,8 +378,8 @@ void MainWindow::setupTitleBar() {
 
     menu->addSeparator();
 
-    tb->setMenu(menu);
     updateTitlebarPresentation();
+    tb->setMenu(menu);
 }
 
 void MainWindow::addTab(bool activate, const std::optional<PtySession::StartOptions> &startOptions) {

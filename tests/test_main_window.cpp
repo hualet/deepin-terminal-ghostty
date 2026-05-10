@@ -85,6 +85,7 @@ private slots:
     void testActivePaneTitleUpdatesTabAndWindowTitles();
     void testSidebarExpansionSurvivesModeSwitch();
     void testHorizontalTitlebarTabsSurviveModeSwitch();
+    void testHorizontalTitlebarTabsDoNotCoverMenuButton();
     void testVerticalSidebarTabClickSwitchesCurrentTab();
     void testVerticalSidebarIncludesDecorativeHierarchyElements();
     void testVerticalSidebarElidesLabelsWhenNarrow();
@@ -1072,6 +1073,30 @@ void TestMainWindow::testHorizontalTitlebarTabsSurviveModeSwitch() {
     QVERIFY(restoredTabs);
     QCOMPARE(restoredTabs, initialTabs.data());
     QCOMPARE(restoredTabs->count(), 2);
+}
+
+void TestMainWindow::testHorizontalTitlebarTabsDoNotCoverMenuButton() {
+    AppSettings::instance()->setVerticalTabsEnabled(false);
+
+    MainWindow window;
+    window.resize(640, 420);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    auto *tb = titlebar(window);
+    QVERIFY(tb);
+    auto *optionButton = tb->findChild<QWidget *>(QStringLiteral("DTitlebarDWindowOptionButton"));
+    QVERIFY(optionButton);
+
+    const QRect tabsRect(tabs->mapToGlobal(QPoint(0, 0)), tabs->size());
+    const QRect optionRect(optionButton->mapToGlobal(QPoint(0, 0)), optionButton->size());
+    auto rectString = [](const QRect &rect) {
+        return QStringLiteral("(%1,%2 %3x%4)").arg(rect.x()).arg(rect.y()).arg(rect.width()).arg(rect.height());
+    };
+    QVERIFY2(!tabsRect.intersects(optionRect), qPrintable(QStringLiteral("tabbar %1 overlaps titlebar menu button %2")
+                                                              .arg(rectString(tabsRect), rectString(optionRect))));
 }
 
 void TestMainWindow::testVerticalSidebarTabClickSwitchesCurrentTab() {
