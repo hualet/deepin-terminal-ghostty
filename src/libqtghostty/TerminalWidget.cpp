@@ -620,6 +620,12 @@ void TerminalWidget::importVtContent(const QByteArray &data) {
     if (!m_terminal || data.isEmpty())
         return;
 
+    // Reset the terminal before importing so the restored VT state is written
+    // onto a clean slate.  Without this the shell that was started during
+    // initialize() will have already emitted its prompt and PROMPT_SP markers
+    // (the "%" characters visible in zsh), which then interleave with the
+    // restored content and produce garbled output.
+    ghostty_terminal_reset(m_terminal);
     ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(data.constData()),
                               static_cast<size_t>(data.size()));
     m_renderStateDirty = true;
