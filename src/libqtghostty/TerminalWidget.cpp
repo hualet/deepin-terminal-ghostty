@@ -1800,7 +1800,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     if (text.size() == 1 && !(event->modifiers() & Qt::AltModifier)) {
         unsigned char c = static_cast<unsigned char>(text.at(0));
         if (c <= 0x1F || c == 0x7F) {
-            m_ptySession->write(text);
+            writeUserInput(text);
             return;
         }
     }
@@ -1858,16 +1858,16 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     size_t written = 0;
     GhosttyResult err = ghostty_key_encoder_encode(m_keyEncoder, m_keyEvent, buf, sizeof(buf), &written);
     if (err == GHOSTTY_SUCCESS && written > 0) {
-        m_ptySession->write(QByteArray(buf, static_cast<int>(written)));
+        writeUserInput(QByteArray(buf, static_cast<int>(written)));
     } else if (!textUtf8.isEmpty() && !isC0ControlChar(textUtf8) && (err != GHOSTTY_SUCCESS || written == 0)) {
-        m_ptySession->write(textUtf8);
+        writeUserInput(textUtf8);
     } else {
         // Fallback: for standard Ctrl+letter/symbol combos, send the
         // corresponding C0 control character directly when the encoder
         // does not produce output.
         char c0 = ctrlCharForKey(event->key(), event->modifiers());
         if (c0 != 0) {
-            m_ptySession->write(QByteArray(1, c0));
+            writeUserInput(QByteArray(1, c0));
         } else if (gkey == GHOSTTY_KEY_UNIDENTIFIED) {
             QWidget::keyPressEvent(event);
             return;
@@ -1887,7 +1887,7 @@ void TerminalWidget::inputMethodEvent(QInputMethodEvent *event) {
 
     const QString commitString = event->commitString();
     if (!commitString.isEmpty()) {
-        m_ptySession->write(commitString.toUtf8());
+        writeUserInput(commitString.toUtf8());
         m_preeditText.clear();
     }
 
@@ -2459,6 +2459,22 @@ void TerminalWidget::updateViewportScrollState() {
     Q_EMIT viewportScrollStateChanged();
 }
 
+void TerminalWidget::scrollViewportToBottom() {
+    const ViewportScrollState state = queryViewportScrollState();
+    if (state.offset >= state.maximumOffset())
+        return;
+
+    scrollViewportToOffset(state.maximumOffset());
+}
+
+void TerminalWidget::writeUserInput(const QByteArray &data) {
+    if (!m_ptySession || data.isEmpty())
+        return;
+
+    scrollViewportToBottom();
+    m_ptySession->write(data);
+}
+
 void TerminalWidget::onRenderTimerTimeout() {
     if (m_pendingPtyData.isEmpty()) {
         return;
@@ -2758,13 +2774,13 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
                     if (ghostty_paste_encode(mutableData.data(), static_cast<size_t>(mutableData.size()), true,
                                              buf.data(), static_cast<size_t>(buf.size()), &written)
                         == GHOSTTY_SUCCESS) {
-                        m_ptySession->write(QByteArray(buf.constData(), static_cast<int>(written)));
+                        writeUserInput(QByteArray(buf.constData(), static_cast<int>(written)));
                         event->accept();
                         return;
                     }
                 }
             }
-            m_ptySession->write(data);
+            writeUserInput(data);
         }
         event->accept();
     }
@@ -2901,13 +2917,13 @@ void TerminalWidget::pasteFromClipboard() {
             if (ghostty_paste_encode(mutableData.data(), static_cast<size_t>(mutableData.size()), true, buf.data(),
                                      static_cast<size_t>(buf.size()), &written)
                 == GHOSTTY_SUCCESS) {
-                m_ptySession->write(QByteArray(buf.constData(), static_cast<int>(written)));
+                writeUserInput(QByteArray(buf.constData(), static_cast<int>(written)));
                 return;
             }
         }
     }
 
-    m_ptySession->write(data);
+    writeUserInput(data);
 }
 
 void TerminalWidget::selectAll() {

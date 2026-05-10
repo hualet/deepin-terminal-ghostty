@@ -95,6 +95,9 @@ private slots:
     void testContinuousOutputDoesNotFollowBottomWhenScrollbackPrunes();
     void testOutputDoesNotFollowBottomAfterMouseWheelScrollback();
     void testPendingOutputDoesNotFollowBottomAfterMouseWheelScrollback();
+    void testKeyInputFollowsBottomWhenViewportScrolledBack();
+    void testInputMethodCommitFollowsBottomWhenViewportScrolledBack();
+    void testPasteFollowsBottomWhenViewportScrolledBack();
     void testSetOpacity();
     void testSetOpacityRepaintsCachedBackground();
     void testSetOpacityFullDisablesTranslucentBackground();
@@ -201,6 +204,24 @@ void feedTerminalOutput(CountingTerminalWidget &widget, const QByteArray &data) 
         QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, data));
     QVERIFY(invoked);
     waitForNextPtyFlush(widget, previousFlushCount);
+}
+
+void populateAndScrollBack(CountingTerminalWidget &widget) {
+    widget.resize(240, 80);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    widget.setFocus();
+    QApplication::processEvents();
+
+    feedTerminalOutput(widget, QByteArray("one\ntwo\nthree\nfour\nfive\nsix\n"));
+
+    const auto bottomState = widget.viewportScrollState();
+    QVERIFY(bottomState.totalRows > bottomState.visibleRows);
+    QCOMPARE(bottomState.offset, bottomState.maximumOffset());
+
+    widget.scrollViewportToOffset(0);
+    QCOMPARE(widget.viewportScrollState().offset, 0);
 }
 
 int firstScreenRowContaining(const CountingTerminalWidget &widget, QStringView text) {
@@ -1753,6 +1774,58 @@ void TestTerminalWidget::testPendingOutputDoesNotFollowBottomAfterMouseWheelScro
     const auto afterOutput = widget.viewportScrollState();
     QCOMPARE(afterOutput.offset, scrolledState.offset);
     QVERIFY(afterOutput.offset < afterOutput.maximumOffset());
+}
+
+void TestTerminalWidget::testKeyInputFollowsBottomWhenViewportScrolledBack() {
+    CountingTerminalWidget widget;
+    populateAndScrollBack(widget);
+
+    auto *session = widget.findChild<PtySession *>();
+    QVERIFY(session);
+    QSignalSpy spy(session, &PtySession::dataWritten);
+    QVERIFY(spy.isValid());
+
+    QTest::keyClick(&widget, Qt::Key_A);
+
+    QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 500);
+    const auto afterInput = widget.viewportScrollState();
+    QCOMPARE(afterInput.offset, afterInput.maximumOffset());
+}
+
+void TestTerminalWidget::testInputMethodCommitFollowsBottomWhenViewportScrolledBack() {
+    CountingTerminalWidget widget;
+    populateAndScrollBack(widget);
+
+    auto *session = widget.findChild<PtySession *>();
+    QVERIFY(session);
+    QSignalSpy spy(session, &PtySession::dataWritten);
+    QVERIFY(spy.isValid());
+
+    QInputMethodEvent imeEvent;
+    imeEvent.setCommitString(QStringLiteral("中文"));
+    QApplication::sendEvent(&widget, &imeEvent);
+
+    QTRY_VERIFY_WITH_TIMEOUT(collectedPtyOutput(spy).contains(QStringLiteral("中文").toUtf8()), 500);
+    const auto afterInput = widget.viewportScrollState();
+    QCOMPARE(afterInput.offset, afterInput.maximumOffset());
+}
+
+void TestTerminalWidget::testPasteFollowsBottomWhenViewportScrolledBack() {
+    CountingTerminalWidget widget;
+    populateAndScrollBack(widget);
+
+    auto *session = widget.findChild<PtySession *>();
+    QVERIFY(session);
+    QSignalSpy spy(session, &PtySession::dataWritten);
+    QVERIFY(spy.isValid());
+
+    QGuiApplication::clipboard()->setText(QStringLiteral("pasted text"));
+    QTest::qWait(50);
+    widget.pasteFromClipboard();
+
+    QTRY_VERIFY_WITH_TIMEOUT(collectedPtyOutput(spy).contains("pasted text"), 500);
+    const auto afterInput = widget.viewportScrollState();
+    QCOMPARE(afterInput.offset, afterInput.maximumOffset());
 }
 
 void TestTerminalWidget::testSetOpacity() {

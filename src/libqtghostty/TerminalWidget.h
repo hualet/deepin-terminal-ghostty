@@ -163,6 +163,8 @@ private:
     void updateCommandState(CommandState newState);
     ViewportScrollState queryViewportScrollState() const;
     void updateViewportScrollState();
+    void scrollViewportToBottom();
+    void writeUserInput(const QByteArray &data);
 
     void updateSearchHighlight();
     QString textForScreenRow(int row) const;
