@@ -1037,11 +1037,13 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     renderKittyGraphicsLayer(backPainter, GHOSTTY_KITTY_PLACEMENT_LAYER_BELOW_BG);
 
     int y = 0;
+    int viewportRow = 0;
     while (ghostty_render_state_row_iterator_next(m_rowIter)) {
         bool rowDirty = true;
         ghostty_render_state_row_get(m_rowIter, GHOSTTY_RENDER_STATE_ROW_DATA_DIRTY, &rowDirty);
         if (!fullRedraw && !rowDirty) {
             y += m_cellHeight;
+            ++viewportRow;
             continue;
         }
 #ifdef QTGHOSTTY_TESTING
@@ -1050,9 +1052,10 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
         ++m_debugLastFrameRenderedRowCount;
 #endif
 
-        renderRow(backPainter, y, colors, RowRenderPass::Background);
+        renderRow(backPainter, y, static_cast<int>(viewportRow + currentViewportOffset), colors, RowRenderPass::Background);
 
         y += m_cellHeight;
+        ++viewportRow;
     }
 
     renderKittyGraphicsLayer(backPainter, GHOSTTY_KITTY_PLACEMENT_LAYER_BELOW_TEXT);
@@ -1062,15 +1065,17 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
         return;
 
     y = 0;
+    viewportRow = 0;
     while (ghostty_render_state_row_iterator_next(m_rowIter)) {
         bool rowDirty = true;
         ghostty_render_state_row_get(m_rowIter, GHOSTTY_RENDER_STATE_ROW_DATA_DIRTY, &rowDirty);
         if (!fullRedraw && !rowDirty) {
             y += m_cellHeight;
+            ++viewportRow;
             continue;
         }
 
-        renderRow(backPainter, y, colors, RowRenderPass::Text);
+        renderRow(backPainter, y, static_cast<int>(viewportRow + currentViewportOffset), colors, RowRenderPass::Text);
 
         bool clean = false;
         ghostty_render_state_row_set(m_rowIter, GHOSTTY_RENDER_STATE_ROW_OPTION_DIRTY, &clean);
@@ -1242,7 +1247,7 @@ QImage TerminalWidget::imageForKittyImage(GhosttyKittyGraphicsImage image) {
     return qtImage;
 }
 
-void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStateColors &colors, RowRenderPass pass) {
+void TerminalWidget::renderRow(QPainter &painter, int y, int screenRow, const GhosttyRenderStateColors &colors, RowRenderPass pass) {
     if (ghostty_render_state_row_get(m_rowIter, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &m_rowCells) != GHOSTTY_SUCCESS)
         return;
 
@@ -1528,6 +1533,23 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
                                 style.overline);
             activeFont = nullptr;
             activeForeground = QColor();
+        }
+
+        // Draw hyperlink underline for hovered links (Text pass only)
+        if (pass == RowRenderPass::Text && !m_hoverHyperlinkUri.isEmpty()) {
+            const int col = x / m_cellWidth;
+            bool cellHasHyperlink = false;
+            ghostty_cell_get(rawCell, GHOSTTY_CELL_DATA_HAS_HYPERLINK, &cellHasHyperlink);
+            if (cellHasHyperlink) {
+                const QString cellUri = hyperlinkUriAt(screenRow, col);
+                if (cellUri == m_hoverHyperlinkUri) {
+                    const int underlineY = qMin(y + m_cellHeight - 1, y + m_fontAscent + 2);
+                    const QPen previousPen = painter.pen();
+                    painter.setPen(QPen(defaultForeground));
+                    painter.drawLine(x, underlineY, x + cellRenderWidth, underlineY);
+                    painter.setPen(previousPen);
+                }
+            }
         }
 
         x += m_cellWidth;
