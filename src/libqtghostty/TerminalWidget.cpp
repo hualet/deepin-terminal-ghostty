@@ -1054,7 +1054,8 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
         ++m_debugLastFrameRenderedRowCount;
 #endif
 
-        renderRow(backPainter, y, static_cast<int>(viewportRow + currentViewportOffset), colors, RowRenderPass::Background);
+        renderRow(backPainter, y, static_cast<int>(viewportRow + currentViewportOffset), colors,
+                  RowRenderPass::Background);
 
         y += m_cellHeight;
         ++viewportRow;
@@ -1249,7 +1250,8 @@ QImage TerminalWidget::imageForKittyImage(GhosttyKittyGraphicsImage image) {
     return qtImage;
 }
 
-void TerminalWidget::renderRow(QPainter &painter, int y, int screenRow, const GhosttyRenderStateColors &colors, RowRenderPass pass) {
+void TerminalWidget::renderRow(QPainter &painter, int y, int screenRow, const GhosttyRenderStateColors &colors,
+                               RowRenderPass pass) {
     if (ghostty_render_state_row_get(m_rowIter, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &m_rowCells) != GHOSTTY_SUCCESS)
         return;
 

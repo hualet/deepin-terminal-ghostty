@@ -2562,8 +2562,7 @@ void TestTerminalWidget::testHyperlinkCtrlClick() {
 
     // Simulate Ctrl+LeftButton click over hyperlink
     QPoint clickPos(5, 5);
-    QMouseEvent pressEvent(QEvent::MouseButtonPress, clickPos, Qt::LeftButton, Qt::LeftButton,
-                           Qt::ControlModifier);
+    QMouseEvent pressEvent(QEvent::MouseButtonPress, clickPos, Qt::LeftButton, Qt::LeftButton, Qt::ControlModifier);
     QApplication::sendEvent(&widget, &pressEvent);
     QApplication::processEvents();
 

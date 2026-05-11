@@ -19,12 +19,12 @@
 #include <QKeyEvent>
 #include <QMap>
 #include <QMenu>
-#include <QUrl>
 #include <QProcess>
 #include <QRandomGenerator>
 #include <QResizeEvent>
 #include <QSplitter>
 #include <QStandardPaths>
+#include <QUrl>
 #include <QUuid>
 #include <QVBoxLayout>
 
@@ -364,9 +364,8 @@ void TermPane::setupTerminalConnections(TerminalWidget *term) {
     });
     connect(term, &TerminalWidget::sessionClosed, this, [this, term]() { removeTerminal(term); });
     connect(term, &TerminalWidget::focusGained, this, [this, term]() { setCurrentTerminal(term); });
-    connect(term, &TerminalWidget::hyperlinkActivated, this, [](const QString &uri) {
-        QDesktopServices::openUrl(QUrl::fromUserInput(uri));
-    });
+    connect(term, &TerminalWidget::hyperlinkActivated, this,
+            [](const QString &uri) { QDesktopServices::openUrl(QUrl::fromUserInput(uri)); });
 }
 
 void TermPane::setCurrentTerminal(TerminalWidget *term) {
@@ -667,13 +666,11 @@ void TermPane::showTerminalContextMenu(TerminalWidget *term, const QPoint &globa
         auto *copyLinkAction = menu.addAction(tr("Copy Link"));
         auto *openLinkAction = menu.addAction(tr("Open Link"));
 
-        connect(copyLinkAction, &QAction::triggered, this, [hyperlinkUri]() {
-            QGuiApplication::clipboard()->setText(hyperlinkUri);
-        });
+        connect(copyLinkAction, &QAction::triggered, this,
+                [hyperlinkUri]() { QGuiApplication::clipboard()->setText(hyperlinkUri); });
 
-        connect(openLinkAction, &QAction::triggered, this, [hyperlinkUri]() {
-            QDesktopServices::openUrl(QUrl::fromUserInput(hyperlinkUri));
-        });
+        connect(openLinkAction, &QAction::triggered, this,
+                [hyperlinkUri]() { QDesktopServices::openUrl(QUrl::fromUserInput(hyperlinkUri)); });
     }
 
     menu.addSeparator();
