@@ -105,6 +105,8 @@ signals:
     void focusGained();
     void commandStateChanged(CommandState state);
     void viewportScrollStateChanged();
+    void hyperlinkHovered(const QString &uri);
+    void hyperlinkActivated(const QString &uri);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -118,6 +120,7 @@ protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
+    void leaveEvent(QEvent *event) override;
     bool focusNextPrevChild(bool next) override;
 
 private slots:
@@ -137,7 +140,10 @@ private:
     void renderTerminal(QPainter &painter);
     void renderOverlays(QPainter &painter) const;
     enum class RowRenderPass { Background, Text, Full };
-    void renderRow(QPainter &painter, int y, const GhosttyRenderStateColors &colors, RowRenderPass pass);
+    void renderRow(QPainter &painter, int y, int screenRow, const GhosttyRenderStateColors &colors, RowRenderPass pass);
+    QString hyperlinkUriAt(int screenRow, int col) const;
+    QString hyperlinkUriAtPosition(const QPoint &pos) const;
+    void updateHyperlinkHoverState(const QPoint &pos);
     bool renderKittyGraphicsLayer(QPainter &painter, GhosttyKittyPlacementLayer layer);
     bool renderKittyPlacement(QPainter &painter, GhosttyKittyGraphics graphics);
     QImage imageForKittyImage(GhosttyKittyGraphicsImage image);
@@ -265,6 +271,8 @@ private:
         bool active = false;
     };
     Selection m_selection;
+    QString m_hoverHyperlinkUri;
+    QPoint m_lastMousePos;
 
     // Multi-click detection
     enum class ClickMode { Single, Word, Line };
