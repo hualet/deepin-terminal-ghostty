@@ -129,6 +129,11 @@ private slots:
     void testImportVtContentDropsPendingPtyOutput();
     void testImportVtContentClearsStaleShellIntegrationState();
     void testImportVtContentKeepsFuturePtyOutputAfterRestoredScreen();
+
+    void testHyperlinkHoverDetection();
+    void testHyperlinkCtrlClick();
+    void testHyperlinkCursorChange();
+    void testHyperlinkLeaveEvent();
 };
 
 namespace {
@@ -2506,6 +2511,95 @@ void TestTerminalWidget::testImportVtContentKeepsFuturePtyOutputAfterRestoredScr
     const QString restoredLine = restored.debugTextForScreenRow(restoredRow);
     QVERIFY(restoredLine.contains(QStringLiteral("RESTORED_LINE")));
     QVERIFY(!restoredLine.contains(QStringLiteral("LIVE_PROMPT")));
+}
+
+void TestTerminalWidget::testHyperlinkHoverDetection() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    QSignalSpy hoverSpy(&widget, &TerminalWidget::hyperlinkHovered);
+
+    // Write OSC 8 hyperlink sequence
+    QByteArray osc8("\033]8;;https://example.com\aLink\033]8;;\a\n");
+    widget.importVtContent(osc8);
+    QApplication::processEvents();
+
+    // Simulate mouse move over the hyperlink text
+    QPoint hoverPos(widget.terminalContentRect().left() + 5,
+                    widget.terminalContentRect().top() + 5);
+    QTest::mouseMove(&widget, hoverPos);
+    QApplication::processEvents();
+
+    QTRY_VERIFY(hoverSpy.count() > 0);
+    QCOMPARE(hoverSpy.last().first().toString(), QString("https://example.com"));
+}
+
+void TestTerminalWidget::testHyperlinkCtrlClick() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    QSignalSpy activateSpy(&widget, &TerminalWidget::hyperlinkActivated);
+
+    // Write OSC 8 hyperlink sequence
+    QByteArray osc8("\033]8;;https://example.com\aLink\033]8;;\a\n");
+    widget.importVtContent(osc8);
+    QApplication::processEvents();
+
+    // Simulate Ctrl+LeftButton click over hyperlink
+    QPoint clickPos(widget.terminalContentRect().left() + 5,
+                    widget.terminalContentRect().top() + 5);
+    QTest::mouseClick(&widget, Qt::LeftButton, Qt::ControlModifier, clickPos);
+    QApplication::processEvents();
+
+    QCOMPARE(activateSpy.count(), 1);
+    QCOMPARE(activateSpy.first().first().toString(), QString("https://example.com"));
+}
+
+void TestTerminalWidget::testHyperlinkCursorChange() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    // Write OSC 8 hyperlink sequence
+    QByteArray osc8("\033]8;;https://example.com\aLink\033]8;;\a\n");
+    widget.importVtContent(osc8);
+    QApplication::processEvents();
+
+    // Default cursor should be Qt::ArrowCursor
+    QCOMPARE(widget.cursor().shape(), Qt::ArrowCursor);
+
+    // Move mouse over hyperlink
+    QPoint hoverPos(widget.terminalContentRect().left() + 5,
+                    widget.terminalContentRect().top() + 5);
+    QTest::mouseMove(&widget, hoverPos);
+    QApplication::processEvents();
+
+    QCOMPARE(widget.cursor().shape(), Qt::PointingHandCursor);
+}
+
+void TestTerminalWidget::testHyperlinkLeaveEvent() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    QSignalSpy hoverSpy(&widget, &TerminalWidget::hyperlinkHovered);
+
+    // Write OSC 8 hyperlink sequence
+    QByteArray osc8("\033]8;;https://example.com\aLink\033]8;;\a\n");
+    widget.importVtContent(osc8);
+    QApplication::processEvents();
+
+    // Move mouse over hyperlink
+    QPoint hoverPos(widget.terminalContentRect().left() + 5,
+                    widget.terminalContentRect().top() + 5);
+    QTest::mouseMove(&widget, hoverPos);
+    QApplication::processEvents();
+
+    QVERIFY(hoverSpy.count() > 0);
+
+    // Simulate leave event
+    QLeaveEvent leaveEvent(QPoint(), QPoint());
+    QApplication::sendEvent(&widget, &leaveEvent);
+
+    QCOMPARE(hoverSpy.last().first().toString(), QString());
 }
 
 // We need QApplication for QWidget tests
