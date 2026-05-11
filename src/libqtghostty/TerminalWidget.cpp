@@ -868,6 +868,52 @@ void TerminalWidget::updateGridSize() {
     }
 }
 
+QString TerminalWidget::hyperlinkUriAt(int screenRow, int col) const {
+    if (!m_terminal)
+        return QString();
+
+    GhosttyPoint point = {
+        .tag = GHOSTTY_POINT_TAG_SCREEN,
+        .value = {.coordinate = {.x = static_cast<uint16_t>(col), .y = static_cast<uint32_t>(screenRow)}}};
+    GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+    if (ghostty_terminal_grid_ref(m_terminal, point, &ref) != GHOSTTY_SUCCESS)
+        return QString();
+
+    size_t requiredLen = 0;
+    if (ghostty_grid_ref_hyperlink_uri(&ref, nullptr, 0, &requiredLen) != GHOSTTY_OUT_OF_SPACE || requiredLen == 0)
+        return QString();
+
+    QByteArray buffer(static_cast<int>(requiredLen), '\0');
+    size_t written = 0;
+    if (ghostty_grid_ref_hyperlink_uri(&ref, reinterpret_cast<uint8_t *>(buffer.data()), buffer.size(), &written)
+        != GHOSTTY_SUCCESS) {
+        return QString();
+    }
+
+    return QString::fromUtf8(buffer.constData(), static_cast<int>(written));
+}
+
+QString TerminalWidget::hyperlinkUriAtPosition(const QPoint &pos) const {
+    const int col = viewportColumnForPosition(pos);
+    const int viewportRow = viewportRowForPosition(pos);
+    const int screenRow = screenRowForViewportRow(viewportRow);
+    return hyperlinkUriAt(screenRow, col);
+}
+
+void TerminalWidget::updateHyperlinkHoverState(const QPoint &pos) {
+    const QString uri = hyperlinkUriAtPosition(pos);
+    if (uri != m_hoverHyperlinkUri) {
+        m_hoverHyperlinkUri = uri;
+        if (uri.isEmpty()) {
+            unsetCursor();
+        } else {
+            setCursor(Qt::PointingHandCursor);
+        }
+        Q_EMIT hyperlinkHovered(uri);
+        update();
+    }
+}
+
 void TerminalWidget::paintEvent(QPaintEvent *event) {
     (void)event;
     if (!m_terminal || !m_renderState)
