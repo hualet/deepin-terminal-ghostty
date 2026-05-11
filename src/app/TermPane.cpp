@@ -13,11 +13,13 @@
 #include <QClipboard>
 #include <QContextMenuEvent>
 #include <QDebug>
+#include <QDesktopServices>
 #include <QFile>
 #include <QGuiApplication>
 #include <QKeyEvent>
 #include <QMap>
 #include <QMenu>
+#include <QUrl>
 #include <QProcess>
 #include <QRandomGenerator>
 #include <QResizeEvent>
@@ -362,6 +364,9 @@ void TermPane::setupTerminalConnections(TerminalWidget *term) {
     });
     connect(term, &TerminalWidget::sessionClosed, this, [this, term]() { removeTerminal(term); });
     connect(term, &TerminalWidget::focusGained, this, [this, term]() { setCurrentTerminal(term); });
+    connect(term, &TerminalWidget::hyperlinkActivated, this, [](const QString &uri) {
+        QDesktopServices::openUrl(QUrl::fromUserInput(uri));
+    });
 }
 
 void TermPane::setCurrentTerminal(TerminalWidget *term) {
@@ -654,6 +659,22 @@ void TermPane::showTerminalContextMenu(TerminalWidget *term, const QPoint &globa
 
     auto *pasteAction = menu.addAction(tr("Paste"), term, &TerminalWidget::pasteFromClipboard);
     pasteAction->setEnabled(!QGuiApplication::clipboard()->text().isEmpty());
+
+    QPoint localPos = term->mapFromGlobal(globalPos);
+    QString hyperlinkUri = term->hyperlinkUriAtPosition(localPos);
+    if (!hyperlinkUri.isEmpty()) {
+        menu.addSeparator();
+        auto *copyLinkAction = menu.addAction(tr("Copy Link"));
+        auto *openLinkAction = menu.addAction(tr("Open Link"));
+
+        connect(copyLinkAction, &QAction::triggered, this, [hyperlinkUri]() {
+            QGuiApplication::clipboard()->setText(hyperlinkUri);
+        });
+
+        connect(openLinkAction, &QAction::triggered, this, [hyperlinkUri]() {
+            QDesktopServices::openUrl(QUrl::fromUserInput(hyperlinkUri));
+        });
+    }
 
     menu.addSeparator();
     auto *searchAction = menu.addAction(tr("Search"));
