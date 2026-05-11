@@ -558,6 +558,8 @@ void TerminalWidget::scrollViewportBy(int deltaRows) {
     m_renderStateDirty = true;
     updateViewportScrollState();
     update();
+    if (rect().contains(m_lastMousePos))
+        updateHyperlinkHoverState(m_lastMousePos);
 }
 
 void TerminalWidget::scrollViewportToOffset(int offset) {
