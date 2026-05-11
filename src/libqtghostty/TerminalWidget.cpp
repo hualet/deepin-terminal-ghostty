@@ -2639,6 +2639,16 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
     if (!m_terminal || !m_ptySession)
         return;
 
+    // Ctrl+LeftButton: check for hyperlink first, regardless of mouse tracking
+    if (event->button() == Qt::LeftButton && (event->modifiers() & Qt::ControlModifier)) {
+        const QString uri = hyperlinkUriAtPosition(event->pos());
+        if (!uri.isEmpty()) {
+            Q_EMIT hyperlinkActivated(uri);
+            event->accept();
+            return;
+        }
+    }
+
     bool mouseTracking = false;
     ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &mouseTracking);
 
@@ -2704,6 +2714,8 @@ void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
     if (!m_terminal || !m_ptySession)
         return;
 
+    m_lastMousePos = event->pos();
+
     bool mouseTracking = false;
     ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &mouseTracking);
 
@@ -2728,6 +2740,8 @@ void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
         event->accept();
         return;
     }
+
+    updateHyperlinkHoverState(event->pos());
 
     if (event->buttons() & Qt::LeftButton) {
         const int col = viewportColumnForPosition(event->pos());
@@ -2829,6 +2843,16 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
             writeUserInput(data);
         }
         event->accept();
+    }
+}
+
+void TerminalWidget::leaveEvent(QEvent *event) {
+    QWidget::leaveEvent(event);
+    if (!m_hoverHyperlinkUri.isEmpty()) {
+        m_hoverHyperlinkUri.clear();
+        unsetCursor();
+        Q_EMIT hyperlinkHovered(QString());
+        update();
     }
 }
 
