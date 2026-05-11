@@ -171,7 +171,7 @@ private:
     QString selectedText() const;
     bool hasSelection() const;
 
-    bool isWordChar(uint32_t codepoint) const;
+    bool isWordBoundary(uint32_t codepoint) const;
     void wordBoundsAt(int screenRow, int col, int *startCol, int *endCol) const;
     void selectWordAt(int screenRow, int col);
     void selectLineAt(int screenRow);

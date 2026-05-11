@@ -2939,19 +2939,43 @@ void TerminalWidget::selectAll() {
     update();
 }
 
-bool TerminalWidget::isWordChar(uint32_t codepoint) const {
-    // Common terminal word characters: letters, digits, underscore, hyphen
-    if (codepoint >= 'a' && codepoint <= 'z')
-        return true;
-    if (codepoint >= 'A' && codepoint <= 'Z')
-        return true;
-    if (codepoint >= '0' && codepoint <= '9')
-        return true;
-    if (codepoint == '_')
-        return true;
-    if (codepoint == '-')
-        return true;
-    return false;
+bool TerminalWidget::isWordBoundary(uint32_t codepoint) const {
+    switch (codepoint) {
+        case 0:
+        case ' ':
+        case '\t':
+        case '\'':
+        case '"':
+        case '`':
+        case '|':
+        case ':':
+        case ';':
+        case ',':
+        case '(':
+        case ')':
+        case '[':
+        case ']':
+        case '{':
+        case '}':
+        case '<':
+        case '>':
+        case '$':
+        case '=':
+        case '&':
+        case '+':
+        case '!':
+        case '?':
+        case '*':
+        case '#':
+        case '%':
+        case '^':
+        case '~':
+        case '\\':
+        case 0x2502:
+            return true;
+        default:
+            return false;
+    }
 }
 
 void TerminalWidget::wordBoundsAt(int screenRow, int col, int *startCol, int *endCol) const {
@@ -2996,14 +3020,14 @@ void TerminalWidget::wordBoundsAt(int screenRow, int col, int *startCol, int *en
     }
 
     uint32_t anchorCp = getCodepointAt(adjustedCol);
-    const bool expectBoundary = !isWordChar(anchorCp);
+    const bool anchorIsBoundary = isWordBoundary(anchorCp);
 
     for (int c = adjustedCol; c >= 0; --c) {
         GhosttyCellWide cw = cellWidthAt(c);
         if (cw == GHOSTTY_CELL_WIDE_SPACER_TAIL || cw == GHOSTTY_CELL_WIDE_SPACER_HEAD)
             continue;
         uint32_t cp = getCodepointAt(c);
-        if ((expectBoundary && isWordChar(cp)) || (!expectBoundary && !isWordChar(cp))) {
+        if (isWordBoundary(cp) != anchorIsBoundary) {
             *startCol = c + 1;
             break;
         }
@@ -3015,7 +3039,7 @@ void TerminalWidget::wordBoundsAt(int screenRow, int col, int *startCol, int *en
         if (cw == GHOSTTY_CELL_WIDE_SPACER_TAIL || cw == GHOSTTY_CELL_WIDE_SPACER_HEAD)
             continue;
         uint32_t cp = getCodepointAt(c);
-        if ((expectBoundary && isWordChar(cp)) || (!expectBoundary && !isWordChar(cp))) {
+        if (isWordBoundary(cp) != anchorIsBoundary) {
             *endCol = c - 1;
             break;
         }

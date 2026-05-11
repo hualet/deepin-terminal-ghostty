@@ -78,6 +78,18 @@ private slots:
     void testCommandStateTransitionSequence();
 
     void testDoubleClickSelectsWord();
+    void testDoubleClickSelectsWordWithDots();
+    void testDoubleClickSelectsWordWithHyphens();
+    void testDoubleClickSelectsWordWithUnderscores();
+    void testDoubleClickSelectsWordWithMixedPunctuation();
+    void testDoubleClickStopsAtParentheses();
+    void testDoubleClickStopsAtColon();
+    void testDoubleClickStopsAtAmpersand();
+    void testDoubleClickStopsAtPlus();
+    void testDoubleClickStopsAtHash();
+    void testDoubleClickStopsAtExclamation();
+    void testDoubleClickStopsAtGlob();
+    void testDoubleClickSelectsPath();
     void testTripleClickSelectsLine();
     void testDoubleClickDragExtendsByWord();
     void testTripleClickDragExtendsByLine();
@@ -1418,6 +1430,336 @@ void TestTerminalWidget::testDoubleClickSelectsWord() {
 
     const QString text = widget.debugSelectedText();
     QCOMPARE(text, QStringLiteral("world"));
+}
+
+void TestTerminalWidget::testDoubleClickSelectsWordWithDots() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("linux-image-6.18.19-amd64-desktop-rolling\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const QPoint pos = cellCenterForPos(widget, 18, 0);
+    QMouseEvent press1(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press1);
+    QMouseEvent release1(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release1);
+
+    QMouseEvent press2(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press2);
+
+    const QString text = widget.debugSelectedText();
+    QCOMPARE(text, QStringLiteral("linux-image-6.18.19-amd64-desktop-rolling"));
+}
+
+void TestTerminalWidget::testDoubleClickSelectsWordWithHyphens() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("apt-get install foo-bar-baz\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const QPoint pos = cellCenterForPos(widget, 3, 0);
+    QMouseEvent press1(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press1);
+    QMouseEvent release1(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release1);
+
+    QMouseEvent press2(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press2);
+
+    const QString text = widget.debugSelectedText();
+    QCOMPARE(text, QStringLiteral("apt-get"));
+}
+
+void TestTerminalWidget::testDoubleClickSelectsWordWithUnderscores() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("MY_ENV_VAR=/usr/local/bin\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const QPoint pos = cellCenterForPos(widget, 3, 0);
+    QMouseEvent press1(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press1);
+    QMouseEvent release1(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release1);
+
+    QMouseEvent press2(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press2);
+
+    const QString text = widget.debugSelectedText();
+    QCOMPARE(text, QStringLiteral("MY_ENV_VAR"));
+}
+
+void TestTerminalWidget::testDoubleClickSelectsWordWithMixedPunctuation() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("config.json.backup saved.ok\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const QPoint pos = cellCenterForPos(widget, 3, 0);
+    QMouseEvent press1(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press1);
+    QMouseEvent release1(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release1);
+
+    QMouseEvent press2(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press2);
+
+    const QString text = widget.debugSelectedText();
+    QCOMPARE(text, QStringLiteral("config.json.backup"));
+}
+
+void TestTerminalWidget::testDoubleClickStopsAtParentheses() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("foo(bar)baz\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const QPoint pos = cellCenterForPos(widget, 1, 0);
+    QMouseEvent press1(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press1);
+    QMouseEvent release1(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release1);
+
+    QMouseEvent press2(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press2);
+
+    const QString text = widget.debugSelectedText();
+    QCOMPARE(text, QStringLiteral("foo"));
+}
+
+void TestTerminalWidget::testDoubleClickStopsAtColon() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("error: something went wrong\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const QPoint pos = cellCenterForPos(widget, 2, 0);
+    QMouseEvent press1(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press1);
+    QMouseEvent release1(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release1);
+
+    QMouseEvent press2(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press2);
+
+    const QString text = widget.debugSelectedText();
+    QCOMPARE(text, QStringLiteral("error"));
+}
+
+void TestTerminalWidget::testDoubleClickStopsAtAmpersand() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("cmd1&&cmd2\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const QPoint pos = cellCenterForPos(widget, 1, 0);
+    QMouseEvent press1(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press1);
+    QMouseEvent release1(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release1);
+    QMouseEvent press2(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press2);
+
+    const QString text = widget.debugSelectedText();
+    QCOMPARE(text, QStringLiteral("cmd1"));
+}
+
+void TestTerminalWidget::testDoubleClickStopsAtPlus() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("foo+bar\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const QPoint pos = cellCenterForPos(widget, 1, 0);
+    QMouseEvent press1(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press1);
+    QMouseEvent release1(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release1);
+    QMouseEvent press2(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press2);
+
+    const QString text = widget.debugSelectedText();
+    QCOMPARE(text, QStringLiteral("foo"));
+}
+
+void TestTerminalWidget::testDoubleClickStopsAtHash() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("value # comment\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const QPoint pos = cellCenterForPos(widget, 1, 0);
+    QMouseEvent press1(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press1);
+    QMouseEvent release1(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release1);
+    QMouseEvent press2(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press2);
+
+    const QString text = widget.debugSelectedText();
+    QCOMPARE(text, QStringLiteral("value"));
+}
+
+void TestTerminalWidget::testDoubleClickStopsAtExclamation() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("done!next\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const QPoint pos = cellCenterForPos(widget, 1, 0);
+    QMouseEvent press1(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press1);
+    QMouseEvent release1(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release1);
+    QMouseEvent press2(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press2);
+
+    const QString text = widget.debugSelectedText();
+    QCOMPARE(text, QStringLiteral("done"));
+}
+
+void TestTerminalWidget::testDoubleClickStopsAtGlob() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("file*.txt\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const QPoint pos = cellCenterForPos(widget, 1, 0);
+    QMouseEvent press1(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press1);
+    QMouseEvent release1(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release1);
+    QMouseEvent press2(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press2);
+
+    const QString text = widget.debugSelectedText();
+    QCOMPARE(text, QStringLiteral("file"));
+}
+
+void TestTerminalWidget::testDoubleClickSelectsPath() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("cp /usr/local/bin/app /opt/\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const QPoint pos = cellCenterForPos(widget, 7, 0);
+    QMouseEvent press1(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press1);
+    QMouseEvent release1(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release1);
+    QMouseEvent press2(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press2);
+
+    const QString text = widget.debugSelectedText();
+    QCOMPARE(text, QStringLiteral("/usr/local/bin/app"));
 }
 
 void TestTerminalWidget::testTripleClickSelectsLine() {
