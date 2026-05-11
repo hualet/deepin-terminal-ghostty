@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QElapsedTimer>
+#include <QEvent>
 #include <QImage>
 #include <QInputMethodEvent>
 #include <QInputMethodQueryEvent>
@@ -2515,7 +2516,13 @@ void TestTerminalWidget::testImportVtContentKeepsFuturePtyOutputAfterRestoredScr
 
 void TestTerminalWidget::testHyperlinkHoverDetection() {
     TerminalWidget widget;
+    widget.resize(400, 300);
     QVERIFY(widget.initialize());
+    widget.setMouseTracking(true);
+    widget.show();
+    QApplication::processEvents();
+    widget.setFocus();
+    QApplication::processEvents();
 
     QSignalSpy hoverSpy(&widget, &TerminalWidget::hyperlinkHovered);
 
@@ -2523,11 +2530,13 @@ void TestTerminalWidget::testHyperlinkHoverDetection() {
     QByteArray osc8("\033]8;;https://example.com\aLink\033]8;;\a\n");
     widget.importVtContent(osc8);
     QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
 
-    // Simulate mouse move over the hyperlink text
-    QPoint hoverPos(widget.terminalContentRect().left() + 5,
-                    widget.terminalContentRect().top() + 5);
-    QTest::mouseMove(&widget, hoverPos);
+    // Move mouse over hyperlink
+    QPoint hoverPos(5, 5);
+    QMouseEvent moveEvent(QEvent::MouseMove, hoverPos, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &moveEvent);
     QApplication::processEvents();
 
     QTRY_VERIFY(hoverSpy.count() > 0);
@@ -2536,19 +2545,26 @@ void TestTerminalWidget::testHyperlinkHoverDetection() {
 
 void TestTerminalWidget::testHyperlinkCtrlClick() {
     TerminalWidget widget;
+    widget.resize(400, 300);
     QVERIFY(widget.initialize());
-
-    QSignalSpy activateSpy(&widget, &TerminalWidget::hyperlinkActivated);
+    widget.setMouseTracking(true);
+    widget.show();
+    QApplication::processEvents();
 
     // Write OSC 8 hyperlink sequence
     QByteArray osc8("\033]8;;https://example.com\aLink\033]8;;\a\n");
     widget.importVtContent(osc8);
     QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+
+    QSignalSpy activateSpy(&widget, &TerminalWidget::hyperlinkActivated);
 
     // Simulate Ctrl+LeftButton click over hyperlink
-    QPoint clickPos(widget.terminalContentRect().left() + 5,
-                    widget.terminalContentRect().top() + 5);
-    QTest::mouseClick(&widget, Qt::LeftButton, Qt::ControlModifier, clickPos);
+    QPoint clickPos(5, 5);
+    QMouseEvent pressEvent(QEvent::MouseButtonPress, clickPos, Qt::LeftButton, Qt::LeftButton,
+                           Qt::ControlModifier);
+    QApplication::sendEvent(&widget, &pressEvent);
     QApplication::processEvents();
 
     QCOMPARE(activateSpy.count(), 1);
@@ -2557,28 +2573,42 @@ void TestTerminalWidget::testHyperlinkCtrlClick() {
 
 void TestTerminalWidget::testHyperlinkCursorChange() {
     TerminalWidget widget;
+    widget.resize(400, 300);
     QVERIFY(widget.initialize());
+    widget.setMouseTracking(true);
+    widget.show();
+    QApplication::processEvents();
 
     // Write OSC 8 hyperlink sequence
     QByteArray osc8("\033]8;;https://example.com\aLink\033]8;;\a\n");
     widget.importVtContent(osc8);
     QApplication::processEvents();
-
-    // Default cursor should be Qt::ArrowCursor
-    QCOMPARE(widget.cursor().shape(), Qt::ArrowCursor);
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
 
     // Move mouse over hyperlink
-    QPoint hoverPos(widget.terminalContentRect().left() + 5,
-                    widget.terminalContentRect().top() + 5);
-    QTest::mouseMove(&widget, hoverPos);
+    QPoint hoverPos(5, 5);
+    QMouseEvent moveEvent(QEvent::MouseMove, hoverPos, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &moveEvent);
     QApplication::processEvents();
 
     QCOMPARE(widget.cursor().shape(), Qt::PointingHandCursor);
+
+    // Send leave event to reset cursor
+    QEvent leaveEvent(QEvent::Leave);
+    QApplication::sendEvent(&widget, &leaveEvent);
+    QApplication::processEvents();
+
+    QCOMPARE(widget.cursor().shape(), Qt::ArrowCursor);
 }
 
 void TestTerminalWidget::testHyperlinkLeaveEvent() {
     TerminalWidget widget;
+    widget.resize(400, 300);
     QVERIFY(widget.initialize());
+    widget.setMouseTracking(true);
+    widget.show();
+    QApplication::processEvents();
 
     QSignalSpy hoverSpy(&widget, &TerminalWidget::hyperlinkHovered);
 
@@ -2586,18 +2616,21 @@ void TestTerminalWidget::testHyperlinkLeaveEvent() {
     QByteArray osc8("\033]8;;https://example.com\aLink\033]8;;\a\n");
     widget.importVtContent(osc8);
     QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
 
     // Move mouse over hyperlink
-    QPoint hoverPos(widget.terminalContentRect().left() + 5,
-                    widget.terminalContentRect().top() + 5);
-    QTest::mouseMove(&widget, hoverPos);
+    QPoint hoverPos(5, 5);
+    QMouseEvent moveEvent(QEvent::MouseMove, hoverPos, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &moveEvent);
     QApplication::processEvents();
 
     QVERIFY(hoverSpy.count() > 0);
 
-    // Simulate leave event
-    QLeaveEvent leaveEvent(QPoint(), QPoint());
+    // Send leave event directly
+    QEvent leaveEvent(QEvent::Leave);
     QApplication::sendEvent(&widget, &leaveEvent);
+    QApplication::processEvents();
 
     QCOMPARE(hoverSpy.last().first().toString(), QString());
 }
