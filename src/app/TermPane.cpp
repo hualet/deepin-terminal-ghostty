@@ -871,10 +871,7 @@ void TermPane::closeOtherTerminals() {
 void TermPane::executeCommand(const QString &command) {
     if (!m_currentTerm || command.isEmpty())
         return;
-    if (m_currentTerm->m_ptySession) {
-        m_currentTerm->m_ptySession->write(command.toUtf8());
-        m_currentTerm->m_ptySession->write("\n");
-    }
+    m_currentTerm->writeUserInput(command.toUtf8() + QByteArrayLiteral("\n"));
 }
 
 void TermPane::setCustomTitle(const QString &title) {

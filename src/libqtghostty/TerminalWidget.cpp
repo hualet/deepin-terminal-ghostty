@@ -449,6 +449,8 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_InputMethodEnabled, true);
 
+    m_lastMousePos = QPoint(-1, -1);
+
     m_font = QFont("Monospace", 11);
     m_font.setStyleHint(QFont::Monospace);
     m_font.setFixedPitch(true);
@@ -870,13 +872,17 @@ void TerminalWidget::updateGridSize() {
     }
 }
 
-QString TerminalWidget::hyperlinkUriAt(int screenRow, int col) const {
+QString TerminalWidget::hyperlinkUriAtViewportCell(int viewportRow, int col) const {
+    GhosttyPoint point = {
+        .tag = GHOSTTY_POINT_TAG_VIEWPORT,
+        .value = {.coordinate = {.x = static_cast<uint16_t>(col), .y = static_cast<uint32_t>(viewportRow)}}};
+    return hyperlinkUriForPoint(point);
+}
+
+QString TerminalWidget::hyperlinkUriForPoint(GhosttyPoint point) const {
     if (!m_terminal)
         return QString();
 
-    GhosttyPoint point = {
-        .tag = GHOSTTY_POINT_TAG_SCREEN,
-        .value = {.coordinate = {.x = static_cast<uint16_t>(col), .y = static_cast<uint32_t>(screenRow)}}};
     GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
     if (ghostty_terminal_grid_ref(m_terminal, point, &ref) != GHOSTTY_SUCCESS)
         return QString();
@@ -898,18 +904,19 @@ QString TerminalWidget::hyperlinkUriAt(int screenRow, int col) const {
 QString TerminalWidget::hyperlinkUriAtPosition(const QPoint &pos) const {
     const int col = viewportColumnForPosition(pos);
     const int viewportRow = viewportRowForPosition(pos);
-    const int screenRow = screenRowForViewportRow(viewportRow);
-    return hyperlinkUriAt(screenRow, col);
+    return hyperlinkUriAtViewportCell(viewportRow, col);
 }
 
-void TerminalWidget::updateHyperlinkHoverState(const QPoint &pos) {
+void TerminalWidget::updateHyperlinkHoverState(const QPoint &pos, bool changeCursor) {
     const QString uri = hyperlinkUriAtPosition(pos);
     if (uri != m_hoverHyperlinkUri) {
         m_hoverHyperlinkUri = uri;
-        if (uri.isEmpty()) {
-            unsetCursor();
-        } else {
-            setCursor(Qt::PointingHandCursor);
+        if (changeCursor) {
+            if (uri.isEmpty()) {
+                unsetCursor();
+            } else {
+                setCursor(Qt::PointingHandCursor);
+            }
         }
         Q_EMIT hyperlinkHovered(uri);
         update();
@@ -1039,13 +1046,11 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     renderKittyGraphicsLayer(backPainter, GHOSTTY_KITTY_PLACEMENT_LAYER_BELOW_BG);
 
     int y = 0;
-    int viewportRow = 0;
     while (ghostty_render_state_row_iterator_next(m_rowIter)) {
         bool rowDirty = true;
         ghostty_render_state_row_get(m_rowIter, GHOSTTY_RENDER_STATE_ROW_DATA_DIRTY, &rowDirty);
         if (!fullRedraw && !rowDirty) {
             y += m_cellHeight;
-            ++viewportRow;
             continue;
         }
 #ifdef QTGHOSTTY_TESTING
@@ -1054,11 +1059,9 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
         ++m_debugLastFrameRenderedRowCount;
 #endif
 
-        renderRow(backPainter, y, static_cast<int>(viewportRow + currentViewportOffset), colors,
-                  RowRenderPass::Background);
+        renderRow(backPainter, y, colors, RowRenderPass::Background);
 
         y += m_cellHeight;
-        ++viewportRow;
     }
 
     renderKittyGraphicsLayer(backPainter, GHOSTTY_KITTY_PLACEMENT_LAYER_BELOW_TEXT);
@@ -1068,17 +1071,15 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
         return;
 
     y = 0;
-    viewportRow = 0;
     while (ghostty_render_state_row_iterator_next(m_rowIter)) {
         bool rowDirty = true;
         ghostty_render_state_row_get(m_rowIter, GHOSTTY_RENDER_STATE_ROW_DATA_DIRTY, &rowDirty);
         if (!fullRedraw && !rowDirty) {
             y += m_cellHeight;
-            ++viewportRow;
             continue;
         }
 
-        renderRow(backPainter, y, static_cast<int>(viewportRow + currentViewportOffset), colors, RowRenderPass::Text);
+        renderRow(backPainter, y, colors, RowRenderPass::Text);
 
         bool clean = false;
         ghostty_render_state_row_set(m_rowIter, GHOSTTY_RENDER_STATE_ROW_OPTION_DIRTY, &clean);
@@ -1250,8 +1251,7 @@ QImage TerminalWidget::imageForKittyImage(GhosttyKittyGraphicsImage image) {
     return qtImage;
 }
 
-void TerminalWidget::renderRow(QPainter &painter, int y, int screenRow, const GhosttyRenderStateColors &colors,
-                               RowRenderPass pass) {
+void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStateColors &colors, RowRenderPass pass) {
     if (ghostty_render_state_row_get(m_rowIter, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &m_rowCells) != GHOSTTY_SUCCESS)
         return;
 
@@ -1539,23 +1539,6 @@ void TerminalWidget::renderRow(QPainter &painter, int y, int screenRow, const Gh
             activeForeground = QColor();
         }
 
-        // Draw hyperlink underline for hovered links (Text pass only)
-        if (pass == RowRenderPass::Text && !m_hoverHyperlinkUri.isEmpty()) {
-            const int col = x / m_cellWidth;
-            bool cellHasHyperlink = false;
-            ghostty_cell_get(rawCell, GHOSTTY_CELL_DATA_HAS_HYPERLINK, &cellHasHyperlink);
-            if (cellHasHyperlink) {
-                const QString cellUri = hyperlinkUriAt(screenRow, col);
-                if (cellUri == m_hoverHyperlinkUri) {
-                    const int underlineY = qMin(y + m_cellHeight - 1, y + m_fontAscent + 2);
-                    const QPen previousPen = painter.pen();
-                    painter.setPen(QPen(defaultForeground));
-                    painter.drawLine(x, underlineY, x + cellRenderWidth, underlineY);
-                    painter.setPen(previousPen);
-                }
-            }
-        }
-
         x += m_cellWidth;
     }
     flushTextRun();
@@ -1567,11 +1550,10 @@ void TerminalWidget::renderOverlays(QPainter &painter) const {
 
     const QPoint origin = terminalContentOrigin();
     size_t scrollOffset = 0;
-    if (!m_searchMatches.isEmpty() || m_selection.active) {
-        GhosttyTerminalScrollbar scrollbar = {};
-        if (ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &scrollbar) == GHOSTTY_SUCCESS)
-            scrollOffset = scrollbar.offset;
-    }
+    GhosttyTerminalScrollbar scrollbar = {};
+    if (ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &scrollbar) == GHOSTTY_SUCCESS)
+        scrollOffset = scrollbar.offset;
+
     GhosttyColorRgb defaultFg = {};
     ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_COLOR_FOREGROUND, &defaultFg);
     QColor defaultForeground(defaultFg.r, defaultFg.g, defaultFg.b);
@@ -1644,6 +1626,22 @@ void TerminalWidget::renderOverlays(QPainter &painter) const {
                 default:
                     painter.fillRect(curX, curY, m_cellWidth, m_cellHeight, cursorColor);
                     break;
+            }
+        }
+    }
+
+    // Draw hyperlink underline for hovered cells
+    if (!m_hoverHyperlinkUri.isEmpty()) {
+        painter.setPen(defaultForeground);
+        for (int viewportRow = 0; viewportRow < static_cast<int>(m_rows); ++viewportRow) {
+            const int y = origin.y() + viewportRow * m_cellHeight;
+            for (int col = 0; col < static_cast<int>(m_cols); ++col) {
+                const int x = origin.x() + col * m_cellWidth;
+                const QString cellUri = hyperlinkUriAtViewportCell(viewportRow, col);
+                if (cellUri == m_hoverHyperlinkUri) {
+                    const int underlineY = qMin(y + m_cellHeight - 1, y + m_fontAscent + 2);
+                    painter.drawLine(x, underlineY, x + m_cellWidth, underlineY);
+                }
             }
         }
     }
@@ -2746,6 +2744,9 @@ void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
     ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &mouseTracking);
 
     if (mouseTracking && m_mouseEncoder && m_mouseEvent) {
+        // Update hyperlink hover state without changing cursor (terminal app owns cursor)
+        updateHyperlinkHoverState(event->pos(), false);
+
         ghostty_mouse_encoder_setopt_from_terminal(m_mouseEncoder, m_terminal);
         ghostty_mouse_event_set_action(m_mouseEvent, GHOSTTY_MOUSE_ACTION_MOTION);
 

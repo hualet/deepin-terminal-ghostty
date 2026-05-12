@@ -62,9 +62,11 @@ public:
     QByteArray exportVtContent() const;
     void importVtContent(const QByteArray &data);
 
+    bool hasSelection() const;
     void selectAll();
     void copyToClipboard();
     void pasteFromClipboard();
+    void writeUserInput(const QByteArray &data);
     void zoomIn();
     void zoomOut();
     void zoomReset();
@@ -74,6 +76,9 @@ public:
     void findNext();
     void findPrevious();
     bool hasSearchMatches() const;
+
+    // Hyperlink query (public so app layer can use it without friend access)
+    QString hyperlinkUriAtPosition(const QPoint &pos) const;
 
 #ifdef QTGHOSTTY_TESTING
     int debugLastFrameRenderedRowCount() const;
@@ -140,10 +145,10 @@ private:
     void renderTerminal(QPainter &painter);
     void renderOverlays(QPainter &painter) const;
     enum class RowRenderPass { Background, Text, Full };
-    void renderRow(QPainter &painter, int y, int screenRow, const GhosttyRenderStateColors &colors, RowRenderPass pass);
-    QString hyperlinkUriAt(int screenRow, int col) const;
-    QString hyperlinkUriAtPosition(const QPoint &pos) const;
-    void updateHyperlinkHoverState(const QPoint &pos);
+    void renderRow(QPainter &painter, int y, const GhosttyRenderStateColors &colors, RowRenderPass pass);
+    QString hyperlinkUriAtViewportCell(int viewportRow, int col) const;
+    QString hyperlinkUriForPoint(GhosttyPoint point) const;
+    void updateHyperlinkHoverState(const QPoint &pos, bool changeCursor = true);
     bool renderKittyGraphicsLayer(QPainter &painter, GhosttyKittyPlacementLayer layer);
     bool renderKittyPlacement(QPainter &painter, GhosttyKittyGraphics graphics);
     QImage imageForKittyImage(GhosttyKittyGraphicsImage image);
@@ -170,12 +175,10 @@ private:
     ViewportScrollState queryViewportScrollState() const;
     void updateViewportScrollState();
     void scrollViewportToBottom();
-    void writeUserInput(const QByteArray &data);
 
     void updateSearchHighlight();
     QString textForScreenRow(int row) const;
     QString selectedText() const;
-    bool hasSelection() const;
 
     bool isWordBoundary(uint32_t codepoint) const;
     void wordBoundsAt(int screenRow, int col, int *startCol, int *endCol) const;
@@ -293,8 +296,6 @@ private:
     int m_debugPtyFlushCount = 0;
     int m_debugCursorOnlyRepaintCount = 0;
 #endif
-
-    friend class TermPane;
 
     // Effects callbacks
     friend void effectWritePty(GhosttyTerminal terminal, void *userdata, const uint8_t *data, size_t len);

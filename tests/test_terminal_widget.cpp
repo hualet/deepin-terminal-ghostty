@@ -135,6 +135,8 @@ private slots:
     void testHyperlinkCtrlClick();
     void testHyperlinkCursorChange();
     void testHyperlinkLeaveEvent();
+    void testHyperlinkUnderlinePixels();
+    void testHyperlinkHoverWithMouseTracking();
 };
 
 namespace {
@@ -2632,6 +2634,83 @@ void TestTerminalWidget::testHyperlinkLeaveEvent() {
     QApplication::processEvents();
 
     QCOMPARE(hoverSpy.last().first().toString(), QString());
+}
+
+void TestTerminalWidget::testHyperlinkUnderlinePixels() {
+    TerminalWidget widget;
+    widget.resize(400, 300);
+    QVERIFY(widget.initialize());
+    widget.setMouseTracking(true);
+    widget.show();
+    QApplication::processEvents();
+
+    // Write OSC 8 hyperlink sequence
+    QByteArray osc8("\033]8;;https://example.com\aLink\033]8;;\a\n");
+    QSignalSpy hoverSpy(&widget, &TerminalWidget::hyperlinkHovered);
+
+    widget.importVtContent(osc8);
+    QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+
+    // Render before hover
+    QImage before = renderWidgetImage(widget);
+
+    // Move mouse over hyperlink
+    QPoint hoverPos(5, 5);
+    QMouseEvent moveEvent(QEvent::MouseMove, hoverPos, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &moveEvent);
+    QApplication::processEvents();
+
+    // Verify hover signal was emitted
+    QTRY_VERIFY(hoverSpy.count() > 0);
+    QCOMPARE(hoverSpy.last().first().toString(), QString("https://example.com"));
+
+    // Render after hover
+    QImage after = renderWidgetImage(widget);
+
+    // There should be pixel differences (underline drawn)
+    QVERIFY(changedBounds(before, after).isValid());
+
+    // Move mouse out
+    QEvent leaveEvent(QEvent::Leave);
+    QApplication::sendEvent(&widget, &leaveEvent);
+    QApplication::processEvents();
+
+    // Render after leave
+    QImage afterLeave = renderWidgetImage(widget);
+
+    // Should return to original state (no underline)
+    QVERIFY(changedBounds(after, afterLeave).isValid());
+}
+
+void TestTerminalWidget::testHyperlinkHoverWithMouseTracking() {
+    TerminalWidget widget;
+    widget.resize(400, 300);
+    QVERIFY(widget.initialize());
+    widget.setMouseTracking(true);
+    widget.show();
+    QApplication::processEvents();
+
+    QSignalSpy hoverSpy(&widget, &TerminalWidget::hyperlinkHovered);
+
+    // Combine mouse tracking enable + hyperlink into one import
+    // (importVtContent resets the terminal, so both must be in one call)
+    QByteArray content("\033[?1002h\033]8;;https://example.com\aLink\033]8;;\a\n");
+    widget.importVtContent(content);
+    QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+
+    // Move mouse over hyperlink — should still trigger hover signal
+    // even though mouse tracking is enabled
+    QPoint hoverPos(5, 5);
+    QMouseEvent moveEvent(QEvent::MouseMove, hoverPos, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &moveEvent);
+    QApplication::processEvents();
+
+    QTRY_VERIFY(hoverSpy.count() > 0);
+    QCOMPARE(hoverSpy.last().first().toString(), QString("https://example.com"));
 }
 
 // We need QApplication for QWidget tests
