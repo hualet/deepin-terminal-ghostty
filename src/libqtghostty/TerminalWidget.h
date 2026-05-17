@@ -186,6 +186,10 @@ private:
     void selectLineAt(int screenRow);
     void extendWordSelection(int screenRow, int col);
     void extendLineSelection(int screenRow);
+    void extendSelectionToPosition(const QPoint &position);
+    void updateSelectionAutoScroll(const QPoint &position);
+    void stopSelectionAutoScroll();
+    void handleSelectionAutoScroll();
 
     int screenRowForViewportRow(int viewportRow) const;
     bool cellInSelection(int screenRow, int col) const;
@@ -216,6 +220,7 @@ private:
     QHash<uint32_t, QImage> m_kittyImageCache;
     QTimer *m_renderTimer = nullptr;
     QTimer *m_resizeTimer = nullptr;
+    QTimer *m_selectionAutoScrollTimer = nullptr;
     QElapsedTimer m_lastRenderTime;
     QImage m_backBuffer;
     int m_backBufferViewportOffset = 0;
@@ -276,6 +281,7 @@ private:
     Selection m_selection;
     QString m_hoverHyperlinkUri;
     QPoint m_lastMousePos;
+    bool m_selectionDragActive = false;
 
     // Multi-click detection
     enum class ClickMode { Single, Word, Line };

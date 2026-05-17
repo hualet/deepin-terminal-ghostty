@@ -34,6 +34,7 @@ constexpr uint64_t kKittyImageStorageLimitBytes = 64 * 1024 * 1024;
 constexpr size_t kKittyApcMaxBytes = 80 * 1024 * 1024;
 constexpr size_t kBytesPerScrollbackLine = 20 * 1000;
 constexpr size_t kMinimumScrollbackBytes = 100 * 1000 * 1000;
+constexpr int kSelectionAutoScrollIntervalMs = 50;
 
 QColor faintForeground(const QColor &foreground, const QColor &background) {
     return QColor((foreground.red() + background.red()) / 2, (foreground.green() + background.green()) / 2,
@@ -477,6 +478,10 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     m_resizeTimer = new QTimer(this);
     m_resizeTimer->setSingleShot(true);
     connect(m_resizeTimer, &QTimer::timeout, this, [this]() { applyPendingResize(); });
+
+    m_selectionAutoScrollTimer = new QTimer(this);
+    m_selectionAutoScrollTimer->setInterval(kSelectionAutoScrollIntervalMs);
+    connect(m_selectionAutoScrollTimer, &QTimer::timeout, this, [this]() { handleSelectionAutoScroll(); });
 }
 
 TerminalWidget::~TerminalWidget() {
@@ -2677,6 +2682,7 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
     ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &mouseTracking);
 
     if (mouseTracking && m_mouseEncoder && m_mouseEvent) {
+        stopSelectionAutoScroll();
         ghostty_mouse_encoder_setopt_from_terminal(m_mouseEncoder, m_terminal);
         ghostty_mouse_event_set_action(m_mouseEvent, GHOSTTY_MOUSE_ACTION_PRESS);
         ghostty_mouse_event_set_button(m_mouseEvent, ghosttyMouseButtonForQt(event->button()));
@@ -2708,6 +2714,7 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
         }
         m_clickTimer.start();
         m_lastClickPos = event->pos();
+        m_selectionDragActive = true;
 
         m_clickAnchorRow = screenRow;
         m_clickAnchorCol = col;
@@ -2744,6 +2751,7 @@ void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
     ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &mouseTracking);
 
     if (mouseTracking && m_mouseEncoder && m_mouseEvent) {
+        stopSelectionAutoScroll();
         // Update hyperlink hover state without changing cursor (terminal app owns cursor)
         updateHyperlinkHoverState(event->pos(), false);
 
@@ -2771,23 +2779,9 @@ void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
     updateHyperlinkHoverState(event->pos());
 
     if (event->buttons() & Qt::LeftButton) {
-        const int col = viewportColumnForPosition(event->pos());
-        const int screenRow = screenRowForViewportRow(viewportRowForPosition(event->pos()));
-
-        switch (m_clickMode) {
-            case ClickMode::Single:
-                m_selection.endCol = col;
-                m_selection.endRow = screenRow;
-                m_selection.active = true;
-                break;
-            case ClickMode::Word:
-                extendWordSelection(screenRow, col);
-                break;
-            case ClickMode::Line:
-                extendLineSelection(screenRow);
-                break;
-        }
-        update();
+        m_selectionDragActive = true;
+        extendSelectionToPosition(event->pos());
+        updateSelectionAutoScroll(event->pos());
     }
 }
 
@@ -2799,6 +2793,7 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
     ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &mouseTracking);
 
     if (mouseTracking && m_mouseEncoder && m_mouseEvent) {
+        stopSelectionAutoScroll();
         ghostty_mouse_encoder_setopt_from_terminal(m_mouseEncoder, m_terminal);
         ghostty_mouse_event_set_action(m_mouseEvent, GHOSTTY_MOUSE_ACTION_RELEASE);
         ghostty_mouse_event_set_button(m_mouseEvent, ghosttyMouseButtonForQt(event->button()));
@@ -2819,23 +2814,8 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
     }
 
     if (event->button() == Qt::LeftButton) {
-        const int col = viewportColumnForPosition(event->pos());
-        const int screenRow = screenRowForViewportRow(viewportRowForPosition(event->pos()));
-
-        switch (m_clickMode) {
-            case ClickMode::Single:
-                m_selection.endCol = col;
-                m_selection.endRow = screenRow;
-                m_selection.active = true;
-                break;
-            case ClickMode::Word:
-                extendWordSelection(screenRow, col);
-                break;
-            case ClickMode::Line:
-                extendLineSelection(screenRow);
-                break;
-        }
-        update();
+        extendSelectionToPosition(event->pos());
+        stopSelectionAutoScroll();
 
         QString text = selectedText();
         if (!text.isEmpty())
@@ -2870,6 +2850,73 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
             writeUserInput(data);
         }
         event->accept();
+    }
+}
+
+void TerminalWidget::extendSelectionToPosition(const QPoint &position) {
+    const int col = viewportColumnForPosition(position);
+    const int screenRow = screenRowForViewportRow(viewportRowForPosition(position));
+
+    switch (m_clickMode) {
+        case ClickMode::Single:
+            m_selection.endCol = col;
+            m_selection.endRow = screenRow;
+            m_selection.active = true;
+            break;
+        case ClickMode::Word:
+            extendWordSelection(screenRow, col);
+            break;
+        case ClickMode::Line:
+            extendLineSelection(screenRow);
+            break;
+    }
+    update();
+}
+
+void TerminalWidget::updateSelectionAutoScroll(const QPoint &position) {
+    if (!m_selectionDragActive || m_cellHeight <= 0 || !m_selectionAutoScrollTimer)
+        return;
+
+    m_lastMousePos = position;
+    const QRect contentRect = terminalContentRect();
+    if (position.y() < contentRect.top() || position.y() > contentRect.bottom()) {
+        if (!m_selectionAutoScrollTimer->isActive())
+            m_selectionAutoScrollTimer->start();
+        return;
+    }
+
+    stopSelectionAutoScroll();
+}
+
+void TerminalWidget::stopSelectionAutoScroll() {
+    m_selectionDragActive = false;
+    if (m_selectionAutoScrollTimer)
+        m_selectionAutoScrollTimer->stop();
+}
+
+void TerminalWidget::handleSelectionAutoScroll() {
+    if (!m_selectionDragActive || !m_terminal || !m_selectionAutoScrollTimer) {
+        stopSelectionAutoScroll();
+        return;
+    }
+
+    const QRect contentRect = terminalContentRect();
+    int deltaRows = 0;
+    if (m_lastMousePos.y() < contentRect.top()) {
+        deltaRows = -1;
+    } else if (m_lastMousePos.y() > contentRect.bottom()) {
+        deltaRows = 1;
+    } else {
+        stopSelectionAutoScroll();
+        return;
+    }
+
+    const int previousOffset = queryViewportScrollState().offset;
+    scrollViewportBy(deltaRows);
+    if (queryViewportScrollState().offset != previousOffset) {
+        extendSelectionToPosition(m_lastMousePos);
+    } else {
+        stopSelectionAutoScroll();
     }
 }
 

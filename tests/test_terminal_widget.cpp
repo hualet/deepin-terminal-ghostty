@@ -94,6 +94,8 @@ private slots:
     void testTripleClickSelectsLine();
     void testDoubleClickDragExtendsByWord();
     void testTripleClickDragExtendsByLine();
+    void testSelectionDragAboveViewportAutoScrollsUp();
+    void testSelectionDragBelowViewportAutoScrollsDown();
 
     void testZoomInIncreasesFontSize();
     void testZoomOutDecreasesFontSize();
@@ -1867,6 +1869,67 @@ void TestTerminalWidget::testTripleClickDragExtendsByLine() {
     QVERIFY(!text.isEmpty());
     QVERIFY(text.contains(QStringLiteral("line one")));
     QVERIFY(text.contains(QStringLiteral("line three")));
+}
+
+void TestTerminalWidget::testSelectionDragAboveViewportAutoScrollsUp() {
+    CountingTerminalWidget widget;
+    widget.resize(240, 80);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    QByteArray lines;
+    for (int i = 0; i < 30; ++i)
+        lines += QByteArray("line ") + QByteArray::number(i) + '\n';
+    feedTerminalOutput(widget, lines);
+
+    const auto bottomState = widget.viewportScrollState();
+    QVERIFY(bottomState.offset > 0);
+
+    const QPoint startPos = cellCenterForPos(widget, 2, 1);
+    QMouseEvent press(QEvent::MouseButtonPress, startPos, startPos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press);
+
+    const QPoint outsideTop(widget.width() / 2, -20);
+    QMouseEvent move(QEvent::MouseMove, outsideTop, outsideTop, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &move);
+
+    QTRY_VERIFY_WITH_TIMEOUT(widget.viewportScrollState().offset < bottomState.offset, 500);
+
+    QMouseEvent release(QEvent::MouseButtonRelease, outsideTop, outsideTop, Qt::LeftButton, Qt::NoButton,
+                        Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release);
+}
+
+void TestTerminalWidget::testSelectionDragBelowViewportAutoScrollsDown() {
+    CountingTerminalWidget widget;
+    widget.resize(240, 80);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    QByteArray lines;
+    for (int i = 0; i < 30; ++i)
+        lines += QByteArray("line ") + QByteArray::number(i) + '\n';
+    feedTerminalOutput(widget, lines);
+    widget.scrollViewportToOffset(0);
+    QCOMPARE(widget.viewportScrollState().offset, 0);
+
+    const QPoint startPos = cellCenterForPos(widget, 2, widget.terminalRows() - 2);
+    QMouseEvent press(QEvent::MouseButtonPress, startPos, startPos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press);
+
+    const QPoint outsideBottom(widget.width() / 2, widget.height() + 20);
+    QMouseEvent move(QEvent::MouseMove, outsideBottom, outsideBottom, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &move);
+
+    QTRY_VERIFY_WITH_TIMEOUT(widget.viewportScrollState().offset > 0, 500);
+
+    QMouseEvent release(QEvent::MouseButtonRelease, outsideBottom, outsideBottom, Qt::LeftButton, Qt::NoButton,
+                        Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release);
 }
 
 void TestTerminalWidget::testZoomInIncreasesFontSize() {
