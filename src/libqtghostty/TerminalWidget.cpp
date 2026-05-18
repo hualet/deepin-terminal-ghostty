@@ -2628,8 +2628,10 @@ void TerminalWidget::performSearch(const QString &query) {
         }
     }
 
-    if (!m_searchMatches.isEmpty())
+    if (!m_searchMatches.isEmpty()) {
         m_currentSearchIndex = 0;
+        scrollToSearchMatch();
+    }
 
     update();
 }
@@ -2644,6 +2646,7 @@ void TerminalWidget::findNext() {
     if (m_searchMatches.isEmpty())
         return;
     m_currentSearchIndex = (m_currentSearchIndex + 1) % m_searchMatches.size();
+    scrollToSearchMatch();
     update();
 }
 
@@ -2653,11 +2656,26 @@ void TerminalWidget::findPrevious() {
     m_currentSearchIndex = m_currentSearchIndex - 1;
     if (m_currentSearchIndex < 0)
         m_currentSearchIndex = m_searchMatches.size() - 1;
+    scrollToSearchMatch();
     update();
 }
 
 bool TerminalWidget::hasSearchMatches() const {
     return !m_searchMatches.isEmpty();
+}
+
+void TerminalWidget::scrollToSearchMatch() {
+    if (m_currentSearchIndex < 0 || m_currentSearchIndex >= m_searchMatches.size())
+        return;
+
+    const int matchRow = m_searchMatches[m_currentSearchIndex].row;
+    const ViewportScrollState state = queryViewportScrollState();
+    if (matchRow >= state.offset && matchRow < state.offset + state.visibleRows)
+        return;
+
+    int targetOffset = matchRow - state.visibleRows / 2;
+    targetOffset = qBound(0, targetOffset, state.maximumOffset());
+    scrollViewportToOffset(targetOffset);
 }
 
 // ---------------------------------------------------------------------------

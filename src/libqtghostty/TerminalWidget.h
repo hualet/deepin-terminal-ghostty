@@ -177,6 +177,7 @@ private:
     void scrollViewportToBottom();
 
     void updateSearchHighlight();
+    void scrollToSearchMatch();
     QString textForScreenRow(int row) const;
     QString selectedText() const;
 
