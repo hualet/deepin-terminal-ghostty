@@ -1,3 +1,19 @@
+deepin-terminal-ghostty (0.9.7-1) unstable; urgency=medium
+
+  * Add quake mode: a dropdown terminal that toggles from the top of the
+    screen with a configurable global shortcut.
+  * Add OSC 8 hyperlink support: detect, underline, and activate hyperlinks
+    embedded in terminal output with context menu actions for open and copy.
+  * Re-detect hyperlinks after scrolling so links remain active in scrollback.
+  * Autoscroll when dragging a selection past the viewport edge.
+  * Use delimiter-based word boundaries for double-click selection.
+  * Scroll the viewport to bring search matches into view when navigating
+    with find next/previous.
+  * Add short option aliases (-e, -w, -q) and accept --work-directory for
+    backward compatibility with deepin-terminal command-line usage. (fix #26)
+
+ -- Deepin Packages <packages@deepin.org>  Mon, 19 May 2026 00:00:00 +0800
+
 deepin-terminal-ghostty (0.9.6-1) unstable; urgency=medium
 
   * Keep the titlebar menu available when horizontal tabs are enabled.
