@@ -10,21 +10,21 @@ StartupOptions parseStartupOptions(const QStringList &arguments) {
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Deepin Terminal Ghostty"));
-    parser.setSingleDashWordOptionMode(QCommandLineParser::ParseAsLongOptions);
+    parser.setSingleDashWordOptionMode(QCommandLineParser::ParseAsCompactedShortOptions);
     const QCommandLineOption helpOption = parser.addHelpOption();
 
-    const QCommandLineOption executeOption(QStringLiteral("execute"), QStringLiteral("Execute command in startup tab"),
-                                           QStringLiteral("command"));
-    const QCommandLineOption workingDirectoryOption(QStringLiteral("working-directory"),
-                                                    QStringLiteral("Run the startup session in this directory"),
-                                                    QStringLiteral("directory"));
+    const QCommandLineOption executeOption(QStringList{QStringLiteral("e"), QStringLiteral("execute")},
+                                           QStringLiteral("Execute command in startup tab"), QStringLiteral("command"));
+    const QCommandLineOption workingDirectoryOption(
+        QStringList{QStringLiteral("w"), QStringLiteral("working-directory"), QStringLiteral("work-directory")},
+        QStringLiteral("Run the startup session in this directory"), QStringLiteral("directory"));
     const QCommandLineOption waitForChildOption(QStringLiteral("wait-for-child"),
                                                 QStringLiteral("Close the application when the startup session exits"));
     const QCommandLineOption propagateExitCodeOption(
         QStringLiteral("propagate-exit-code"),
         QStringLiteral("Return the startup session exit code from the application process"));
-    const QCommandLineOption quakeModeOption(QStringLiteral("quake-mode"), QStringLiteral("Run in quake mode"));
-
+    const QCommandLineOption quakeModeOption(QStringList{QStringLiteral("q"), QStringLiteral("quake-mode")},
+                                             QStringLiteral("Run in quake mode"));
     parser.addOption(executeOption);
     parser.addOption(workingDirectoryOption);
     parser.addOption(waitForChildOption);

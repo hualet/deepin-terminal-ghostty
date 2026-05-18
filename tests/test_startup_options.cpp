@@ -11,6 +11,10 @@ private slots:
     void testExecuteAndWorkingDirectory();
     void testPropagateExitCodeImpliesWait();
     void testQuakeModeOption();
+    void testShortExecuteOption();
+    void testShortWorkingDirectoryOption();
+    void testShortQuakeModeOption();
+    void testOldWorkDirectoryOption();
 };
 
 void TestStartupOptions::testDefaults() {
@@ -68,6 +72,38 @@ void TestStartupOptions::testQuakeModeOption() {
 
     QVERIFY(options.isValid);
     QVERIFY(options.quakeMode);
+}
+
+void TestStartupOptions::testShortExecuteOption() {
+    const StartupOptions options = parseStartupOptions(
+        QStringList{QStringLiteral("deepin-terminal-ghostty"), QStringLiteral("-e"), QStringLiteral("ls -la")});
+
+    QVERIFY(options.isValid);
+    QCOMPARE(options.execute, QStringLiteral("ls -la"));
+}
+
+void TestStartupOptions::testShortWorkingDirectoryOption() {
+    const StartupOptions options = parseStartupOptions(
+        QStringList{QStringLiteral("deepin-terminal-ghostty"), QStringLiteral("-w"), QStringLiteral("/tmp")});
+
+    QVERIFY(options.isValid);
+    QCOMPARE(options.workingDirectory, QStringLiteral("/tmp"));
+}
+
+void TestStartupOptions::testShortQuakeModeOption() {
+    const StartupOptions options =
+        parseStartupOptions(QStringList{QStringLiteral("deepin-terminal-ghostty"), QStringLiteral("-q")});
+
+    QVERIFY(options.isValid);
+    QVERIFY(options.quakeMode);
+}
+
+void TestStartupOptions::testOldWorkDirectoryOption() {
+    const StartupOptions options = parseStartupOptions(QStringList{
+        QStringLiteral("deepin-terminal-ghostty"), QStringLiteral("--work-directory"), QStringLiteral("/home/user")});
+
+    QVERIFY(options.isValid);
+    QCOMPARE(options.workingDirectory, QStringLiteral("/home/user"));
 }
 
 QTEST_APPLESS_MAIN(TestStartupOptions)
