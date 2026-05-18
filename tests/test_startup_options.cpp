@@ -10,6 +10,7 @@ private slots:
     void testHelpOption();
     void testExecuteAndWorkingDirectory();
     void testPropagateExitCodeImpliesWait();
+    void testQuakeModeOption();
 };
 
 void TestStartupOptions::testDefaults() {
@@ -59,6 +60,14 @@ void TestStartupOptions::testPropagateExitCodeImpliesWait() {
     QVERIFY(options.isValid);
     QVERIFY(options.waitForChild);
     QVERIFY(options.propagateExitCode);
+}
+
+void TestStartupOptions::testQuakeModeOption() {
+    const StartupOptions options =
+        parseStartupOptions(QStringList{QStringLiteral("deepin-terminal-ghostty"), QStringLiteral("--quake-mode")});
+
+    QVERIFY(options.isValid);
+    QVERIFY(options.quakeMode);
 }
 
 QTEST_APPLESS_MAIN(TestStartupOptions)

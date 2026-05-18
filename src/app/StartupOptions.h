@@ -12,6 +12,7 @@ struct StartupOptions {
     QString workingDirectory;
     bool waitForChild = false;
     bool propagateExitCode = false;
+    bool quakeMode = false;
 };
 
 StartupOptions parseStartupOptions(const QStringList &arguments);

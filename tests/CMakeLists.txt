@@ -102,6 +102,7 @@ add_executable(test_main_window
   ${CMAKE_SOURCE_DIR}/src/app/StartupOptions.cpp
   ${CMAKE_SOURCE_DIR}/src/logging/Logging.cpp
   ${CMAKE_SOURCE_DIR}/src/app/MainWindow.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/QuakeWindow.cpp
   ${CMAKE_SOURCE_DIR}/src/app/AppSettings.cpp
   ${CMAKE_SOURCE_DIR}/src/app/ThemeLoader.cpp
   ${CMAKE_SOURCE_DIR}/src/app/SettingsDialog.cpp

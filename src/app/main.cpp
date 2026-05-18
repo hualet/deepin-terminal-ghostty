@@ -11,11 +11,13 @@
 #include <QTranslator>
 
 #include <cstdio>
+#include <memory>
 
 DWIDGET_USE_NAMESPACE
 DCORE_USE_NAMESPACE
 
 #include "MainWindow.h"
+#include "QuakeWindow.h"
 #include "remote/ServerConfigManager.h"
 
 namespace {
@@ -79,17 +81,22 @@ int main(int argc, char *argv[]) {
 
     ServerConfigManager::instance()->initServerConfig();
 
-    MainWindow window(startupOptions);
+    std::unique_ptr<MainWindow> window = startupOptions.quakeMode ? std::make_unique<QuakeWindow>(startupOptions)
+                                                                  : std::make_unique<MainWindow>(startupOptions);
     int startupExitCode = 0;
     bool startupSessionFinished = false;
-    QObject::connect(&window, &MainWindow::startupSessionFinished, &app, [&](int exitCode) {
+    QObject::connect(window.get(), &MainWindow::startupSessionFinished, &app, [&](int exitCode) {
         startupExitCode = exitCode;
         startupSessionFinished = true;
     });
-    window.show();
-    qCInfo(appLog) << "Main window shown";
-
-    Dtk::Widget::moveToCenter(&window);
+    if (auto *quakeWindow = qobject_cast<QuakeWindow *>(window.get())) {
+        quakeWindow->showQuake();
+        qCInfo(appLog) << "Quake window shown";
+    } else {
+        window->show();
+        Dtk::Widget::moveToCenter(window.get());
+        qCInfo(appLog) << "Main window shown";
+    }
 
     const int appExitCode = app.exec();
     if (startupOptions.propagateExitCode && startupSessionFinished)

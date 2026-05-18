@@ -23,11 +23,13 @@ StartupOptions parseStartupOptions(const QStringList &arguments) {
     const QCommandLineOption propagateExitCodeOption(
         QStringLiteral("propagate-exit-code"),
         QStringLiteral("Return the startup session exit code from the application process"));
+    const QCommandLineOption quakeModeOption(QStringLiteral("quake-mode"), QStringLiteral("Run in quake mode"));
 
     parser.addOption(executeOption);
     parser.addOption(workingDirectoryOption);
     parser.addOption(waitForChildOption);
     parser.addOption(propagateExitCodeOption);
+    parser.addOption(quakeModeOption);
 
     StartupOptions options;
     if (!parser.parse(arguments)) {
@@ -48,5 +50,6 @@ StartupOptions parseStartupOptions(const QStringList &arguments) {
     options.workingDirectory = parser.value(workingDirectoryOption);
     options.propagateExitCode = parser.isSet(propagateExitCodeOption);
     options.waitForChild = parser.isSet(waitForChildOption) || options.propagateExitCode;
+    options.quakeMode = parser.isSet(quakeModeOption);
     return options;
 }

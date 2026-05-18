@@ -3,6 +3,7 @@
 #include "MainWindow.h"
 #include "PageSearchBar.h"
 #include "PtySession.h"
+#include "QuakeWindow.h"
 #include "SettingsDialog.h"
 #include "StartupOptions.h"
 #include "TermPane.h"
@@ -119,6 +120,10 @@ private slots:
     void testCommandStatusDotShownWhenCommandFinishesInBackgroundTab();
     void testCommandStatusDotNotShownForInactivePaneInCurrentTab();
     void testPaneActivationDoesNotClearCommandState();
+    void testQuakeWindowUsesTopScreenGeometry();
+    void testQuakeWindowPresentationFlags();
+    void testQuakeWindowShowAndHideUseTargetGeometry();
+    void testQuakeWindowFocusLossHideHonorsSetting();
 
 private:
     DGuiApplicationHelper::ColorType m_originalPaletteType;
@@ -2029,6 +2034,60 @@ void TestMainWindow::testPaneActivationDoesNotClearCommandState() {
     QCOMPARE(commandStateSpy.count(), 0);
     QCOMPARE(shellTerminal->property("commandState").toInt(),
              static_cast<int>(TerminalWidget::CommandState::Succeeded));
+}
+
+void TestMainWindow::testQuakeWindowUsesTopScreenGeometry() {
+    QuakeWindow window;
+    const QRect target = window.targetGeometry();
+    const QScreen *screen = QGuiApplication::screenAt(QCursor::pos());
+    if (!screen)
+        screen = QGuiApplication::primaryScreen();
+    QVERIFY(screen);
+
+    const QRect available = screen->availableGeometry();
+    QCOMPARE(target.x(), available.x());
+    QCOMPARE(target.y(), available.y());
+    QCOMPARE(target.width(), available.width());
+    QCOMPARE(target.height(), qMax(1, available.height() * 2 / 5));
+}
+
+void TestMainWindow::testQuakeWindowPresentationFlags() {
+    QuakeWindow window;
+
+    QVERIFY(window.isQuakeMode());
+    QVERIFY(window.windowFlags() & Qt::WindowStaysOnTopHint);
+    QVERIFY(titlebar(window));
+    QCOMPARE(titlebar(window)->height(), 0);
+}
+
+void TestMainWindow::testQuakeWindowShowAndHideUseTargetGeometry() {
+    QuakeWindow window;
+    window.debugSetAnimationDuration(0);
+
+    window.hide();
+    window.showQuake();
+    QTRY_VERIFY(window.isVisible());
+    QCOMPARE(window.geometry(), window.targetGeometry());
+
+    window.hideQuake();
+    QTRY_VERIFY(!window.isVisible());
+}
+
+void TestMainWindow::testQuakeWindowFocusLossHideHonorsSetting() {
+    QuakeWindow window;
+    window.debugSetAnimationDuration(0);
+    window.showQuake();
+    QTRY_VERIFY(window.isVisible());
+
+    window.debugHandleActivationChange(false);
+    QTRY_VERIFY(!window.isVisible());
+
+    AppSettings::instance()->dsettings()->setOption(QStringLiteral("advanced.window.hideQuakeOnFocusLoss"), false);
+    window.showQuake();
+    QTRY_VERIFY(window.isVisible());
+
+    window.debugHandleActivationChange(false);
+    QVERIFY(window.isVisible());
 }
 
 int main(int argc, char *argv[]) {

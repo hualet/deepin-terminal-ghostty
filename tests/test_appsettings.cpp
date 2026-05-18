@@ -162,7 +162,8 @@ private slots:
                  QStringList({QStringLiteral("interface"), QStringLiteral("cursor"), QStringLiteral("layout")}));
         QCOMPARE(groupKeys(shortcuts),
                  QStringList({QStringLiteral("terminal"), QStringLiteral("tab"), QStringLiteral("advanced")}));
-        QCOMPARE(groupKeys(advanced), QStringList({QStringLiteral("session"), QStringLiteral("scrolling")}));
+        QCOMPARE(groupKeys(advanced),
+                 QStringList({QStringLiteral("session"), QStringLiteral("scrolling"), QStringLiteral("window")}));
 
         QCOMPARE(optionKeys(findGroupByKey(groups, QStringLiteral("interface"))),
                  QStringList({QStringLiteral("colorScheme"), QStringLiteral("fontFamily"), QStringLiteral("fontSize"),
@@ -175,6 +176,8 @@ private slots:
                  QStringList({QStringLiteral("sessionRestore"), QStringLiteral("sessionRestoreBehavior")}));
         QCOMPARE(optionKeys(findGroupByKey(groups, QStringLiteral("scrolling"))),
                  QStringList({QStringLiteral("scrollbackLines")}));
+        QCOMPARE(optionKeys(findGroupByKey(groups, QStringLiteral("window"))),
+                 QStringList({QStringLiteral("hideQuakeOnFocusLoss")}));
     }
 
     void testVerticalTabsEnabled() {
@@ -254,6 +257,24 @@ private slots:
     void testBackgroundBlur() {
         auto *s = AppSettings::instance();
         QCOMPARE(s->backgroundBlur(), false);
+    }
+
+    void testHideQuakeOnFocusLossDefaultAndConfig() {
+        auto *s = AppSettings::instance();
+        QCOMPARE(s->hideQuakeOnFocusLoss(), true);
+
+        QFile file(QStringLiteral(":/settings/default-config.json"));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        QVERIFY(doc.isObject());
+
+        const QJsonArray groups = doc.object().value(QStringLiteral("groups")).toArray();
+        const QJsonObject windowGroup = findGroupByKey(groups, QStringLiteral("window"));
+        const QJsonObject option = findOptionByKey(groups, QStringLiteral("hideQuakeOnFocusLoss"));
+
+        QVERIFY(!windowGroup.isEmpty());
+        QVERIFY(!option.isEmpty());
+        QCOMPARE(option.value(QStringLiteral("default")).toBool(), true);
     }
 
     void testDefaultTerminalFont() {

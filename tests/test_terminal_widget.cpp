@@ -1411,6 +1411,20 @@ QPoint cellCenterForPos(const TerminalWidget &widget, int col, int row) {
     return QPoint(col * cellWidth + cellWidth / 2, row * cellHeight + cellHeight / 2);
 }
 
+QMouseEvent mouseMoveEventFor(QWidget &widget, const QPoint &pos, Qt::MouseButtons buttons = Qt::NoButton,
+                              Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
+    const QPointF localPos(pos);
+    const QPointF globalPos(widget.mapToGlobal(pos));
+    return QMouseEvent(QEvent::MouseMove, localPos, localPos, globalPos, Qt::NoButton, buttons, modifiers);
+}
+
+QMouseEvent mousePressEventFor(QWidget &widget, const QPoint &pos, Qt::MouseButton button, Qt::MouseButtons buttons,
+                               Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
+    const QPointF localPos(pos);
+    const QPointF globalPos(widget.mapToGlobal(pos));
+    return QMouseEvent(QEvent::MouseButtonPress, localPos, localPos, globalPos, button, buttons, modifiers);
+}
+
 } // namespace
 
 void TestTerminalWidget::testDoubleClickSelectsWord() {
@@ -2600,7 +2614,7 @@ void TestTerminalWidget::testHyperlinkHoverDetection() {
 
     // Move mouse over hyperlink
     QPoint hoverPos(5, 5);
-    QMouseEvent moveEvent(QEvent::MouseMove, hoverPos, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QMouseEvent moveEvent = mouseMoveEventFor(widget, hoverPos);
     QApplication::sendEvent(&widget, &moveEvent);
     QApplication::processEvents();
 
@@ -2627,7 +2641,7 @@ void TestTerminalWidget::testHyperlinkCtrlClick() {
 
     // Simulate Ctrl+LeftButton click over hyperlink
     QPoint clickPos(5, 5);
-    QMouseEvent pressEvent(QEvent::MouseButtonPress, clickPos, Qt::LeftButton, Qt::LeftButton, Qt::ControlModifier);
+    QMouseEvent pressEvent = mousePressEventFor(widget, clickPos, Qt::LeftButton, Qt::LeftButton, Qt::ControlModifier);
     QApplication::sendEvent(&widget, &pressEvent);
     QApplication::processEvents();
 
@@ -2652,7 +2666,7 @@ void TestTerminalWidget::testHyperlinkCursorChange() {
 
     // Move mouse over hyperlink
     QPoint hoverPos(5, 5);
-    QMouseEvent moveEvent(QEvent::MouseMove, hoverPos, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QMouseEvent moveEvent = mouseMoveEventFor(widget, hoverPos);
     QApplication::sendEvent(&widget, &moveEvent);
     QApplication::processEvents();
 
@@ -2685,7 +2699,7 @@ void TestTerminalWidget::testHyperlinkLeaveEvent() {
 
     // Move mouse over hyperlink
     QPoint hoverPos(5, 5);
-    QMouseEvent moveEvent(QEvent::MouseMove, hoverPos, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QMouseEvent moveEvent = mouseMoveEventFor(widget, hoverPos);
     QApplication::sendEvent(&widget, &moveEvent);
     QApplication::processEvents();
 
@@ -2721,7 +2735,7 @@ void TestTerminalWidget::testHyperlinkUnderlinePixels() {
 
     // Move mouse over hyperlink
     QPoint hoverPos(5, 5);
-    QMouseEvent moveEvent(QEvent::MouseMove, hoverPos, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QMouseEvent moveEvent = mouseMoveEventFor(widget, hoverPos);
     QApplication::sendEvent(&widget, &moveEvent);
     QApplication::processEvents();
 
@@ -2768,7 +2782,7 @@ void TestTerminalWidget::testHyperlinkHoverWithMouseTracking() {
     // Move mouse over hyperlink — should still trigger hover signal
     // even though mouse tracking is enabled
     QPoint hoverPos(5, 5);
-    QMouseEvent moveEvent(QEvent::MouseMove, hoverPos, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QMouseEvent moveEvent = mouseMoveEventFor(widget, hoverPos);
     QApplication::sendEvent(&widget, &moveEvent);
     QApplication::processEvents();
 

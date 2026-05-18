@@ -342,6 +342,18 @@
                             "step": 100
                         }
                     ]
+                },
+                {
+                    "key": "window",
+                    "name": "Window",
+                    "options": [
+                        {
+                            "key": "hideQuakeOnFocusLoss",
+                            "text": "Hide Quake window after losing focus",
+                            "type": "checkbox",
+                            "default": true
+                        }
+                    ]
                 }
             ]
         }
