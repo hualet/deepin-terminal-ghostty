@@ -126,8 +126,10 @@ void AppSettings::init() {
     auto behaviorOption = m_dsettings->option(kSessionRestoreBehaviorPath);
     if (behaviorOption) {
         QMap<QString, QVariant> items;
-        items.insert(QStringLiteral("keys"), QStringList() << QStringLiteral("ask") << QStringLiteral("auto"));
-        items.insert(QStringLiteral("values"), QStringList() << tr("Ask") << tr("Restore automatically"));
+        items.insert(QStringLiteral("keys"),
+                     QStringList() << QStringLiteral("ask") << QStringLiteral("auto") << QStringLiteral("manual"));
+        items.insert(QStringLiteral("values"),
+                     QStringList() << tr("Ask") << tr("Restore automatically") << tr("Manual (menu triggered)"));
         behaviorOption->setData(QStringLiteral("items"), items);
     }
 

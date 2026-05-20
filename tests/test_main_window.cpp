@@ -4,6 +4,8 @@
 #include "PageSearchBar.h"
 #include "PtySession.h"
 #include "QuakeWindow.h"
+#include "SessionManager.h"
+#include "SessionSnapshot.h"
 #include "SettingsDialog.h"
 #include "StartupOptions.h"
 #include "TermPane.h"
@@ -124,6 +126,9 @@ private slots:
     void testQuakeWindowPresentationFlags();
     void testQuakeWindowShowAndHideUseTargetGeometry();
     void testQuakeWindowFocusLossHideHonorsSetting();
+    void testManualBehaviorOpensBlankWindow();
+    void testRestoreSessionMenuActionDisabledWithoutSnapshot();
+    void testRestoreSessionMenuActionEnabledWithSnapshot();
 
 private:
     DGuiApplicationHelper::ColorType m_originalPaletteType;
@@ -2088,6 +2093,74 @@ void TestMainWindow::testQuakeWindowFocusLossHideHonorsSetting() {
 
     window.debugHandleActivationChange(false);
     QVERIFY(window.isVisible());
+}
+
+void TestMainWindow::testManualBehaviorOpensBlankWindow() {
+    auto *settings = AppSettings::instance();
+    settings->dsettings()->setOption("advanced.session.sessionRestore", true);
+    settings->dsettings()->setOption("advanced.session.sessionRestoreBehavior", QStringLiteral("manual"));
+
+    SessionManager::instance().clearSnapshot();
+
+    WindowSnapshot snap;
+    snap.width = 800;
+    snap.height = 600;
+    snap.tabs.append(TabSnapshot{1, QStringLiteral("Saved tab"), SplitNode{}});
+    QList<QPair<QString, TerminalWidget *>> noTerminals;
+    SessionManager::instance().save(snap, noTerminals);
+    QVERIFY2(SessionManager::instance().hasSnapshot(), "SessionManager::save() failed — snapshot not written");
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    SessionManager::instance().clearSnapshot();
+}
+
+void TestMainWindow::testRestoreSessionMenuActionDisabledWithoutSnapshot() {
+    auto *settings = AppSettings::instance();
+    settings->dsettings()->setOption("advanced.session.sessionRestoreBehavior", QStringLiteral("manual"));
+
+    SessionManager::instance().clearSnapshot();
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *action = window.findChild<QAction *>(QStringLiteral("restoreSessionAction"));
+    QVERIFY(action);
+    QCOMPARE(action->text(), QStringLiteral("Restore Previous Session"));
+    QVERIFY(!action->isEnabled());
+}
+
+void TestMainWindow::testRestoreSessionMenuActionEnabledWithSnapshot() {
+    auto *settings = AppSettings::instance();
+    settings->dsettings()->setOption("advanced.session.sessionRestore", true);
+    settings->dsettings()->setOption("advanced.session.sessionRestoreBehavior", QStringLiteral("manual"));
+
+    SessionManager::instance().clearSnapshot();
+
+    WindowSnapshot snap;
+    snap.width = 800;
+    snap.height = 600;
+    snap.tabs.append(TabSnapshot{1, QStringLiteral("Saved tab"), SplitNode{}});
+    QList<QPair<QString, TerminalWidget *>> noTerminals;
+    SessionManager::instance().save(snap, noTerminals);
+    QVERIFY2(SessionManager::instance().hasSnapshot(), "SessionManager::save() failed — snapshot not written");
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *action = window.findChild<QAction *>(QStringLiteral("restoreSessionAction"));
+    QVERIFY(action);
+    QVERIFY(action->isEnabled());
+
+    SessionManager::instance().clearSnapshot();
 }
 
 int main(int argc, char *argv[]) {

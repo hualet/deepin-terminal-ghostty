@@ -97,6 +97,7 @@ private:
     void showExitConfirmDialog(const QString &title, const QString &body, std::function<void()> onConfirm);
     void saveSessionState();
     void restoreSession();
+    void restorePreviousSession();
 
     QPointer<DTabBar> m_tabBar;
     QStackedWidget *m_stackWidget = nullptr;
@@ -116,6 +117,7 @@ private:
     StartupOptions m_startupOptions;
     bool m_startupSessionHandled = false;
     bool m_hasConfirmedClose = false;
+    QAction *m_restoreSessionAction = nullptr;
     bool m_compositorHasBlur = false;
     QString m_previewColorScheme;
     void initWindowEffects();
@@ -142,4 +144,5 @@ private:
     QShortcut *m_scDisplayShortcuts = nullptr;
     QShortcut *m_scCustomCommand = nullptr;
     QShortcut *m_scRemoteManagement = nullptr;
+    QShortcut *m_scRestoreSession = nullptr;
 };

@@ -160,7 +160,7 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
             if (behavior == QStringLiteral("auto")) {
                 restoreSession();
                 restored = true;
-            } else {
+            } else if (behavior == QStringLiteral("ask")) {
                 auto *dlg = new DDialog(this);
                 dlg->setWindowTitle(tr("Restore Session"));
                 dlg->setMessage(tr("A previous terminal session was found. Restore it?"));
@@ -292,6 +292,14 @@ void MainWindow::setupTitleBar() {
     remoteAction->setToolTip(tr("Open remote server management"));
     remoteAction->setStatusTip(tr("Open remote server management"));
     connect(remoteAction, &QAction::triggered, this, &MainWindow::onShortcutRemoteManagement);
+
+    m_restoreSessionAction = menu->addAction(tr("Restore Previous Session"));
+    m_restoreSessionAction->setObjectName(QStringLiteral("restoreSessionAction"));
+    m_restoreSessionAction->setToolTip(tr("Restore the last saved terminal session"));
+    m_restoreSessionAction->setStatusTip(tr("Restore the last saved terminal session"));
+    m_restoreSessionAction->setEnabled(SessionManager::instance().hasSnapshot()
+                                       && AppSettings::instance()->sessionRestore());
+    connect(m_restoreSessionAction, &QAction::triggered, this, &MainWindow::restorePreviousSession);
 
     auto *settingsAction = menu->addAction(tr("Settings"));
     settingsAction->setObjectName(QStringLiteral("settingsAction"));
@@ -854,6 +862,7 @@ void MainWindow::setupShortcuts() {
     createOnce(m_scDisplayShortcuts, &MainWindow::onShortcutDisplayShortcuts);
     createOnce(m_scCustomCommand, &MainWindow::onShortcutCustomCommand);
     createOnce(m_scRemoteManagement, &MainWindow::onShortcutRemoteManagement);
+    createOnce(m_scRestoreSession, &MainWindow::restorePreviousSession);
 
     // Create switch-to-tab shortcuts (1-9) once
     for (int i = 1; i <= 9; ++i) {
@@ -900,6 +909,7 @@ void MainWindow::setupShortcuts() {
     updateShortcut(m_scDisplayShortcuts, "display_shortcuts");
     updateShortcut(m_scCustomCommand, "custom_command");
     updateShortcut(m_scRemoteManagement, "remote_management");
+    updateShortcut(m_scRestoreSession, "restore_session");
 
     for (int i = 1; i <= 9; ++i) {
         for (QShortcut *sc : findChildren<QShortcut *>()) {
@@ -1324,4 +1334,49 @@ void MainWindow::restoreSession() {
     syncTabWidgetsFromRecords();
     if (m_tabBar && m_tabBar->count() > 0)
         m_tabBar->setCurrentIndex(0);
+}
+
+void MainWindow::restorePreviousSession() {
+    if (!AppSettings::instance()->sessionRestore())
+        return;
+
+    auto &mgr = SessionManager::instance();
+    if (!mgr.hasSnapshot()) {
+        auto *dlg = new DDialog(this);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->setWindowTitle(tr("Restore Session"));
+        dlg->setMessage(tr("No previous session found."));
+        dlg->addButton(tr("OK"), true, DDialog::ButtonNormal);
+        dlg->show();
+        return;
+    }
+
+    WindowSnapshot snapshot = mgr.loadSnapshot();
+    if (snapshot.tabs.isEmpty())
+        return;
+
+    int firstRestoredIndex = m_tabBar ? m_tabBar->count() : 0;
+
+    for (const auto &tabSnap : snapshot.tabs) {
+        addTab(false, std::nullopt);
+        auto *pane = qobject_cast<TermPane *>(m_stackWidget->widget(m_stackWidget->count() - 1));
+        if (!pane)
+            continue;
+
+        QList<QPair<QString, TerminalWidget *>> terminals = pane->restoreFromSplitTree(tabSnap.pane);
+
+        for (const auto &[uuid, term] : terminals) {
+            QByteArray vtData = mgr.loadVtContent(uuid);
+            if (!vtData.isEmpty())
+                term->importVtContent(vtData);
+        }
+
+        if (auto *record = tabRecordForPane(pane)) {
+            record->title = tabSnap.title;
+        }
+    }
+
+    syncTabWidgetsFromRecords();
+    if (m_tabBar && m_tabBar->count() > 0)
+        m_tabBar->setCurrentIndex(firstRestoredIndex);
 }

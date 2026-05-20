@@ -301,6 +301,12 @@
                             "name": "Remote management",
                             "type": "shortcut",
                             "default": "Alt+Del"
+                        },
+                        {
+                            "key": "restore_session",
+                            "name": "Restore previous session",
+                            "type": "shortcut",
+                            "default": "Ctrl+Shift+R"
                         }
                     ]
                 }
@@ -324,7 +330,7 @@
                             "key": "sessionRestoreBehavior",
                             "name": "Restore behavior",
                             "type": "combobox",
-                            "default": "ask"
+                            "default": "manual"
                         }
                     ]
                 },
