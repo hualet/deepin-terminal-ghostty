@@ -3,21 +3,23 @@
 #include <DSettings>
 
 void GenerateSettingTranslate() {
+    auto advanced_scrolling_scrollbackLinesName = QObject::tr("Scrollback lines");
+    auto advanced_session_sessionRestoreBehaviorName = QObject::tr("Restore behavior");
+    auto advanced_session_sessionRestoreText = QObject::tr("Save and restore session");
+    auto advanced_window_hideQuakeOnFocusLossText = QObject::tr("Hide Quake window after losing focus");
+    auto basic_cursor_cursorBlinkText = QObject::tr("Cursor blink");
+    auto basic_cursor_cursorShapeName = QObject::tr("Cursor shape");
     auto basic_interface_blurred_backgroundText = QObject::tr("Blur background");
     auto basic_interface_colorSchemeName = QObject::tr("Theme");
     auto basic_interface_fontFamilyName = QObject::tr("Font family");
     auto basic_interface_fontSizeName = QObject::tr("Font size");
     auto basic_interface_opacityName = QObject::tr("Opacity");
-    auto basic_cursor_cursorBlinkText = QObject::tr("Cursor blink");
-    auto basic_cursor_cursorShapeName = QObject::tr("Cursor shape");
     auto basic_layout_verticalTabsText = QObject::tr("Vertical Tabs");
-    auto advanced_session_sessionRestoreText = QObject::tr("Save and restore session");
-    auto advanced_session_sessionRestoreBehaviorName = QObject::tr("Restore behavior");
-    auto advanced_scrolling_scrollbackLinesName = QObject::tr("Scrollback lines");
-    auto group_basicName = QObject::tr("Basic");
     auto group_advancedName = QObject::tr("Advanced");
     auto group_advanced_scrollingName = QObject::tr("Scrolling");
     auto group_advanced_sessionName = QObject::tr("Session Management");
+    auto group_advanced_windowName = QObject::tr("Window");
+    auto group_basicName = QObject::tr("Basic");
     auto group_basic_cursorName = QObject::tr("Cursor");
     auto group_basic_interfaceName = QObject::tr("Interface");
     auto group_basic_layoutName = QObject::tr("Layout");
@@ -28,8 +30,8 @@ void GenerateSettingTranslate() {
     auto shortcuts_advanced_custom_commandName = QObject::tr("Custom commands");
     auto shortcuts_advanced_display_shortcutsName = QObject::tr("Display shortcuts");
     auto shortcuts_advanced_remote_managementName = QObject::tr("Remote management");
-    auto shortcuts_advanced_restore_sessionName = QObject::tr("Restore previous session");
     auto shortcuts_advanced_rename_titleName = QObject::tr("Rename title");
+    auto shortcuts_advanced_restore_sessionName = QObject::tr("Restore previous session");
     auto shortcuts_advanced_switch_fullscreenName = QObject::tr("Fullscreen");
     auto shortcuts_tab_close_other_tabsName = QObject::tr("Close other tabs");
     auto shortcuts_tab_close_other_workspacesName = QObject::tr("Close other workspaces");
