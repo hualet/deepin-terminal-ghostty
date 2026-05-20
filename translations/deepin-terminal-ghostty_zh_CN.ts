@@ -4,45 +4,50 @@
 <context>
     <name>AppSettings</name>
     <message>
-        <location filename="../src/app/AppSettings.cpp" line="104"/>
+        <location filename="../src/app/AppSettings.cpp" line="105"/>
         <source>Block</source>
         <translation>块状</translation>
     </message>
     <message>
-        <location filename="../src/app/AppSettings.cpp" line="104"/>
+        <location filename="../src/app/AppSettings.cpp" line="105"/>
         <source>Bar</source>
         <translation>竖线</translation>
     </message>
     <message>
-        <location filename="../src/app/AppSettings.cpp" line="104"/>
+        <location filename="../src/app/AppSettings.cpp" line="105"/>
         <source>Underline</source>
         <translation>下划线</translation>
     </message>
     <message>
-        <location filename="../src/app/AppSettings.cpp" line="114"/>
+        <location filename="../src/app/AppSettings.cpp" line="115"/>
         <source>System</source>
         <translation>跟随系统</translation>
     </message>
     <message>
-        <location filename="../src/app/AppSettings.cpp" line="129"/>
+        <location filename="../src/app/AppSettings.cpp" line="132"/>
         <source>Ask</source>
         <translation>每次询问</translation>
     </message>
     <message>
-        <location filename="../src/app/AppSettings.cpp" line="129"/>
+        <location filename="../src/app/AppSettings.cpp" line="132"/>
         <source>Restore automatically</source>
         <translation>自动恢复</translation>
+    </message>
+    <message>
+        <location filename="../src/app/AppSettings.cpp" line="132"/>
+        <source>Manual (menu triggered)</source>
+        <translation>手动（菜单触发）</translation>
     </message>
 </context>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="293"/>
+        <location filename="../src/app/MainWindow.cpp" line="304"/>
         <source>Settings</source>
         <translation>设置</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="276"/>
+        <location filename="../src/app/MainWindow.cpp" line="279"/>
         <source>Vertical Tabs</source>
         <translation>垂直标签页</translation>
     </message>
@@ -57,93 +62,104 @@
         <translation>深度终端 Ghostty 终端模拟器主窗口。</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="204"/>
+        <location filename="../src/app/MainWindow.cpp" line="207"/>
         <source>Terminal tabs</source>
         <translation>终端标签页</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="205"/>
+        <location filename="../src/app/MainWindow.cpp" line="208"/>
         <source>Switch between terminal tabs.</source>
         <translation>在终端标签页之间切换。</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="222"/>
+        <location filename="../src/app/MainWindow.cpp" line="225"/>
         <source>Horizontal terminal tabs</source>
         <translation>水平终端标签页</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="223"/>
+        <location filename="../src/app/MainWindow.cpp" line="226"/>
         <source>Titlebar area containing terminal tabs.</source>
         <translation>包含终端标签页的标题栏区域。</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="242"/>
+        <location filename="../src/app/MainWindow.cpp" line="245"/>
         <source>Compact titlebar</source>
         <translation>紧凑标题栏</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="243"/>
+        <location filename="../src/app/MainWindow.cpp" line="246"/>
         <source>Titlebar shown when vertical tabs are enabled.</source>
         <translation>启用垂直标签页时显示的标题栏。</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="278"/>
-        <location filename="../src/app/MainWindow.cpp" line="279"/>
+        <location filename="../src/app/MainWindow.cpp" line="281"/>
+        <location filename="../src/app/MainWindow.cpp" line="282"/>
         <source>Toggle vertical tab navigation</source>
         <translation>切换垂直标签导航</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="289"/>
-        <location filename="../src/app/MainWindow.cpp" line="290"/>
+        <location filename="../src/app/MainWindow.cpp" line="292"/>
+        <location filename="../src/app/MainWindow.cpp" line="293"/>
         <source>Open remote server management</source>
         <translation>打开远程服务器管理</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="295"/>
         <location filename="../src/app/MainWindow.cpp" line="296"/>
+        <source>Restore Previous Session</source>
+        <translation>恢复上次会话</translation>
+    </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="298"/>
+        <location filename="../src/app/MainWindow.cpp" line="299"/>
+        <source>Restore the last saved terminal session</source>
+        <translation>恢复上次保存的终端会话</translation>
+    </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="306"/>
+        <location filename="../src/app/MainWindow.cpp" line="307"/>
         <source>Open application settings</source>
         <translation>打开应用设置</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="301"/>
+        <location filename="../src/app/MainWindow.cpp" line="312"/>
         <source>Theme</source>
         <translation>主题</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="309"/>
+        <location filename="../src/app/MainWindow.cpp" line="320"/>
         <source>Light</source>
         <translation>浅色</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="318"/>
+        <location filename="../src/app/MainWindow.cpp" line="328"/>
         <source>Dark</source>
         <translation>深色</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="327"/>
+        <location filename="../src/app/MainWindow.cpp" line="336"/>
         <source>System</source>
         <translation>跟随系统</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="424"/>
-        <location filename="../src/app/MainWindow.cpp" line="427"/>
-        <location filename="../src/app/MainWindow.cpp" line="541"/>
-        <location filename="../src/app/MainWindow.cpp" line="613"/>
-        <location filename="../src/app/MainWindow.cpp" line="620"/>
-        <location filename="../src/app/MainWindow.cpp" line="625"/>
-        <location filename="../src/app/MainWindow.cpp" line="656"/>
-        <location filename="../src/app/MainWindow.cpp" line="1007"/>
+        <location filename="../src/app/MainWindow.cpp" line="439"/>
+        <location filename="../src/app/MainWindow.cpp" line="442"/>
+        <location filename="../src/app/MainWindow.cpp" line="556"/>
+        <location filename="../src/app/MainWindow.cpp" line="628"/>
+        <location filename="../src/app/MainWindow.cpp" line="635"/>
+        <location filename="../src/app/MainWindow.cpp" line="640"/>
+        <location filename="../src/app/MainWindow.cpp" line="671"/>
+        <location filename="../src/app/MainWindow.cpp" line="1024"/>
         <source>Terminal</source>
         <translation>终端</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="944"/>
-        <location filename="../src/app/MainWindow.cpp" line="1001"/>
+        <location filename="../src/app/MainWindow.cpp" line="961"/>
+        <location filename="../src/app/MainWindow.cpp" line="1018"/>
         <source>Rename title</source>
         <translation>重命名标题</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="944"/>
+        <location filename="../src/app/MainWindow.cpp" line="961"/>
         <source>New title:</source>
         <translation>新标题：</translation>
     </message>
@@ -160,136 +176,146 @@
         <translation type="vanished">快捷键</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="973"/>
+        <location filename="../src/app/MainWindow.cpp" line="990"/>
         <source>Copy</source>
         <translation>复制</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="974"/>
+        <location filename="../src/app/MainWindow.cpp" line="991"/>
         <source>Paste</source>
         <translation>粘贴</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="975"/>
+        <location filename="../src/app/MainWindow.cpp" line="992"/>
         <source>Find</source>
         <translation>查找</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="976"/>
+        <location filename="../src/app/MainWindow.cpp" line="993"/>
         <source>Zoom in</source>
         <translation>放大</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="977"/>
+        <location filename="../src/app/MainWindow.cpp" line="994"/>
         <source>Zoom out</source>
         <translation>缩小</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="978"/>
+        <location filename="../src/app/MainWindow.cpp" line="995"/>
         <source>Default size</source>
         <translation>默认大小</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="979"/>
+        <location filename="../src/app/MainWindow.cpp" line="996"/>
         <source>Select all</source>
         <translation>全选</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="982"/>
+        <location filename="../src/app/MainWindow.cpp" line="999"/>
         <source>New tab</source>
         <translation>新建标签页</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="983"/>
+        <location filename="../src/app/MainWindow.cpp" line="1000"/>
         <source>Close tab</source>
         <translation>关闭标签页</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="984"/>
+        <location filename="../src/app/MainWindow.cpp" line="1001"/>
         <source>Close other tabs</source>
         <translation>关闭其他标签页</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="985"/>
+        <location filename="../src/app/MainWindow.cpp" line="1002"/>
         <source>Previous tab</source>
         <translation>上一个标签页</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="986"/>
+        <location filename="../src/app/MainWindow.cpp" line="1003"/>
         <source>Next tab</source>
         <translation>下一个标签页</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="987"/>
+        <location filename="../src/app/MainWindow.cpp" line="1004"/>
         <source>Vertical split</source>
         <translation>垂直分屏</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="988"/>
+        <location filename="../src/app/MainWindow.cpp" line="1005"/>
         <source>Horizontal split</source>
         <translation>水平分屏</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="989"/>
+        <location filename="../src/app/MainWindow.cpp" line="1006"/>
         <source>Select upper workspace</source>
         <translation>选择上方工作区</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="990"/>
+        <location filename="../src/app/MainWindow.cpp" line="1007"/>
         <source>Select lower workspace</source>
         <translation>选择下方工作区</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="991"/>
+        <location filename="../src/app/MainWindow.cpp" line="1008"/>
         <source>Select left workspace</source>
         <translation>选择左侧工作区</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="992"/>
+        <location filename="../src/app/MainWindow.cpp" line="1009"/>
         <source>Select right workspace</source>
         <translation>选择右侧工作区</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="993"/>
+        <location filename="../src/app/MainWindow.cpp" line="1010"/>
         <source>Close workspace</source>
         <translation>关闭工作区</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="994"/>
+        <location filename="../src/app/MainWindow.cpp" line="1011"/>
         <source>Close other workspaces</source>
         <translation>关闭其他工作区</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="996"/>
+        <location filename="../src/app/MainWindow.cpp" line="1013"/>
         <source>Go to tab %1</source>
         <translation>转到标签页 %1</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="1000"/>
+        <location filename="../src/app/MainWindow.cpp" line="1017"/>
         <source>Fullscreen</source>
         <translation>全屏</translation>
+    </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="1348"/>
+        <source>No previous session found.</source>
+        <translation>未找到上次的会话。</translation>
+    </message>
+    <message>
+        <location filename="../src/app/MainWindow.cpp" line="1349"/>
+        <source>OK</source>
+        <translation>确定</translation>
     </message>
     <message>
         <source>Custom command</source>
         <translation type="vanished">自定义命令</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="1004"/>
+        <location filename="../src/app/MainWindow.cpp" line="1021"/>
         <source>Remote management</source>
         <translation>远程管理</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="1031"/>
+        <location filename="../src/app/MainWindow.cpp" line="1048"/>
         <source>Custom Command</source>
         <translation>自定义命令</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="1031"/>
+        <location filename="../src/app/MainWindow.cpp" line="1048"/>
         <source>Enter command:</source>
         <translation>输入命令：</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="287"/>
+        <location filename="../src/app/MainWindow.cpp" line="290"/>
         <source>Remote Management</source>
         <translation>远程管理</translation>
     </message>
@@ -306,66 +332,67 @@
         <translation type="vanished">关闭</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="476"/>
-        <location filename="../src/app/MainWindow.cpp" line="1185"/>
+        <location filename="../src/app/MainWindow.cpp" line="491"/>
+        <location filename="../src/app/MainWindow.cpp" line="1238"/>
         <source>Close this terminal?</source>
         <translation>关闭此终端？</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="1185"/>
+        <location filename="../src/app/MainWindow.cpp" line="1238"/>
         <source>Close this window?</source>
         <translation>关闭此窗口？</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="471"/>
-        <location filename="../src/app/MainWindow.cpp" line="1187"/>
+        <location filename="../src/app/MainWindow.cpp" line="486"/>
+        <location filename="../src/app/MainWindow.cpp" line="1240"/>
         <source>There is still a process running in this terminal. Closing the terminal will kill it.</source>
         <translation>此终端中仍有进程正在运行。关闭终端将终止该进程。</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="473"/>
-        <location filename="../src/app/MainWindow.cpp" line="1189"/>
+        <location filename="../src/app/MainWindow.cpp" line="488"/>
+        <location filename="../src/app/MainWindow.cpp" line="1242"/>
         <source>There are still %1 processes running in this terminal. Closing the terminal will kill all of them.</source>
         <translation>此终端中仍有 %1 个进程正在运行。关闭终端将终止所有进程。</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="1002"/>
+        <location filename="../src/app/MainWindow.cpp" line="1019"/>
         <source>Display shortcuts</source>
         <translation>显示快捷键</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="1003"/>
+        <location filename="../src/app/MainWindow.cpp" line="1020"/>
         <source>Custom commands</source>
         <translation>自定义命令</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="1008"/>
+        <location filename="../src/app/MainWindow.cpp" line="1025"/>
         <source>Tabs</source>
         <translation>标签页</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="1009"/>
+        <location filename="../src/app/MainWindow.cpp" line="1026"/>
         <source>Others</source>
         <translation>其他</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="1192"/>
+        <location filename="../src/app/MainWindow.cpp" line="1245"/>
         <source>There are still processes running in this window. Closing the window will kill all of them.</source>
         <translation>此窗口中仍有进程正在运行。关闭窗口将终止所有进程。</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="162"/>
         <location filename="../src/app/MainWindow.cpp" line="165"/>
+        <location filename="../src/app/MainWindow.cpp" line="168"/>
+        <location filename="../src/app/MainWindow.cpp" line="1347"/>
         <source>Restore Session</source>
         <translation>恢复会话</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="163"/>
+        <location filename="../src/app/MainWindow.cpp" line="166"/>
         <source>A previous terminal session was found. Restore it?</source>
         <translation>发现上次的终端会话。是否恢复？</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="164"/>
+        <location filename="../src/app/MainWindow.cpp" line="167"/>
         <source>New Terminal</source>
         <translation>新建终端</translation>
     </message>
@@ -489,156 +516,161 @@
     </message>
     <message>
         <location filename="../src/app/settings/settings_translation.cpp" line="31"/>
+        <source>Restore previous session</source>
+        <translation>恢复上次会话</translation>
+    </message>
+    <message>
+        <location filename="../src/app/settings/settings_translation.cpp" line="32"/>
         <source>Rename title</source>
         <translation>重命名标题</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="32"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="33"/>
         <source>Fullscreen</source>
         <translation>全屏</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="33"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="34"/>
         <source>Close other tabs</source>
         <translation>关闭其他标签页</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="34"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="35"/>
         <source>Close other workspaces</source>
         <translation>关闭其他工作区</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="35"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="36"/>
         <source>Close tab</source>
         <translation>关闭标签页</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="36"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="37"/>
         <source>Close workspace</source>
         <translation>关闭工作区</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="37"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="38"/>
         <source>Horizontal split</source>
         <translation>水平分屏</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="38"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="39"/>
         <source>New tab</source>
         <translation>新建标签页</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="39"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="40"/>
         <source>Next tab</source>
         <translation>下一个标签页</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="40"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="41"/>
         <source>Previous tab</source>
         <translation>上一个标签页</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="41"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="42"/>
         <source>Select left workspace</source>
         <translation>选择左侧工作区</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="42"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="43"/>
         <source>Select lower workspace</source>
         <translation>选择下方工作区</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="43"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="44"/>
         <source>Select right workspace</source>
         <translation>选择右侧工作区</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="44"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="45"/>
         <source>Select upper workspace</source>
         <translation>选择上方工作区</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="45"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="46"/>
         <source>Go to tab 1</source>
         <translation>转到标签页 1</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="46"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="47"/>
         <source>Go to tab 2</source>
         <translation>转到标签页 2</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="47"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="48"/>
         <source>Go to tab 3</source>
         <translation>转到标签页 3</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="48"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="49"/>
         <source>Go to tab 4</source>
         <translation>转到标签页 4</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="49"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="50"/>
         <source>Go to tab 5</source>
         <translation>转到标签页 5</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="50"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="51"/>
         <source>Go to tab 6</source>
         <translation>转到标签页 6</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="51"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="52"/>
         <source>Go to tab 7</source>
         <translation>转到标签页 7</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="52"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="53"/>
         <source>Go to tab 8</source>
         <translation>转到标签页 8</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="53"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="54"/>
         <source>Go to tab 9</source>
         <translation>转到标签页 9</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="54"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="55"/>
         <source>Vertical split</source>
         <translation>垂直分屏</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="55"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="56"/>
         <source>Copy</source>
         <translation>复制</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="56"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="57"/>
         <source>Default size</source>
         <translation>默认大小</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="57"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="58"/>
         <source>Find</source>
         <translation>查找</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="58"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="59"/>
         <source>Paste</source>
         <translation>粘贴</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="59"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="60"/>
         <source>Select all</source>
         <translation>全选</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="60"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="61"/>
         <source>Zoom in</source>
         <translation>放大</translation>
     </message>
     <message>
-        <location filename="../src/app/settings/settings_translation.cpp" line="61"/>
+        <location filename="../src/app/settings/settings_translation.cpp" line="62"/>
         <source>Zoom out</source>
         <translation>缩小</translation>
     </message>
@@ -667,13 +699,13 @@
         <translation>一款基于 Qt6、DTK6 和 libghostty-vt 构建的 Linux 功能丰富终端模拟器。</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="1155"/>
+        <location filename="../src/app/MainWindow.cpp" line="1208"/>
         <source>Cancel</source>
         <comment>ExitConfirmDialog</comment>
         <translation>取消</translation>
     </message>
     <message>
-        <location filename="../src/app/MainWindow.cpp" line="1156"/>
+        <location filename="../src/app/MainWindow.cpp" line="1209"/>
         <source>Close</source>
         <comment>ExitConfirmDialog</comment>
         <translation>关闭</translation>
@@ -1090,57 +1122,67 @@
 <context>
     <name>TermPane</name>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="658"/>
+        <location filename="../src/app/TermPane.cpp" line="657"/>
         <source>Copy</source>
         <translation>复制</translation>
     </message>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="660"/>
+        <location filename="../src/app/TermPane.cpp" line="659"/>
         <source>Paste</source>
         <translation>粘贴</translation>
     </message>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="664"/>
+        <location filename="../src/app/TermPane.cpp" line="666"/>
+        <source>Copy Link</source>
+        <translation>复制链接</translation>
+    </message>
+    <message>
+        <location filename="../src/app/TermPane.cpp" line="667"/>
+        <source>Open Link</source>
+        <translation>打开链接</translation>
+    </message>
+    <message>
+        <location filename="../src/app/TermPane.cpp" line="677"/>
         <source>Search</source>
         <translation>搜索</translation>
     </message>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="666"/>
+        <location filename="../src/app/TermPane.cpp" line="679"/>
         <source>Horizontal Split</source>
         <translation>水平分屏</translation>
     </message>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="667"/>
+        <location filename="../src/app/TermPane.cpp" line="680"/>
         <source>Vertical Split</source>
         <translation>垂直分屏</translation>
     </message>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="669"/>
+        <location filename="../src/app/TermPane.cpp" line="682"/>
         <source>Close Split</source>
         <translation>关闭分屏</translation>
     </message>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="672"/>
+        <location filename="../src/app/TermPane.cpp" line="685"/>
         <source>Theme</source>
         <translation>主题</translation>
     </message>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="678"/>
+        <location filename="../src/app/TermPane.cpp" line="691"/>
         <source>Light</source>
         <translation>浅色</translation>
     </message>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="684"/>
+        <location filename="../src/app/TermPane.cpp" line="697"/>
         <source>Dark</source>
         <translation>深色</translation>
     </message>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="690"/>
+        <location filename="../src/app/TermPane.cpp" line="703"/>
         <source>System</source>
         <translation>跟随系统</translation>
     </message>
     <message>
-        <location filename="../src/app/TermPane.cpp" line="733"/>
+        <location filename="../src/app/TermPane.cpp" line="746"/>
         <source>Settings</source>
         <translation>设置</translation>
     </message>
@@ -1176,12 +1218,12 @@
         <translation type="vanished">设置</translation>
     </message>
     <message>
-        <location filename="../src/libqtghostty/TerminalWidget.cpp" line="447"/>
+        <location filename="../src/libqtghostty/TerminalWidget.cpp" line="448"/>
         <source>Terminal pane</source>
         <translation>终端窗格</translation>
     </message>
     <message>
-        <location filename="../src/libqtghostty/TerminalWidget.cpp" line="448"/>
+        <location filename="../src/libqtghostty/TerminalWidget.cpp" line="449"/>
         <source>Interactive terminal input and output area.</source>
         <translation>交互式终端输入输出区域。</translation>
     </message>
