@@ -44,6 +44,7 @@ private slots:
     void testRendersSupplementaryPlaneCharacters();
     void testRendersLongGraphemeCells();
     void testRendersPreeditTextAcrossMultipleCells();
+    void testFocusOutClearsPreeditText();
     void testRendersWideCharactersAcrossTwoCells();
     void testRendersAnsiForegroundColors();
     void testRendersInverseTextWithDefaultColors();
@@ -622,6 +623,40 @@ void TestTerminalWidget::testRendersPreeditTextAcrossMultipleCells() {
     const QRect diff = changedBounds(before, after);
     QVERIFY2(diff.isValid(), "preedit text should change the rendered output");
     QVERIFY2(diff.width() > cursorRect.width(), "preedit text should render wider than a single terminal cell");
+}
+
+void TestTerminalWidget::testFocusOutClearsPreeditText() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    widget.setFocus();
+    QVERIFY(widget.hasFocus());
+    widget.setCursorBlinkEnabled(false);
+    QApplication::processEvents();
+
+    QInputMethodQueryEvent queryEvent(Qt::ImCursorRectangle);
+    QApplication::sendEvent(&widget, &queryEvent);
+    const QRect cursorRect = queryEvent.value(Qt::ImCursorRectangle).toRect();
+    QVERIFY(cursorRect.isValid());
+    QVERIFY(cursorRect.width() > 0);
+
+    const QImage before = renderWidgetImage(widget);
+
+    QInputMethodEvent imeEvent(QStringLiteral("中文"), {});
+    QApplication::sendEvent(&widget, &imeEvent);
+    QApplication::processEvents();
+
+    QFocusEvent focusOut(QEvent::FocusOut, Qt::OtherFocusReason);
+    QApplication::sendEvent(&widget, &focusOut);
+    QApplication::processEvents();
+
+    const QImage afterFocusOut = renderWidgetImage(widget);
+    const QRect diff = changedBounds(before, afterFocusOut);
+    QVERIFY2(!diff.isValid() || diff.width() <= cursorRect.width(),
+             "focus loss should remove preedit text instead of leaving multi-cell composition visible");
 }
 
 void TestTerminalWidget::testRendersWideCharactersAcrossTwoCells() {

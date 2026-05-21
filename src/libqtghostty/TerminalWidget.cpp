@@ -2114,10 +2114,12 @@ void TerminalWidget::focusOutEvent(QFocusEvent *event) {
     QWidget::focusOutEvent(event);
     m_hasFocus = false;
     sendFocusEvent(false);
+    if (QInputMethod *inputMethod = QGuiApplication::inputMethod())
+        inputMethod->reset();
+    m_preeditText.clear();
     m_blinkTimer->stop();
     m_cursorBlinkVisible = true;
     update();
-    notifyInputMethodCursorChange();
 }
 
 void TerminalWidget::sendFocusEvent(bool gained) {
