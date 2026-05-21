@@ -1997,6 +1997,8 @@ QVariant TerminalWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
             return QString();
         case Qt::ImReadOnly:
             return false;
+        case Qt::ImPreferredLanguage:
+            return QStringLiteral("en");
         default:
             return QWidget::inputMethodQuery(query);
     }
