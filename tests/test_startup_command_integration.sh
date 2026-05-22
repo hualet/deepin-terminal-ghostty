@@ -14,6 +14,12 @@ fi
 tmp_dir=$(mktemp -d)
 trap 'rm -rf "${tmp_dir}"' EXIT
 
+help_output=$("${app_bin}" -platform offscreen --help)
+if [[ "${help_output}" != *"Usage:"* || "${help_output}" != *"--execute"* ]]; then
+    echo "Expected -platform offscreen --help to reach application help output" >&2
+    exit 1
+fi
+
 status=0
 DISPLAY= QT_QPA_PLATFORM=offscreen "${app_bin}" \
     --working-directory "${tmp_dir}" \

@@ -50,6 +50,8 @@ bool loadApplicationTranslation(QTranslator &translator) {
 } // namespace
 
 int main(int argc, char *argv[]) {
+    DApplication app(argc, argv);
+
     const StartupOptions startupOptions = parseStartupOptions(commandLineArguments(argc, argv));
     if (startupOptions.showHelp) {
         printf("%s", startupOptions.helpText.toLocal8Bit().constData());
@@ -67,7 +69,6 @@ int main(int argc, char *argv[]) {
 
     qCInfo(appLog) << "Application startup";
 
-    DApplication app(argc, argv);
     applyApplicationMetadata(app);
     app.loadTranslator();
 
