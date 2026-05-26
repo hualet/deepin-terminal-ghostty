@@ -1,3 +1,17 @@
+deepin-terminal-ghostty (0.9.9-1) unstable; urgency=medium
+
+  * Add dtermctl and a D-Bus control service so agents and scripts can list
+    terminal windows, create tabs and splits, and send input to panes. (fix #27)
+  * Add OSC 52 clipboard support so terminal applications can write to the
+    clipboard through the standard escape sequence.
+  * Fix command-line argument handling so Qt platform arguments are accepted
+    without rejecting application startup.
+  * Improve IME behavior by resetting stale focus state and reporting English
+    as the preferred input method language.
+  * Add translations for new window and quake-mode settings.
+
+ -- Deepin Packages <packages@deepin.org>  Tue, 26 May 2026 19:59:00 +0800
+
 deepin-terminal-ghostty (0.9.7-1) unstable; urgency=medium
 
   * Add quake mode: a dropdown terminal that toggles from the top of the
