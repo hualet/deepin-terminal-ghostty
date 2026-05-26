@@ -1,4 +1,4 @@
-find_package(Qt6 REQUIRED COMPONENTS Test)
+find_package(Qt6 REQUIRED COMPONENTS Test DBus)
 
 include_directories(
   ${CMAKE_SOURCE_DIR}/src
@@ -108,6 +108,7 @@ add_executable(test_main_window
   ${CMAKE_SOURCE_DIR}/src/app/SettingsDialog.cpp
   ${CMAKE_SOURCE_DIR}/src/app/TerminalScrollContainer.cpp
   ${CMAKE_SOURCE_DIR}/src/app/TermPane.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/TerminalControlService.cpp
   ${CMAKE_SOURCE_DIR}/src/app/VerticalTabSidebar.cpp
   ${CMAKE_SOURCE_DIR}/src/app/PageSearchBar.cpp
   ${CMAKE_SOURCE_DIR}/src/app/SessionManager.cpp
@@ -129,6 +130,7 @@ target_include_directories(test_main_window PRIVATE
 
 target_link_libraries(test_main_window PRIVATE
   Qt6::Widgets
+  Qt6::DBus
   Qt6::Test
   Dtk6::Widget
   Dtk6::Core
@@ -225,4 +227,8 @@ add_test(NAME StartupCommandIntegration
 
 add_test(NAME EsctestWrapperSmoke
   COMMAND /bin/bash ${CMAKE_SOURCE_DIR}/tests/test_esctest_wrapper.sh
+)
+
+add_test(NAME DtermctlCli
+  COMMAND /bin/sh ${CMAKE_SOURCE_DIR}/tests/test_dtermctl_cli.sh $<TARGET_FILE:dtermctl>
 )

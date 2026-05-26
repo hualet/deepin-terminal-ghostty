@@ -61,6 +61,7 @@ public:
 
     QByteArray exportVtContent() const;
     void importVtContent(const QByteArray &data);
+    QString visibleText() const;
 
     bool hasSelection() const;
     void selectAll();

@@ -4,6 +4,7 @@
 #include "SessionSnapshot.h"
 #include "TerminalWidget.h"
 
+#include <QJsonArray>
 #include <QList>
 #include <QPair>
 #include <QUuid>
@@ -33,6 +34,7 @@ public:
                       QWidget *parent = nullptr);
 
     QList<PaneInfo> paneInfos() const;
+    QJsonArray controlPaneSnapshots() const;
     QUuid activePaneId() const;
     bool focusPane(const QUuid &paneId);
     int runningTerminalCount() const;
@@ -43,6 +45,9 @@ public:
     void focusNavigation(Qt::Edge dir);
     void closeOtherTerminals();
     void executeCommand(const QString &command);
+    bool controlSplitPane(const QUuid &paneId, Qt::Orientation orientation, QUuid *newPaneId = nullptr);
+    bool sendTextToPane(const QUuid &paneId, const QString &text);
+    bool executeCommandInPane(const QUuid &paneId, const QString &command);
     void setCustomTitle(const QString &title);
     void setOpacity(qreal opacity);
     void connectToRemoteServer(const ServerConfig &config);

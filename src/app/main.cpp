@@ -18,6 +18,7 @@ DCORE_USE_NAMESPACE
 
 #include "MainWindow.h"
 #include "QuakeWindow.h"
+#include "TerminalControlService.h"
 #include "remote/ServerConfigManager.h"
 
 namespace {
@@ -81,6 +82,18 @@ int main(int argc, char *argv[]) {
     }
 
     ServerConfigManager::instance()->initServerConfig();
+
+    TerminalControlService controlService([]() -> MainWindow * {
+        auto *window = new MainWindow;
+        window->setAttribute(Qt::WA_DeleteOnClose);
+        window->show();
+        Dtk::Widget::moveToCenter(window);
+        qCInfo(appLog) << "Control service created main window";
+        return window;
+    });
+    QString controlError;
+    if (!controlService.registerOnSessionBus(&controlError))
+        qCWarning(appLog) << "Failed to register terminal control service:" << controlError;
 
     std::unique_ptr<MainWindow> window = startupOptions.quakeMode ? std::make_unique<QuakeWindow>(startupOptions)
                                                                   : std::make_unique<MainWindow>(startupOptions);

@@ -9,6 +9,7 @@
 #include "SettingsDialog.h"
 #include "StartupOptions.h"
 #include "TermPane.h"
+#include "TerminalControlService.h"
 #include "TerminalScrollContainer.h"
 #include "TerminalWidget.h"
 #include "ThemeLoader.h"
@@ -129,6 +130,9 @@ private slots:
     void testManualBehaviorOpensBlankWindow();
     void testRestoreSessionMenuActionDisabledWithoutSnapshot();
     void testRestoreSessionMenuActionEnabledWithSnapshot();
+    void testControlServiceListsWindowTabsPanesAndContent();
+    void testControlServiceCreatesTabAndSplit();
+    void testControlServiceSendsTextAndExecutesCommand();
 
 private:
     DGuiApplicationHelper::ColorType m_originalPaletteType;
@@ -277,6 +281,27 @@ QStringList readShortcutViewerArguments(const QString &path) {
     for (const QString &line : lines)
         arguments.append(line);
     return arguments;
+}
+
+QJsonObject parseControlResponse(const QString &payload) {
+    QJsonParseError error;
+    const QJsonDocument doc = QJsonDocument::fromJson(payload.toUtf8(), &error);
+    if (error.error != QJsonParseError::NoError || !doc.isObject())
+        return {};
+    return doc.object();
+}
+
+QString firstPaneIdFromControlResponse(const QJsonObject &response) {
+    const QJsonArray windows = response.value(QStringLiteral("windows")).toArray();
+    if (windows.isEmpty())
+        return {};
+    const QJsonArray tabs = windows.first().toObject().value(QStringLiteral("tabs")).toArray();
+    if (tabs.isEmpty())
+        return {};
+    const QJsonArray panes = tabs.first().toObject().value(QStringLiteral("panes")).toArray();
+    if (panes.isEmpty())
+        return {};
+    return panes.first().toObject().value(QStringLiteral("id")).toString();
 }
 
 QJsonObject shortcutViewerPayload(const QStringList &arguments) {
@@ -2161,6 +2186,97 @@ void TestMainWindow::testRestoreSessionMenuActionEnabledWithSnapshot() {
     QVERIFY(action->isEnabled());
 
     SessionManager::instance().clearSnapshot();
+}
+
+void TestMainWindow::testControlServiceListsWindowTabsPanesAndContent() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *term = currentTerminal(window);
+    QVERIFY(term);
+    term->importVtContent(QByteArrayLiteral("agent-visible-content\n"));
+
+    TerminalControlService service;
+    const QJsonObject response = parseControlResponse(service.list());
+    QVERIFY(response.value(QStringLiteral("ok")).toBool());
+
+    const QJsonArray windows = response.value(QStringLiteral("windows")).toArray();
+    QVERIFY(!windows.isEmpty());
+    const QJsonObject windowObject = windows.first().toObject();
+    QVERIFY(!windowObject.value(QStringLiteral("id")).toString().isEmpty());
+
+    const QJsonArray tabs = windowObject.value(QStringLiteral("tabs")).toArray();
+    QCOMPARE(tabs.size(), 1);
+    const QJsonObject tabObject = tabs.first().toObject();
+    QCOMPARE(tabObject.value(QStringLiteral("active")).toBool(), true);
+
+    const QJsonArray panes = tabObject.value(QStringLiteral("panes")).toArray();
+    QCOMPARE(panes.size(), 1);
+    const QJsonObject paneObject = panes.first().toObject();
+    QVERIFY(!paneObject.value(QStringLiteral("id")).toString().isEmpty());
+    QCOMPARE(paneObject.value(QStringLiteral("active")).toBool(), true);
+    QVERIFY(paneObject.value(QStringLiteral("content")).toString().contains(QStringLiteral("agent-visible-content")));
+}
+
+void TestMainWindow::testControlServiceCreatesTabAndSplit() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    TerminalControlService service;
+    QJsonObject response = parseControlResponse(service.list());
+    const QString windowId =
+        response.value(QStringLiteral("windows")).toArray().first().toObject().value(QStringLiteral("id")).toString();
+    QVERIFY(!windowId.isEmpty());
+
+    response = parseControlResponse(service.newTab(windowId));
+    QVERIFY(response.value(QStringLiteral("ok")).toBool());
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 2);
+
+    const QString paneId = firstPaneIdFromControlResponse(parseControlResponse(service.list()));
+    response = parseControlResponse(service.split(paneId, QStringLiteral("horizontal")));
+    QVERIFY(response.value(QStringLiteral("ok")).toBool());
+
+    response = parseControlResponse(service.list());
+    const QJsonArray tabsAfterSplit =
+        response.value(QStringLiteral("windows")).toArray().first().toObject().value(QStringLiteral("tabs")).toArray();
+    bool foundSplitTab = false;
+    for (const auto &tabValue : tabsAfterSplit) {
+        if (tabValue.toObject().value(QStringLiteral("panes")).toArray().size() == 2) {
+            foundSplitTab = true;
+            break;
+        }
+    }
+    QVERIFY(foundSplitTab);
+}
+
+void TestMainWindow::testControlServiceSendsTextAndExecutesCommand() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    TerminalControlService service;
+    const QString paneId = firstPaneIdFromControlResponse(parseControlResponse(service.list()));
+    auto *pane = currentPane(window);
+    QVERIFY(pane);
+    auto *term = terminalForPaneId(*pane, QUuid::fromString(QStringLiteral("{%1}").arg(paneId)));
+    QVERIFY(term);
+    auto *session = ptySession(term);
+    QVERIFY(session);
+    QSignalSpy spy(session, &PtySession::dataWritten);
+
+    QJsonObject response = parseControlResponse(service.send(paneId, QStringLiteral("typed text")));
+    QVERIFY(response.value(QStringLiteral("ok")).toBool());
+    QTRY_VERIFY_WITH_TIMEOUT(spy.count() >= 1, 500);
+    QCOMPARE(spy.takeFirst().at(0).toByteArray(), QByteArrayLiteral("typed text"));
+
+    response = parseControlResponse(service.exec(paneId, QStringLiteral("printf control-ok")));
+    QVERIFY(response.value(QStringLiteral("ok")).toBool());
+    QTRY_VERIFY_WITH_TIMEOUT(spy.count() >= 1, 500);
+    QCOMPARE(spy.takeFirst().at(0).toByteArray(), QByteArrayLiteral("printf control-ok\n"));
 }
 
 int main(int argc, char *argv[]) {

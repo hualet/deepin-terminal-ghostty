@@ -40,6 +40,7 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
     : DMainWindow(parent),
       m_stackWidget(new QStackedWidget(this)),
       m_contentHost(new QWidget(this)),
+      m_controlWindowId(QUuid::createUuid()),
       m_startupOptions(startupOptions) {
     setObjectName(QStringLiteral("mainWindow"));
     setAccessibleName(tr("Deepin Terminal Ghostty"));
@@ -602,6 +603,71 @@ TerminalWidget *MainWindow::currentTerminal() const {
     if (auto *pane = currentPane())
         return pane->currentTerminal();
     return nullptr;
+}
+
+QString MainWindow::controlWindowId() const {
+    return m_controlWindowId.toString(QUuid::WithoutBraces);
+}
+
+QJsonObject MainWindow::controlSnapshot() const {
+    QJsonObject window;
+    window.insert(QStringLiteral("id"), controlWindowId());
+    window.insert(QStringLiteral("title"), windowTitle());
+    window.insert(QStringLiteral("active"), isActiveWindow());
+
+    QJsonArray tabs;
+    for (int i = 0; i < m_tabs.size(); ++i) {
+        const auto &record = m_tabs.at(i);
+        QJsonObject tab;
+        tab.insert(QStringLiteral("id"), record.id);
+        tab.insert(QStringLiteral("title"), record.title);
+        tab.insert(QStringLiteral("active"), i == m_tabBar->currentIndex());
+        tab.insert(QStringLiteral("panes"), record.pane ? record.pane->controlPaneSnapshots() : QJsonArray{});
+        tabs.append(tab);
+    }
+    window.insert(QStringLiteral("tabs"), tabs);
+    return window;
+}
+
+bool MainWindow::controlNewTab(QString *createdPaneId) {
+    addTab(true);
+    if (createdPaneId) {
+        if (auto *pane = currentPane())
+            *createdPaneId = pane->activePaneId().toString(QUuid::WithoutBraces);
+    }
+    return currentPane() != nullptr;
+}
+
+bool MainWindow::controlSplitPane(const QUuid &paneId, Qt::Orientation orientation, QString *createdPaneId) {
+    for (auto &record : m_tabs) {
+        if (!record.pane)
+            continue;
+        QUuid newPaneId;
+        if (!record.pane->controlSplitPane(paneId, orientation, &newPaneId))
+            continue;
+        if (createdPaneId)
+            *createdPaneId = newPaneId.toString(QUuid::WithoutBraces);
+        refreshTabRecord(record);
+        syncTabWidgetsFromRecords();
+        return true;
+    }
+    return false;
+}
+
+bool MainWindow::controlSendText(const QUuid &paneId, const QString &text) {
+    for (auto &record : m_tabs) {
+        if (record.pane && record.pane->sendTextToPane(paneId, text))
+            return true;
+    }
+    return false;
+}
+
+bool MainWindow::controlExecuteCommand(const QUuid &paneId, const QString &command) {
+    for (auto &record : m_tabs) {
+        if (record.pane && record.pane->executeCommandInPane(paneId, command))
+            return true;
+    }
+    return false;
 }
 
 int MainWindow::indexOfTabId(int tabId) const {

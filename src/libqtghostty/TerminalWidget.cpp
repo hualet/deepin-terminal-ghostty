@@ -684,6 +684,23 @@ QString TerminalWidget::workingDirectory() const {
     return m_ptySession->workingDirectory();
 }
 
+QString TerminalWidget::visibleText() const {
+    QStringList lines;
+    lines.reserve(m_rows);
+
+    for (int row = 0; row < m_rows; ++row) {
+        QString line = textForScreenRow(row);
+        while (line.endsWith(QLatin1Char(' ')))
+            line.chop(1);
+        lines.append(line);
+    }
+
+    while (!lines.isEmpty() && lines.last().isEmpty())
+        lines.removeLast();
+
+    return lines.join(QLatin1Char('\n'));
+}
+
 void TerminalWidget::updateCachedFonts() {
     m_fontBold = m_font;
     m_fontBold.setBold(true);

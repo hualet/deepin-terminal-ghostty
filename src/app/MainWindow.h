@@ -6,9 +6,11 @@
 
 #include <DMainWindow>
 #include <DTabBar>
+#include <QJsonObject>
 #include <QList>
 #include <QPointer>
 #include <QString>
+#include <QUuid>
 
 #include <functional>
 #include <optional>
@@ -35,6 +37,13 @@ class MainWindow : public DMainWindow {
 public:
     explicit MainWindow(const StartupOptions &startupOptions = {}, QWidget *parent = nullptr);
     ~MainWindow() override;
+
+    QString controlWindowId() const;
+    QJsonObject controlSnapshot() const;
+    bool controlNewTab(QString *createdPaneId = nullptr);
+    bool controlSplitPane(const QUuid &paneId, Qt::Orientation orientation, QString *createdPaneId = nullptr);
+    bool controlSendText(const QUuid &paneId, const QString &text);
+    bool controlExecuteCommand(const QUuid &paneId, const QString &command);
 
 signals:
     void startupSessionFinished(int exitCode);
@@ -110,6 +119,7 @@ private:
     bool m_verticalTabsEnabled = false;
     int m_titlebarDefaultHeight = 0;
     int m_nextTabId = 1;
+    QUuid m_controlWindowId;
     QList<TabRecord> m_tabs;
     QPointer<QWidget> m_tabTitlebarWidget;
     QPointer<QWidget> m_compactTitlebarWidget;

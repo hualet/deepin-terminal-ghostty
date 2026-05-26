@@ -16,6 +16,8 @@
 #include <QDesktopServices>
 #include <QFile>
 #include <QGuiApplication>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QKeyEvent>
 #include <QMap>
 #include <QMenu>
@@ -270,6 +272,22 @@ QList<TermPane::PaneInfo> TermPane::paneInfos() const {
         infos.append(info);
     }
     return infos;
+}
+
+QJsonArray TermPane::controlPaneSnapshots() const {
+    QJsonArray panes;
+    const QList<TerminalWidget *> terminals = terminalsInVisualOrder();
+    for (TerminalWidget *term : terminals) {
+        QJsonObject pane;
+        pane.insert(QStringLiteral("id"), term->property("paneId").toUuid().toString(QUuid::WithoutBraces));
+        pane.insert(QStringLiteral("title"), paneTitle(term));
+        pane.insert(QStringLiteral("active"), term == m_currentTerm);
+        pane.insert(QStringLiteral("cwd"), term->workingDirectory());
+        pane.insert(QStringLiteral("command"), term->property("shellCommand").toString());
+        pane.insert(QStringLiteral("content"), term->visibleText());
+        panes.append(pane);
+    }
+    return panes;
 }
 
 QUuid TermPane::activePaneId() const {
@@ -872,6 +890,33 @@ void TermPane::executeCommand(const QString &command) {
     if (!m_currentTerm || command.isEmpty())
         return;
     m_currentTerm->writeUserInput(command.toUtf8() + QByteArrayLiteral("\n"));
+}
+
+bool TermPane::controlSplitPane(const QUuid &paneId, Qt::Orientation orientation, QUuid *newPaneId) {
+    if (!focusPane(paneId))
+        return false;
+    splitCurrent(orientation);
+    if (newPaneId)
+        *newPaneId = activePaneId();
+    return !activePaneId().isNull();
+}
+
+bool TermPane::sendTextToPane(const QUuid &paneId, const QString &text) {
+    if (text.isEmpty())
+        return false;
+    for (TerminalWidget *term : terminalsInVisualOrder()) {
+        if (term->property("paneId").toUuid() != paneId)
+            continue;
+        term->writeUserInput(text.toUtf8());
+        return true;
+    }
+    return false;
+}
+
+bool TermPane::executeCommandInPane(const QUuid &paneId, const QString &command) {
+    if (command.isEmpty())
+        return false;
+    return sendTextToPane(paneId, command + QLatin1Char('\n'));
 }
 
 void TermPane::setCustomTitle(const QString &title) {
