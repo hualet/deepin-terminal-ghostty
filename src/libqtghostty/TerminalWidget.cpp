@@ -312,6 +312,32 @@ std::optional<int> commandResultFromQtGhosttyShellCommandResult(const QByteArray
     return exitCode;
 }
 
+std::optional<QString> clipboardTextFromOsc52Payload(const QByteArray &payload) {
+    static constexpr QByteArrayView kPrefix("52;");
+    if (!payload.startsWith(kPrefix))
+        return std::nullopt;
+
+    const QByteArray body = payload.mid(kPrefix.size());
+    QByteArray encoded;
+    if (body.startsWith(';')) {
+        encoded = body.mid(1);
+    } else {
+        const int separator = body.indexOf(';');
+        if (separator != 1 || body.at(0) != 'c')
+            return std::nullopt;
+        encoded = body.mid(separator + 1);
+    }
+
+    if (encoded == "?")
+        return std::nullopt;
+
+    const auto decoded = QByteArray::fromBase64Encoding(encoded);
+    if (!decoded)
+        return std::nullopt;
+
+    return QString::fromUtf8(*decoded);
+}
+
 std::optional<QString> shellCommandFromOscPayload(const QByteArray &payload) {
     const std::optional<QString> qtGhosttyCommand = commandFromQtGhosttyShellCommand(payload);
     if (qtGhosttyCommand.has_value())
@@ -2215,13 +2241,18 @@ void TerminalWidget::scanShellIntegrationSequences(const QByteArray &data) {
         const int sequenceEnd = useBel ? belEnd + 1 : stEnd + 2;
         const QByteArray payload = m_oscScanBuffer.mid(2, payloadEnd - 2);
 
-        const std::optional<int> result = commandResultFromQtGhosttyShellCommandResult(payload);
-        if (result.has_value()) {
-            setShellCommandResult(result.value());
+        const std::optional<QString> clipboardText = clipboardTextFromOsc52Payload(payload);
+        if (clipboardText.has_value()) {
+            QGuiApplication::clipboard()->setText(clipboardText.value());
         } else {
-            const std::optional<QString> command = shellCommandFromOscPayload(payload);
-            if (command.has_value())
-                setShellCommand(command.value());
+            const std::optional<int> result = commandResultFromQtGhosttyShellCommandResult(payload);
+            if (result.has_value()) {
+                setShellCommandResult(result.value());
+            } else {
+                const std::optional<QString> command = shellCommandFromOscPayload(payload);
+                if (command.has_value())
+                    setShellCommand(command.value());
+            }
         }
 
         m_oscScanBuffer.remove(0, sequenceEnd);

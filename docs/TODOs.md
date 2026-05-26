@@ -58,7 +58,7 @@
 ║     Tab Stop Width ║ 8               ║ ║                 Kitty Notifications? ║ No  ║
 ║          Graphics? ║ Kitty, iTerm2   ║ ║                Kitty Pointer Shapes? ║ No  ║
 ║       Device Class ║ VT500           ║ ║                   Kitty Text Sizing? ║ No  ║
-║    Ambiguous Width ║ narrow (1)      ║ ║                    OSC 52 Clipboard? ║ No  ║
+║    Ambiguous Width ║ narrow (1)      ║ ║                    OSC 52 Clipboard? ║ Yes ║
 ║    Graphemes(2027) ║ Yes             ║ ║        Send FocusIn/FocusOut events? ║ Yes ║
 ║               WIDE ║ 100.0 %         ║ ║            Set bracketed paste mode? ║ Yes ║
 ║      Standalone RI ║ 100.0 %         ║ ║                 Synchronized Output? ║ Yes ║

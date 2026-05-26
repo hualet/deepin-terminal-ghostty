@@ -122,6 +122,9 @@ private slots:
     void testSelectAllCreatesSelection();
     void testSelectAllThenCopyToClipboard();
     void testPasteFromClipboardSendsToPty();
+    void testOsc52WritesClipboard();
+    void testOsc52WritesClipboardAcrossChunks();
+    void testOsc52ReadRequestDoesNotChangeClipboard();
     void testSearchFindsMatchInTerminalContent();
     void testSearchNoMatch();
     void testSearchEmptyQueryClears();
@@ -2412,6 +2415,50 @@ void TestTerminalWidget::testPasteFromClipboardSendsToPty() {
     QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 500);
     const QByteArray written = collectedPtyOutput(spy);
     QVERIFY(written.contains("pasted text"));
+}
+
+void TestTerminalWidget::testOsc52WritesClipboard() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    QGuiApplication::clipboard()->clear();
+    const QByteArray encoded = QByteArray("copied from osc52").toBase64();
+    const QByteArray sequence = QByteArray("\033]52;c;") + encoded + QByteArray("\a");
+
+    const bool invoked =
+        QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, sequence));
+    QVERIFY(invoked);
+
+    QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("copied from osc52"));
+}
+
+void TestTerminalWidget::testOsc52WritesClipboardAcrossChunks() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    QGuiApplication::clipboard()->clear();
+    const QByteArray encoded = QByteArray("chunked osc52").toBase64();
+    const QByteArray firstChunk = QByteArray("\033]52;c;") + encoded.left(encoded.size() / 2);
+    const QByteArray secondChunk = encoded.mid(encoded.size() / 2) + QByteArray("\033\\");
+
+    QVERIFY(
+        QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, firstChunk)));
+    QCOMPARE(QGuiApplication::clipboard()->text(), QString());
+
+    QVERIFY(
+        QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, secondChunk)));
+    QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("chunked osc52"));
+}
+
+void TestTerminalWidget::testOsc52ReadRequestDoesNotChangeClipboard() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    QGuiApplication::clipboard()->setText(QStringLiteral("existing"));
+    const QByteArray sequence = QByteArray("\033]52;c;?\a");
+
+    QVERIFY(QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, sequence)));
+    QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("existing"));
 }
 
 void TestTerminalWidget::testSearchFindsMatchInTerminalContent() {
