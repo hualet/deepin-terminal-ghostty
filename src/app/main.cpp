@@ -1,5 +1,6 @@
 #include "ApplicationMetadata.h"
 #include "StartupOptions.h"
+#include "TerminalTrace.h"
 #include "logging/Logging.h"
 
 #include <DApplication>
@@ -69,6 +70,15 @@ int main(int argc, char *argv[]) {
 #endif
 
     qCInfo(appLog) << "Application startup";
+
+    if (!startupOptions.traceVtPath.isEmpty()) {
+        QString traceError;
+        if (TerminalTrace::enable(startupOptions.traceVtPath, &traceError)) {
+            qCInfo(appLog) << "VT trace enabled at" << startupOptions.traceVtPath;
+        } else {
+            qCWarning(appLog) << "Failed to enable VT trace at" << startupOptions.traceVtPath << traceError;
+        }
+    }
 
     applyApplicationMetadata(app);
     app.loadTranslator();

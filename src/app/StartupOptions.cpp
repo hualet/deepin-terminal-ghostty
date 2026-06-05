@@ -25,11 +25,15 @@ StartupOptions parseStartupOptions(const QStringList &arguments) {
         QStringLiteral("Return the startup session exit code from the application process"));
     const QCommandLineOption quakeModeOption(QStringList{QStringLiteral("q"), QStringLiteral("quake-mode")},
                                              QStringLiteral("Run in quake mode"));
+    const QCommandLineOption traceVtOption(QStringLiteral("trace-vt"),
+                                           QStringLiteral("Write PTY and terminal resize trace data to file"),
+                                           QStringLiteral("file"));
     parser.addOption(executeOption);
     parser.addOption(workingDirectoryOption);
     parser.addOption(waitForChildOption);
     parser.addOption(propagateExitCodeOption);
     parser.addOption(quakeModeOption);
+    parser.addOption(traceVtOption);
 
     StartupOptions options;
     if (!parser.parse(arguments)) {
@@ -51,5 +55,6 @@ StartupOptions parseStartupOptions(const QStringList &arguments) {
     options.propagateExitCode = parser.isSet(propagateExitCodeOption);
     options.waitForChild = parser.isSet(waitForChildOption) || options.propagateExitCode;
     options.quakeMode = parser.isSet(quakeModeOption);
+    options.traceVtPath = parser.value(traceVtOption);
     return options;
 }

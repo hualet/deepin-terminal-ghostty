@@ -1,6 +1,7 @@
 #include "TerminalWidget.h"
 
 #include "PtySession.h"
+#include "TerminalTrace.h"
 #include "logging/Logging.h"
 
 #include <QClipboard>
@@ -787,6 +788,7 @@ bool TerminalWidget::setupTerminal() {
         .rows = m_rows,
         .max_scrollback = scrollbackByteBudget(),
     };
+    TerminalTrace::logResize("ghostty.new", m_cols, m_rows, m_cellWidth, m_cellHeight, terminalContentRect());
 
     GhosttyResult err = ghostty_terminal_new(nullptr, &m_terminal, opts);
     if (err != GHOSTTY_SUCCESS) {
@@ -796,6 +798,8 @@ bool TerminalWidget::setupTerminal() {
 
     ghostty_terminal_resize(m_terminal, m_cols, m_rows, static_cast<uint32_t>(m_cellWidth),
                             static_cast<uint32_t>(m_cellHeight));
+    TerminalTrace::logResize("ghostty.resize.initial", m_cols, m_rows, m_cellWidth, m_cellHeight,
+                             terminalContentRect());
 
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_USERDATA, this);
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_WRITE_PTY, reinterpret_cast<const void *>(effectWritePty));
@@ -911,6 +915,7 @@ void TerminalWidget::updateGridSize() {
     if (cols != m_cols || rows != m_rows) {
         m_pendingResizeCols = cols;
         m_pendingResizeRows = rows;
+        TerminalTrace::logResize("terminal.grid.pending", cols, rows, m_cellWidth, m_cellHeight, contentRect);
         if (!m_terminal && !m_ptySession) {
             m_cols = cols;
             m_rows = rows;
@@ -2472,6 +2477,7 @@ void TerminalWidget::applyPendingResize() {
     if (m_terminal) {
         ghostty_terminal_resize(m_terminal, m_cols, m_rows, static_cast<uint32_t>(m_cellWidth),
                                 static_cast<uint32_t>(m_cellHeight));
+        TerminalTrace::logResize("ghostty.resize", m_cols, m_rows, m_cellWidth, m_cellHeight, terminalContentRect());
         m_renderStateDirty = true;
         updateViewportScrollState();
     }

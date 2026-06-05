@@ -48,6 +48,7 @@ add_executable(test_pty_session
   test_pty_session.cpp
   ${CMAKE_SOURCE_DIR}/src/logging/Logging.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/PtySession.cpp
+  ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalTrace.cpp
 )
 
 target_link_libraries(test_pty_session PRIVATE
@@ -68,6 +69,7 @@ add_executable(test_terminal_widget
   test_terminal_widget.cpp
   ${CMAKE_SOURCE_DIR}/src/logging/Logging.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/PtySession.cpp
+  ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalTrace.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalWidget.cpp
 )
 
@@ -119,6 +121,7 @@ add_executable(test_main_window
   ${CMAKE_SOURCE_DIR}/src/app/remote/ServerListItem.cpp
   ${CMAKE_SOURCE_DIR}/src/app/settings/resources.qrc
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/PtySession.cpp
+  ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalTrace.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalWidget.cpp
 )
 
@@ -193,6 +196,7 @@ add_executable(test_session_manager
   ${CMAKE_SOURCE_DIR}/src/app/SessionSnapshot.cpp
   ${CMAKE_SOURCE_DIR}/src/logging/Logging.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/PtySession.cpp
+  ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalTrace.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalWidget.cpp
 )
 

@@ -195,6 +195,7 @@ set_target_properties(ghostty-vt PROPERTIES
 add_library(qtghostty SHARED
   src/logging/Logging.cpp
   src/libqtghostty/PtySession.cpp
+  src/libqtghostty/TerminalTrace.cpp
   src/libqtghostty/TerminalWidget.cpp
 )
 

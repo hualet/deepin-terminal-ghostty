@@ -23,7 +23,8 @@ fi
 status=0
 DISPLAY= QT_QPA_PLATFORM=offscreen "${app_bin}" \
     --working-directory "${tmp_dir}" \
-    --execute "pwd > startup-pwd.txt; exit 23" \
+    --trace-vt "${tmp_dir}/startup-vt.log" \
+    --execute "printf trace-visible; pwd > startup-pwd.txt; exit 23" \
     --propagate-exit-code || status=$?
 
 if [[ "${status}" -ne 23 ]]; then
@@ -40,5 +41,16 @@ fi
 actual_pwd=$(tr -d '\r\n' < "${pwd_file}")
 if [[ "${actual_pwd}" != "${tmp_dir}" ]]; then
     echo "Expected command to run in ${tmp_dir}, got ${actual_pwd}" >&2
+    exit 1
+fi
+
+trace_file="${tmp_dir}/startup-vt.log"
+if [[ ! -f "${trace_file}" ]]; then
+    echo "Expected VT trace file: ${trace_file}" >&2
+    exit 1
+fi
+if ! grep -q "trace.enabled" "${trace_file}" || ! grep -q "pty.start" "${trace_file}" || ! grep -q "pty.read" "${trace_file}"; then
+    echo "Expected VT trace to include startup and PTY data events" >&2
+    cat "${trace_file}" >&2
     exit 1
 fi

@@ -10,6 +10,7 @@ struct StartupOptions {
     QString helpText;
     QString execute;
     QString workingDirectory;
+    QString traceVtPath;
     bool waitForChild = false;
     bool propagateExitCode = false;
     bool quakeMode = false;

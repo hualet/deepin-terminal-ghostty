@@ -15,6 +15,7 @@ private slots:
     void testShortWorkingDirectoryOption();
     void testShortQuakeModeOption();
     void testOldWorkDirectoryOption();
+    void testTraceVtOption();
 };
 
 void TestStartupOptions::testDefaults() {
@@ -104,6 +105,18 @@ void TestStartupOptions::testOldWorkDirectoryOption() {
 
     QVERIFY(options.isValid);
     QCOMPARE(options.workingDirectory, QStringLiteral("/home/user"));
+}
+
+void TestStartupOptions::testTraceVtOption() {
+    const StartupOptions options = parseStartupOptions(QStringList{
+        QStringLiteral("deepin-terminal-ghostty"), QStringLiteral("--trace-vt"), QStringLiteral("/tmp/omp-vt.log")});
+
+    QVERIFY(options.isValid);
+    QCOMPARE(options.traceVtPath, QStringLiteral("/tmp/omp-vt.log"));
+
+    const StartupOptions help =
+        parseStartupOptions(QStringList{QStringLiteral("deepin-terminal-ghostty"), QStringLiteral("--help")});
+    QVERIFY(help.helpText.contains(QStringLiteral("--trace-vt")));
 }
 
 QTEST_APPLESS_MAIN(TestStartupOptions)

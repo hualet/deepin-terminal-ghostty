@@ -1,5 +1,6 @@
 #include "PtySession.h"
 
+#include "TerminalTrace.h"
 #include "logging/Logging.h"
 
 #include <QDebug>
@@ -265,6 +266,7 @@ bool PtySession::start(int cols, int rows, const StartOptions &options) {
     m_writeBufferOffset = 0;
     m_childExitedEmitted = false;
     qCInfo(ptyLog) << "Starting PTY session with size" << cols << "x" << rows;
+    TerminalTrace::logResize("pty.start", cols, rows, 0, 0);
     return spawn(cols, rows, options);
 }
 
@@ -312,12 +314,14 @@ void PtySession::write(const QByteArray &data) {
     }
 
     m_writeBuffer.append(data.constData(), bytesToAppend);
+    TerminalTrace::logBytes("pty.write", data.left(bytesToAppend));
     (void)flushWriteBuffer();
 
     Q_EMIT dataWritten(data.left(bytesToAppend));
 }
 
 void PtySession::resize(int cols, int rows, int cellWidthPx, int cellHeightPx) {
+    TerminalTrace::logResize("pty.resize", cols, rows, cellWidthPx, cellHeightPx);
     applyWindowSize(m_masterFd, cols, rows, cellWidthPx, cellHeightPx);
 }
 
@@ -341,6 +345,7 @@ void PtySession::handleMasterReadyRead() {
         if (bytesRead == 0) {
             aggregatedData.resize(offset);
             if (!aggregatedData.isEmpty()) {
+                TerminalTrace::logBytes("pty.read", aggregatedData);
                 QPointer<PtySession> guard(this);
                 emit dataReceived(aggregatedData);
                 if (!guard) {
@@ -365,6 +370,7 @@ void PtySession::handleMasterReadyRead() {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             aggregatedData.resize(offset);
             if (!aggregatedData.isEmpty()) {
+                TerminalTrace::logBytes("pty.read", aggregatedData);
                 QPointer<PtySession> guard(this);
                 emit dataReceived(aggregatedData);
                 if (!guard) {
@@ -376,6 +382,7 @@ void PtySession::handleMasterReadyRead() {
 
         aggregatedData.resize(offset);
         if (!aggregatedData.isEmpty()) {
+            TerminalTrace::logBytes("pty.read", aggregatedData);
             QPointer<PtySession> guard(this);
             emit dataReceived(aggregatedData);
             if (!guard) {
