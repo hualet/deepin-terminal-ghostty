@@ -339,6 +339,79 @@ std::optional<QString> clipboardTextFromOsc52Payload(const QByteArray &payload) 
     return QString::fromUtf8(*decoded);
 }
 
+bool isAcceptedBareLinkScheme(QStringView scheme) {
+    return scheme == QStringLiteral("http") || scheme == QStringLiteral("https") || scheme == QStringLiteral("ssh")
+           || scheme == QStringLiteral("mailto") || scheme == QStringLiteral("file");
+}
+
+bool isSchemeChar(QChar ch) {
+    return ch.isLetter();
+}
+
+bool isBareLinkTerminator(QChar ch) {
+    return ch.isSpace() || ch == QChar::ReplacementCharacter || ch.isNull();
+}
+
+bool hasBalancedClosingDelimiter(QStringView text, QChar open, QChar close) {
+    int depth = 0;
+    for (QChar ch : text) {
+        if (ch == open)
+            ++depth;
+        else if (ch == close)
+            --depth;
+    }
+    return depth >= 0;
+}
+
+int trimmedBareLinkEnd(QStringView text, int start, int end) {
+    while (end > start) {
+        const QChar ch = text.at(end - 1);
+        if (ch == QLatin1Char(')')) {
+            if (hasBalancedClosingDelimiter(text.mid(start, end - start), QLatin1Char('('), QLatin1Char(')')))
+                break;
+        } else if (ch == QLatin1Char(']')) {
+            if (hasBalancedClosingDelimiter(text.mid(start, end - start), QLatin1Char('['), QLatin1Char(']')))
+                break;
+        } else if (ch == QLatin1Char('}')) {
+            if (hasBalancedClosingDelimiter(text.mid(start, end - start), QLatin1Char('{'), QLatin1Char('}')))
+                break;
+        } else if (ch != QLatin1Char('.') && ch != QLatin1Char(',') && ch != QLatin1Char(';') && ch != QLatin1Char(':')
+                   && ch != QLatin1Char('!') && ch != QLatin1Char('?') && ch != QLatin1Char('>')
+                   && ch != QLatin1Char('"') && ch != QLatin1Char('\'') && ch != QLatin1Char('`')) {
+            break;
+        }
+        --end;
+    }
+    return end;
+}
+
+bool bareLinkHasRequiredPayload(QStringView uri, QStringView scheme) {
+    if (scheme == QStringLiteral("mailto")) {
+        const int at = uri.indexOf(QLatin1Char('@'));
+        return at > QStringLiteral("mailto:").size() && at < uri.size() - 1;
+    }
+
+    const QStringView payload = uri.mid(scheme.size() + 3);
+    if (payload.isEmpty())
+        return false;
+
+    if (scheme == QStringLiteral("file")) {
+        if (uri.startsWith(QStringLiteral("file:///")))
+            return uri.size() > QStringLiteral("file:///").size();
+        return !payload.startsWith(QLatin1Char('/'));
+    }
+
+    const int hostEndSlash = payload.indexOf(QLatin1Char('/'));
+    const int hostEndQuestion = payload.indexOf(QLatin1Char('?'));
+    const int hostEndHash = payload.indexOf(QLatin1Char('#'));
+    int hostEnd = payload.size();
+    for (int candidate : {hostEndSlash, hostEndQuestion, hostEndHash}) {
+        if (candidate >= 0)
+            hostEnd = qMin(hostEnd, candidate);
+    }
+    return hostEnd > 0;
+}
+
 std::optional<QString> shellCommandFromOscPayload(const QByteArray &payload) {
     const std::optional<QString> qtGhosttyCommand = commandFromQtGhosttyShellCommand(payload);
     if (qtGhosttyCommand.has_value())
@@ -475,6 +548,7 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     setAccessibleName(tr("Terminal pane"));
     setAccessibleDescription(tr("Interactive terminal input and output area."));
     setFocusPolicy(Qt::StrongFocus);
+    setMouseTracking(true);
     setAttribute(Qt::WA_InputMethodEnabled, true);
 
     m_lastMousePos = QPoint(-1, -1);
@@ -592,8 +666,6 @@ void TerminalWidget::scrollViewportBy(int deltaRows) {
     m_renderStateDirty = true;
     updateViewportScrollState();
     update();
-    if (rect().contains(m_lastMousePos))
-        updateHyperlinkHoverState(m_lastMousePos);
 }
 
 void TerminalWidget::scrollViewportToOffset(int offset) {
@@ -667,6 +739,8 @@ void TerminalWidget::importVtContent(const QByteArray &data) {
     setProperty("shellCommand", QString());
     updateCommandState(CommandState::Idle);
     m_kittyImageCache.clear();
+    invalidateLinkScanCache();
+    clearHoverLink();
     ghostty_terminal_reset(m_terminal);
     ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(data.constData()),
                               static_cast<size_t>(data.size()));
@@ -745,6 +819,14 @@ int TerminalWidget::debugPtyFlushCount() const {
 
 int TerminalWidget::debugPendingPtyDataSize() const {
     return m_pendingPtyData.size();
+}
+
+int TerminalWidget::debugBareLinkScanCount() const {
+    return m_debugBareLinkScanCount;
+}
+
+int TerminalWidget::debugTextForScreenRowCount() const {
+    return m_debugTextForScreenRowCount;
 }
 
 QString TerminalWidget::debugTextForScreenRow(int row) const {
@@ -960,10 +1042,148 @@ QString TerminalWidget::hyperlinkUriAtPosition(const QPoint &pos) const {
     return hyperlinkUriAtViewportCell(viewportRow, col);
 }
 
+QString TerminalWidget::linkUriAtPosition(const QPoint &pos) const {
+    return linkRangeAtPosition(pos).uri;
+}
+
+TerminalWidget::LinkRange TerminalWidget::hyperlinkRangeAtPosition(const QPoint &pos) const {
+    const int col = viewportColumnForPosition(pos);
+    const int viewportRow = viewportRowForPosition(pos);
+    const QString uri = hyperlinkUriAtViewportCell(viewportRow, col);
+    if (uri.isEmpty())
+        return {};
+
+    int startCol = col;
+    while (startCol > 0 && hyperlinkUriAtViewportCell(viewportRow, startCol - 1) == uri)
+        --startCol;
+
+    int endCol = col + 1;
+    while (endCol < static_cast<int>(m_cols) && hyperlinkUriAtViewportCell(viewportRow, endCol) == uri)
+        ++endCol;
+
+    return LinkRange{uri, screenRowForViewportRow(viewportRow), startCol, endCol, true};
+}
+
+TerminalWidget::LinkRange TerminalWidget::linkRangeAtPosition(const QPoint &pos) const {
+    LinkRange range = hyperlinkRangeAtPosition(pos);
+    if (range.isValid())
+        return range;
+
+    const int col = viewportColumnForPosition(pos);
+    const int viewportRow = viewportRowForPosition(pos);
+    return bareLinkRangeAtCell(screenRowForViewportRow(viewportRow), col);
+}
+
+TerminalWidget::LinkRange TerminalWidget::bareLinkRangeAtCell(int screenRow, int col) const {
+    auto cached = m_linkScanCache.constFind(screenRow);
+    if (cached == m_linkScanCache.constEnd() || cached.value().generation != m_linkScanGeneration) {
+        const QString text = textForScreenRow(screenRow);
+#ifdef QTGHOSTTY_TESTING
+        ++m_debugBareLinkScanCount;
+#endif
+        LinkScanCacheEntry entry;
+        entry.text = text;
+        entry.ranges = scanBareLinksInRow(screenRow, text);
+        entry.generation = m_linkScanGeneration;
+        m_linkScanCache.insert(screenRow, entry);
+    }
+    touchLinkScanCacheRow(screenRow);
+
+    const auto entry = m_linkScanCache.constFind(screenRow);
+    if (entry == m_linkScanCache.constEnd())
+        return {};
+
+    for (const LinkRange &range : entry.value().ranges) {
+        if (col >= range.startCol && col < range.endCol)
+            return range;
+    }
+    return {};
+}
+
+QVector<TerminalWidget::LinkRange> TerminalWidget::scanBareLinksInRow(int screenRow, const QString &text) const {
+    QVector<LinkRange> ranges;
+    for (int colon = text.indexOf(QLatin1Char(':')); colon >= 0; colon = text.indexOf(QLatin1Char(':'), colon + 1)) {
+        int schemeStart = colon - 1;
+        while (schemeStart >= 0 && isSchemeChar(text.at(schemeStart)))
+            --schemeStart;
+        ++schemeStart;
+
+        if (schemeStart == colon)
+            continue;
+
+        const QString scheme = text.mid(schemeStart, colon - schemeStart).toLower();
+        if (!isAcceptedBareLinkScheme(scheme))
+            continue;
+
+        int payloadStart = colon + 1;
+        if (scheme != QStringLiteral("mailto")) {
+            if (colon + 2 >= text.size() || text.at(colon + 1) != QLatin1Char('/')
+                || text.at(colon + 2) != QLatin1Char('/')) {
+                continue;
+            }
+            payloadStart = colon + 3;
+        }
+
+        int end = payloadStart;
+        while (end < text.size() && !isBareLinkTerminator(text.at(end)))
+            ++end;
+        end = trimmedBareLinkEnd(QStringView(text), schemeStart, end);
+        if (end <= payloadStart)
+            continue;
+
+        const QString uri = text.mid(schemeStart, end - schemeStart);
+        if (!bareLinkHasRequiredPayload(QStringView(uri), QStringView(scheme)))
+            continue;
+
+        ranges.push_back(LinkRange{uri, screenRow, schemeStart, end, false});
+    }
+    return ranges;
+}
+
+void TerminalWidget::touchLinkScanCacheRow(int screenRow) const {
+    m_linkScanLru.removeAll(screenRow);
+    m_linkScanLru.push_back(screenRow);
+    constexpr int kMaxCachedLinkRows = 256;
+    while (m_linkScanLru.size() > kMaxCachedLinkRows) {
+        const int evicted = m_linkScanLru.takeFirst();
+        m_linkScanCache.remove(evicted);
+    }
+}
+
+void TerminalWidget::clearLinkScanCache() {
+    m_linkScanCache.clear();
+    m_linkScanLru.clear();
+}
+
+void TerminalWidget::invalidateLinkScanCache() {
+    clearLinkScanCache();
+    ++m_linkScanGeneration;
+}
+
+void TerminalWidget::clearHoverLink() {
+    if (!m_hoverLinkActive && m_hoverHyperlinkUri.isEmpty())
+        return;
+
+    const bool wasOsc8 = m_hoverLinkActive && m_hoverLink.osc8;
+    m_hoverLink = {};
+    m_hoverLinkActive = false;
+    m_hoverHyperlinkUri.clear();
+    unsetCursor();
+    Q_EMIT linkHovered(QString());
+    if (wasOsc8)
+        Q_EMIT hyperlinkHovered(QString());
+    update();
+}
+
 void TerminalWidget::updateHyperlinkHoverState(const QPoint &pos, bool changeCursor) {
-    const QString uri = hyperlinkUriAtPosition(pos);
-    if (uri != m_hoverHyperlinkUri) {
-        m_hoverHyperlinkUri = uri;
+    const LinkRange range = linkRangeAtPosition(pos);
+    const QString uri = range.uri;
+    if (uri != m_hoverLink.uri || range.startCol != m_hoverLink.startCol || range.endCol != m_hoverLink.endCol
+        || range.screenRow != m_hoverLink.screenRow || range.osc8 != m_hoverLink.osc8) {
+        const bool previousOsc8 = m_hoverLinkActive && m_hoverLink.osc8;
+        m_hoverLink = range;
+        m_hoverLinkActive = range.isValid();
+        m_hoverHyperlinkUri = range.osc8 ? uri : QString();
         if (changeCursor) {
             if (uri.isEmpty()) {
                 unsetCursor();
@@ -971,7 +1191,9 @@ void TerminalWidget::updateHyperlinkHoverState(const QPoint &pos, bool changeCur
                 setCursor(Qt::PointingHandCursor);
             }
         }
-        Q_EMIT hyperlinkHovered(uri);
+        Q_EMIT linkHovered(uri);
+        if (range.osc8 || previousOsc8)
+            Q_EMIT hyperlinkHovered(range.osc8 ? uri : QString());
         update();
     }
 }
@@ -1683,19 +1905,15 @@ void TerminalWidget::renderOverlays(QPainter &painter) const {
         }
     }
 
-    // Draw hyperlink underline for hovered cells
-    if (!m_hoverHyperlinkUri.isEmpty()) {
+    // Draw underline for the currently hovered link range.
+    if (m_hoverLinkActive && m_hoverLink.isValid()) {
         painter.setPen(defaultForeground);
-        for (int viewportRow = 0; viewportRow < static_cast<int>(m_rows); ++viewportRow) {
+        const int viewportRow = m_hoverLink.screenRow - static_cast<int>(scrollOffset);
+        if (viewportRow >= 0 && viewportRow < static_cast<int>(m_rows)) {
             const int y = origin.y() + viewportRow * m_cellHeight;
-            for (int col = 0; col < static_cast<int>(m_cols); ++col) {
-                const int x = origin.x() + col * m_cellWidth;
-                const QString cellUri = hyperlinkUriAtViewportCell(viewportRow, col);
-                if (cellUri == m_hoverHyperlinkUri) {
-                    const int underlineY = qMin(y + m_cellHeight - 1, y + m_fontAscent + 2);
-                    painter.drawLine(x, underlineY, x + m_cellWidth, underlineY);
-                }
-            }
+            const int x = origin.x() + m_hoverLink.startCol * m_cellWidth;
+            const int underlineY = qMin(y + m_cellHeight - 1, y + m_fontAscent + 2);
+            painter.drawLine(x, underlineY, origin.x() + m_hoverLink.endCol * m_cellWidth, underlineY);
         }
     }
 }
@@ -2103,6 +2321,7 @@ void TerminalWidget::setStartOptions(const PtySession::StartOptions &options) {
 
 void TerminalWidget::setScrollbackLines(int lines) {
     m_scrollbackLines = lines;
+    invalidateLinkScanCache();
     updateViewportScrollState();
 }
 
@@ -2473,6 +2692,8 @@ void TerminalWidget::applyPendingResize() {
 
     m_cols = m_pendingResizeCols;
     m_rows = m_pendingResizeRows;
+    invalidateLinkScanCache();
+    clearHoverLink();
 
     if (m_terminal) {
         ghostty_terminal_resize(m_terminal, m_cols, m_rows, static_cast<uint32_t>(m_cellWidth),
@@ -2541,6 +2762,8 @@ bool TerminalWidget::flushPendingPtyData(QRect *repaintRegion) {
     m_kittyImageCache.clear();
     ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(m_pendingPtyData.constData()),
                               static_cast<size_t>(m_pendingPtyData.size()));
+    invalidateLinkScanCache();
+    clearHoverLink();
     m_pendingPtyData.clear();
     m_renderStateDirty = true;
     updateViewportScrollState();
@@ -2589,6 +2812,7 @@ void TerminalWidget::updateViewportScrollState() {
         return;
 
     m_viewportScrollState = state;
+    clearHoverLink();
     Q_EMIT viewportScrollStateChanged();
 }
 
@@ -2645,6 +2869,10 @@ void TerminalWidget::renderPreeditText(QPainter &painter) {
 QString TerminalWidget::textForScreenRow(int row) const {
     if (!m_terminal)
         return QString();
+
+#ifdef QTGHOSTTY_TESTING
+    ++m_debugTextForScreenRowCount;
+#endif
 
     QString result;
     for (int col = 0; col < m_cols; ++col) {
@@ -2746,9 +2974,11 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
 
     // Ctrl+LeftButton: check for hyperlink first, regardless of mouse tracking
     if (event->button() == Qt::LeftButton && (event->modifiers() & Qt::ControlModifier)) {
-        const QString uri = hyperlinkUriAtPosition(event->pos());
-        if (!uri.isEmpty()) {
-            Q_EMIT hyperlinkActivated(uri);
+        const LinkRange range = linkRangeAtPosition(event->pos());
+        if (range.isValid()) {
+            Q_EMIT linkActivated(range.uri);
+            if (range.osc8)
+                Q_EMIT hyperlinkActivated(range.uri);
             event->accept();
             return;
         }
@@ -2998,12 +3228,7 @@ void TerminalWidget::handleSelectionAutoScroll() {
 
 void TerminalWidget::leaveEvent(QEvent *event) {
     QWidget::leaveEvent(event);
-    if (!m_hoverHyperlinkUri.isEmpty()) {
-        m_hoverHyperlinkUri.clear();
-        unsetCursor();
-        Q_EMIT hyperlinkHovered(QString());
-        update();
-    }
+    clearHoverLink();
 }
 
 int TerminalWidget::screenRowForViewportRow(int viewportRow) const {

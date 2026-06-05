@@ -382,7 +382,7 @@ void TermPane::setupTerminalConnections(TerminalWidget *term) {
     });
     connect(term, &TerminalWidget::sessionClosed, this, [this, term]() { removeTerminal(term); });
     connect(term, &TerminalWidget::focusGained, this, [this, term]() { setCurrentTerminal(term); });
-    connect(term, &TerminalWidget::hyperlinkActivated, this,
+    connect(term, &TerminalWidget::linkActivated, this,
             [](const QString &uri) { QDesktopServices::openUrl(QUrl::fromUserInput(uri)); });
 }
 
@@ -678,7 +678,7 @@ void TermPane::showTerminalContextMenu(TerminalWidget *term, const QPoint &globa
     pasteAction->setEnabled(!QGuiApplication::clipboard()->text().isEmpty());
 
     QPoint localPos = term->mapFromGlobal(globalPos);
-    QString hyperlinkUri = term->hyperlinkUriAtPosition(localPos);
+    QString hyperlinkUri = term->linkUriAtPosition(localPos);
     if (!hyperlinkUri.isEmpty()) {
         menu.addSeparator();
         auto *copyLinkAction = menu.addAction(tr("Copy Link"));

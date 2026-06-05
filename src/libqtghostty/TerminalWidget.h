@@ -80,6 +80,7 @@ public:
 
     // Hyperlink query (public so app layer can use it without friend access)
     QString hyperlinkUriAtPosition(const QPoint &pos) const;
+    QString linkUriAtPosition(const QPoint &pos) const;
 
 #ifdef QTGHOSTTY_TESTING
     int debugLastFrameRenderedRowCount() const;
@@ -90,6 +91,8 @@ public:
     int debugResizeApplyCount() const;
     int debugPtyFlushCount() const;
     int debugPendingPtyDataSize() const;
+    int debugBareLinkScanCount() const;
+    int debugTextForScreenRowCount() const;
     QString debugTextForScreenRow(int row) const;
     int debugCursorOnlyRepaintCount() const;
     int debugScrollbackLines() const;
@@ -113,6 +116,8 @@ signals:
     void viewportScrollStateChanged();
     void hyperlinkHovered(const QString &uri);
     void hyperlinkActivated(const QString &uri);
+    void linkHovered(const QString &uri);
+    void linkActivated(const QString &uri);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -149,6 +154,27 @@ private:
     void renderRow(QPainter &painter, int y, const GhosttyRenderStateColors &colors, RowRenderPass pass);
     QString hyperlinkUriAtViewportCell(int viewportRow, int col) const;
     QString hyperlinkUriForPoint(GhosttyPoint point) const;
+    struct LinkRange {
+        QString uri;
+        int screenRow = 0;
+        int startCol = 0;
+        int endCol = 0;
+        bool osc8 = false;
+        bool isValid() const { return !uri.isEmpty() && startCol < endCol; }
+    };
+    struct LinkScanCacheEntry {
+        QString text;
+        QVector<LinkRange> ranges;
+        quint64 generation = 0;
+    };
+    LinkRange hyperlinkRangeAtPosition(const QPoint &pos) const;
+    LinkRange linkRangeAtPosition(const QPoint &pos) const;
+    LinkRange bareLinkRangeAtCell(int screenRow, int col) const;
+    QVector<LinkRange> scanBareLinksInRow(int screenRow, const QString &text) const;
+    void touchLinkScanCacheRow(int screenRow) const;
+    void clearLinkScanCache();
+    void invalidateLinkScanCache();
+    void clearHoverLink();
     void updateHyperlinkHoverState(const QPoint &pos, bool changeCursor = true);
     bool renderKittyGraphicsLayer(QPainter &painter, GhosttyKittyPlacementLayer layer);
     bool renderKittyPlacement(QPainter &painter, GhosttyKittyGraphics graphics);
@@ -282,6 +308,11 @@ private:
     };
     Selection m_selection;
     QString m_hoverHyperlinkUri;
+    LinkRange m_hoverLink;
+    bool m_hoverLinkActive = false;
+    mutable QHash<int, LinkScanCacheEntry> m_linkScanCache;
+    mutable QVector<int> m_linkScanLru;
+    quint64 m_linkScanGeneration = 1;
     QPoint m_lastMousePos;
     bool m_selectionDragActive = false;
 
@@ -303,6 +334,8 @@ private:
     int m_debugResizeApplyCount = 0;
     int m_debugPtyFlushCount = 0;
     int m_debugCursorOnlyRepaintCount = 0;
+    mutable int m_debugBareLinkScanCount = 0;
+    mutable int m_debugTextForScreenRowCount = 0;
 #endif
 
     // Effects callbacks

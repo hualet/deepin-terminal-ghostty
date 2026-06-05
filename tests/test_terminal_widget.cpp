@@ -137,6 +137,18 @@ private slots:
     void testImportVtContentClearsStaleShellIntegrationState();
     void testImportVtContentKeepsFuturePtyOutputAfterRestoredScreen();
 
+    void testBareLinkUriAtPositionDetectsHttp();
+    void testHyperlinkUriAtPositionIgnoresBareLink();
+    void testBareLinkCtrlClickActivatesLink();
+    void testBareLinkUriAtPositionDetectsSupportedSchemes_data();
+    void testBareLinkUriAtPositionDetectsSupportedSchemes();
+    void testBareLinkTrimsTrailingPunctuationAndKeepsBalancedParentheses();
+    void testBareLinkScanCacheReusesRowsAndPaintDoesNotScan();
+    void testBareLinkHoverWorksWithoutMouseButton();
+    void testBareLinkCachedRowDoesNotRefetchText();
+    void testBareLinkHoverClearsOnScroll();
+    void testSelectionDragAcrossBareLinkSelectsText();
+    void testLinkUriAtPositionPrefersOsc8OverBareText();
     void testHyperlinkHoverDetection();
     void testHyperlinkCtrlClick();
     void testHyperlinkCursorChange();
@@ -2673,6 +2685,229 @@ void TestTerminalWidget::testImportVtContentKeepsFuturePtyOutputAfterRestoredScr
     const QString restoredLine = restored.debugTextForScreenRow(restoredRow);
     QVERIFY(restoredLine.contains(QStringLiteral("RESTORED_LINE")));
     QVERIFY(!restoredLine.contains(QStringLiteral("LIVE_PROMPT")));
+}
+
+void TestTerminalWidget::testBareLinkUriAtPositionDetectsHttp() {
+    TerminalWidget widget;
+    widget.resize(400, 300);
+    QVERIFY(widget.initialize());
+    widget.importVtContent(QByteArray("Visit https://example.com/path\n"));
+    QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+
+    const QPoint linkPos = cellCenterForPos(widget, 8, 0);
+    QCOMPARE(widget.linkUriAtPosition(linkPos), QStringLiteral("https://example.com/path"));
+}
+
+void TestTerminalWidget::testHyperlinkUriAtPositionIgnoresBareLink() {
+    TerminalWidget widget;
+    widget.resize(400, 300);
+    QVERIFY(widget.initialize());
+    widget.importVtContent(QByteArray("Visit https://example.com/path\n"));
+    QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+
+    const QPoint linkPos = cellCenterForPos(widget, 8, 0);
+    QCOMPARE(widget.hyperlinkUriAtPosition(linkPos), QString());
+}
+
+void TestTerminalWidget::testBareLinkCtrlClickActivatesLink() {
+    TerminalWidget widget;
+    widget.resize(400, 300);
+    QVERIFY(widget.initialize());
+    widget.setMouseTracking(true);
+    widget.show();
+    QApplication::processEvents();
+
+    widget.importVtContent(QByteArray("Visit https://example.com/path\n"));
+    QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+
+    QSignalSpy activateSpy(&widget, &TerminalWidget::linkActivated);
+    QVERIFY(activateSpy.isValid());
+
+    const QPoint clickPos = cellCenterForPos(widget, 8, 0);
+    QMouseEvent pressEvent = mousePressEventFor(widget, clickPos, Qt::LeftButton, Qt::LeftButton, Qt::ControlModifier);
+    QApplication::sendEvent(&widget, &pressEvent);
+    QApplication::processEvents();
+
+    QCOMPARE(activateSpy.count(), 1);
+    QCOMPARE(activateSpy.first().first().toString(), QStringLiteral("https://example.com/path"));
+}
+
+void TestTerminalWidget::testBareLinkUriAtPositionDetectsSupportedSchemes_data() {
+    QTest::addColumn<QByteArray>("content");
+    QTest::addColumn<int>("col");
+    QTest::addColumn<QString>("expected");
+
+    QTest::newRow("http") << QByteArray("x http://example.com\n") << 3 << QStringLiteral("http://example.com");
+    QTest::newRow("https") << QByteArray("x https://example.com\n") << 3 << QStringLiteral("https://example.com");
+    QTest::newRow("ssh") << QByteArray("x ssh://git@example.com/repo\n") << 3
+                         << QStringLiteral("ssh://git@example.com/repo");
+    QTest::newRow("mailto") << QByteArray("x mailto:user@example.com\n") << 3
+                            << QStringLiteral("mailto:user@example.com");
+    QTest::newRow("file") << QByteArray("x file:///tmp/example.txt\n") << 3
+                          << QStringLiteral("file:///tmp/example.txt");
+}
+
+void TestTerminalWidget::testBareLinkUriAtPositionDetectsSupportedSchemes() {
+    QFETCH(QByteArray, content);
+    QFETCH(int, col);
+    QFETCH(QString, expected);
+
+    TerminalWidget widget;
+    widget.resize(400, 300);
+    QVERIFY(widget.initialize());
+    widget.importVtContent(content);
+    QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+
+    QCOMPARE(widget.linkUriAtPosition(cellCenterForPos(widget, col, 0)), expected);
+}
+
+void TestTerminalWidget::testBareLinkTrimsTrailingPunctuationAndKeepsBalancedParentheses() {
+    TerminalWidget widget;
+    widget.resize(640, 300);
+    QVERIFY(widget.initialize());
+    widget.importVtContent(QByteArray("x `https://example.com/a(b)`).\n"));
+    QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+
+    QCOMPARE(widget.linkUriAtPosition(cellCenterForPos(widget, 5, 0)), QStringLiteral("https://example.com/a(b)"));
+}
+
+void TestTerminalWidget::testBareLinkScanCacheReusesRowsAndPaintDoesNotScan() {
+    TerminalWidget widget;
+    widget.resize(400, 300);
+    QVERIFY(widget.initialize());
+    widget.importVtContent(QByteArray("x https://example.com\n"));
+    QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+
+    const int scansBeforePaint = widget.debugBareLinkScanCount();
+    renderWidgetImage(widget);
+    QCOMPARE(widget.debugBareLinkScanCount(), scansBeforePaint);
+
+    QCOMPARE(widget.linkUriAtPosition(cellCenterForPos(widget, 3, 0)), QStringLiteral("https://example.com"));
+    const int scansAfterFirstQuery = widget.debugBareLinkScanCount();
+    QCOMPARE(scansAfterFirstQuery, scansBeforePaint + 1);
+
+    QCOMPARE(widget.linkUriAtPosition(cellCenterForPos(widget, 4, 0)), QStringLiteral("https://example.com"));
+    QCOMPARE(widget.debugBareLinkScanCount(), scansAfterFirstQuery);
+}
+
+void TestTerminalWidget::testBareLinkHoverWorksWithoutMouseButton() {
+    TerminalWidget widget;
+    widget.resize(400, 300);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QApplication::processEvents();
+    widget.importVtContent(QByteArray("x https://example.com\n"));
+    QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+
+    QSignalSpy hoverSpy(&widget, &TerminalWidget::linkHovered);
+    QVERIFY(hoverSpy.isValid());
+
+    QMouseEvent moveEvent = mouseMoveEventFor(widget, cellCenterForPos(widget, 3, 0));
+    QApplication::sendEvent(&widget, &moveEvent);
+    QApplication::processEvents();
+
+    QTRY_VERIFY(hoverSpy.count() > 0);
+    QCOMPARE(hoverSpy.last().first().toString(), QStringLiteral("https://example.com"));
+}
+
+void TestTerminalWidget::testBareLinkCachedRowDoesNotRefetchText() {
+    TerminalWidget widget;
+    widget.resize(400, 300);
+    QVERIFY(widget.initialize());
+    widget.importVtContent(QByteArray("x https://example.com\n"));
+    QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+
+    QCOMPARE(widget.linkUriAtPosition(cellCenterForPos(widget, 3, 0)), QStringLiteral("https://example.com"));
+    const int textFetchesAfterFirstQuery = widget.debugTextForScreenRowCount();
+
+    QCOMPARE(widget.linkUriAtPosition(cellCenterForPos(widget, 4, 0)), QStringLiteral("https://example.com"));
+    QCOMPARE(widget.debugTextForScreenRowCount(), textFetchesAfterFirstQuery);
+}
+
+void TestTerminalWidget::testBareLinkHoverClearsOnScroll() {
+    TerminalWidget widget;
+    widget.resize(400, 60);
+    QVERIFY(widget.initialize());
+    widget.setMouseTracking(true);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    widget.importVtContent(QByteArray("https://example.com\nline2\nline3\nline4\nline5\nline6\n"));
+    QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+    QCOMPARE(widget.linkUriAtPosition(cellCenterForPos(widget, 3, 0)), QStringLiteral("https://example.com"));
+
+    QSignalSpy hoverSpy(&widget, &TerminalWidget::linkHovered);
+    QVERIFY(hoverSpy.isValid());
+
+    QMouseEvent moveEvent = mouseMoveEventFor(widget, cellCenterForPos(widget, 3, 0));
+    QApplication::sendEvent(&widget, &moveEvent);
+    QApplication::processEvents();
+    QTRY_VERIFY(hoverSpy.count() > 0);
+    QCOMPARE(hoverSpy.last().first().toString(), QStringLiteral("https://example.com"));
+
+    widget.scrollViewportBy(1);
+    QApplication::processEvents();
+    QTRY_VERIFY(hoverSpy.count() > 1);
+    QCOMPARE(hoverSpy.last().first().toString(), QString());
+}
+
+void TestTerminalWidget::testSelectionDragAcrossBareLinkSelectsText() {
+    TerminalWidget widget;
+    widget.resize(640, 300);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QApplication::processEvents();
+    widget.importVtContent(QByteArray("x https://example.com\n"));
+    QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+
+    const QPoint startPos = cellCenterForPos(widget, 0, 0);
+    QMouseEvent press(QEvent::MouseButtonPress, startPos, startPos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press);
+
+    const QPoint endPos = cellCenterForPos(widget, 21, 0);
+    QMouseEvent move = mouseMoveEventFor(widget, endPos, Qt::LeftButton);
+    QApplication::sendEvent(&widget, &move);
+
+    QMouseEvent release(QEvent::MouseButtonRelease, endPos, endPos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release);
+    QApplication::processEvents();
+
+    QVERIFY(widget.debugSelectedText().contains(QStringLiteral("https://example.com")));
+}
+
+void TestTerminalWidget::testLinkUriAtPositionPrefersOsc8OverBareText() {
+    TerminalWidget widget;
+    widget.resize(640, 300);
+    QVERIFY(widget.initialize());
+    widget.importVtContent(QByteArray("\033]8;;https://osc.example\ahttps://bare.example\033]8;;\a\n"));
+    QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+
+    const QPoint linkPos = cellCenterForPos(widget, 8, 0);
+    QCOMPARE(widget.hyperlinkUriAtPosition(linkPos), QStringLiteral("https://osc.example"));
+    QCOMPARE(widget.linkUriAtPosition(linkPos), QStringLiteral("https://osc.example"));
 }
 
 void TestTerminalWidget::testHyperlinkHoverDetection() {
