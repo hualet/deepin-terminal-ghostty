@@ -1,23 +1,32 @@
 #include "VerticalTabSidebar.h"
 
 #include <DGuiApplicationHelper>
+#include <QAbstractAnimation>
 #include <QAbstractButton>
 #include <QApplication>
 #include <QBitmap>
+#include <QEasingCurve>
 #include <QFontMetrics>
 #include <QFrame>
+#include <QGraphicsOpacityEffect>
 #include <QHBoxLayout>
+#include <QHash>
 #include <QIcon>
 #include <QLabel>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPropertyAnimation>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
 #include <QSet>
+#include <QStyle>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 DGUI_USE_NAMESPACE
 
@@ -26,6 +35,7 @@ namespace {
 constexpr int kProcessBadgeSize = 24;
 constexpr int kProcessIconSize = 16;
 constexpr int kStatusDotSize = 8;
+constexpr int kReflowAnimationDurationMs = 120;
 
 QPushButton *createButton(const QString &objectName, const QString &text, QWidget *parent) {
     auto *button = new QPushButton(parent);
@@ -155,11 +165,44 @@ QLabel *createCommandStatusDot(QWidget *parent, TerminalWidget::CommandState sta
 
 void ClickableSection::mousePressEvent(QMouseEvent *event) {
     if (event->button() == Qt::LeftButton && sidebar) {
-        Q_EMIT sidebar->tabActivated(tabId);
+        m_dragStartPos = event->pos();
+        m_leftButtonPressed = true;
+        m_dragging = false;
         event->accept();
         return;
     }
     QFrame::mousePressEvent(event);
+}
+
+void ClickableSection::mouseMoveEvent(QMouseEvent *event) {
+    if (m_leftButtonPressed && sidebar && (event->buttons() & Qt::LeftButton)) {
+        if ((event->pos() - m_dragStartPos).manhattanLength() >= QApplication::startDragDistance()) {
+            if (!m_dragging)
+                sidebar->beginTabDrag(tabId, event->globalPosition().toPoint(), m_dragStartPos);
+            m_dragging = true;
+            sidebar->previewTabMove(tabId, event->globalPosition().toPoint());
+            event->accept();
+            return;
+        }
+    }
+    QFrame::mouseMoveEvent(event);
+}
+
+void ClickableSection::mouseReleaseEvent(QMouseEvent *event) {
+    if (event->button() == Qt::LeftButton && m_leftButtonPressed && sidebar) {
+        const bool wasDragging = m_dragging;
+        m_leftButtonPressed = false;
+        m_dragging = false;
+
+        if (wasDragging)
+            sidebar->finishTabDrag(tabId, event->globalPosition().toPoint());
+        else
+            Q_EMIT sidebar->tabActivated(tabId);
+
+        event->accept();
+        return;
+    }
+    QFrame::mouseReleaseEvent(event);
 }
 
 VerticalTabSidebar::VerticalTabSidebar(QWidget *parent) : QWidget(parent) {
@@ -247,6 +290,10 @@ void VerticalTabSidebar::applyStylesheet() {
         }
         #verticalTabSection:hover {
             background-color: %3;
+        }
+        #verticalTabSection[dragPlaceholder="true"] {
+            background-color: transparent;
+            border-color: transparent;
         }
         #verticalTabSection[isCurrent="true"] {
             border: 1px solid %4;
@@ -346,11 +393,207 @@ void VerticalTabSidebar::applyStylesheet() {
 
 void VerticalTabSidebar::setItems(const QList<TabItem> &items) {
     m_items = items;
+    m_dragTabId = 0;
+    m_dragOriginalIndex = -1;
     rebuild();
 }
 
 QList<VerticalTabSidebar::TabItem> VerticalTabSidebar::items() const {
     return m_items;
+}
+
+bool VerticalTabSidebar::isTabDragActive() const {
+    return m_dragTabId != 0;
+}
+
+void VerticalTabSidebar::requestTabMove(int tabId, const QPoint &globalPos) {
+    auto *section = sectionForTabId(tabId);
+    const QPoint hotSpot = section ? section->rect().center() : QPoint();
+    beginTabDrag(tabId, globalPos, hotSpot);
+    previewTabMove(tabId, globalPos);
+    finishTabDrag(tabId, globalPos);
+}
+
+void VerticalTabSidebar::beginTabDrag(int tabId, const QPoint &globalPos, const QPoint &hotSpot) {
+    if (m_dragTabId == tabId)
+        return;
+
+    m_dragTabId = tabId;
+    m_dragOriginalIndex = indexOfItemId(tabId);
+    m_dragHotSpot = hotSpot;
+
+    auto *section = sectionForTabId(tabId);
+    if (!section)
+        return;
+
+    QPixmap pixmap(section->size() * section->devicePixelRatioF());
+    pixmap.setDevicePixelRatio(section->devicePixelRatioF());
+    pixmap.fill(Qt::transparent);
+    section->render(&pixmap);
+
+    section->setProperty("dragPlaceholder", true);
+    auto *placeholderEffect = new QGraphicsOpacityEffect(section);
+    placeholderEffect->setOpacity(0.0);
+    section->setGraphicsEffect(placeholderEffect);
+    section->style()->unpolish(section);
+    section->style()->polish(section);
+    section->update();
+
+    if (!m_dragProxy) {
+        m_dragProxy = new QLabel(this);
+        m_dragProxy->setObjectName(QStringLiteral("verticalTabDragProxy"));
+        m_dragProxy->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    }
+
+    m_dragProxy->setPixmap(pixmap);
+    m_dragProxy->resize(section->size());
+    m_dragProxy->raise();
+    m_dragProxy->show();
+    moveDragProxy(globalPos);
+}
+
+void VerticalTabSidebar::previewTabMove(int tabId, const QPoint &globalPos) {
+    if (m_dragTabId != tabId)
+        beginTabDrag(tabId, globalPos, sectionForTabId(tabId) ? sectionForTabId(tabId)->rect().center() : QPoint());
+    moveDragProxy(globalPos);
+
+    int sourceIndex = -1;
+    sourceIndex = indexOfItemId(tabId);
+    if (sourceIndex < 0)
+        return;
+
+    const int targetIndex = targetIndexForPosition(tabId, globalPos);
+    if (targetIndex < 0 || targetIndex == sourceIndex)
+        return;
+
+    QHash<ClickableSection *, QPoint> oldPositions;
+    for (auto *section : findChildren<ClickableSection *>(QString(), Qt::FindChildrenRecursively))
+        oldPositions.insert(section, section->pos());
+
+    auto *section = sectionForTabId(tabId);
+    m_items.move(sourceIndex, targetIndex);
+    if (section && m_layout) {
+        m_layout->removeWidget(section);
+        m_layout->insertWidget(targetIndex, section);
+        m_layout->invalidate();
+        m_layout->activate();
+        for (auto it = oldPositions.cbegin(); it != oldPositions.cend(); ++it) {
+            auto *movedSection = it.key();
+            const QPoint oldPos = it.value();
+            const QPoint newPos = movedSection->pos();
+            if (oldPos == newPos)
+                continue;
+
+            for (auto *animation :
+                 movedSection->findChildren<QPropertyAnimation *>(QStringLiteral("verticalTabReflowAnimation"))) {
+                animation->stop();
+                animation->deleteLater();
+            }
+
+            auto *animation = new QPropertyAnimation(movedSection, "pos", movedSection);
+            animation->setObjectName(QStringLiteral("verticalTabReflowAnimation"));
+            animation->setDuration(kReflowAnimationDurationMs);
+            animation->setEasingCurve(QEasingCurve::OutCubic);
+            animation->setStartValue(oldPos);
+            animation->setEndValue(newPos);
+            animation->start(QAbstractAnimation::DeleteWhenStopped);
+        }
+    }
+
+    QTimer::singleShot(0, this, &VerticalTabSidebar::updateButtonElisions);
+}
+
+void VerticalTabSidebar::finishTabDrag(int tabId, const QPoint &globalPos) {
+    if (m_dragTabId != tabId)
+        beginTabDrag(tabId, globalPos, sectionForTabId(tabId) ? sectionForTabId(tabId)->rect().center() : QPoint());
+
+    previewTabMove(tabId, globalPos);
+
+    const int finalIndex = indexOfItemId(tabId);
+    const int originalIndex = m_dragOriginalIndex;
+    clearDragProxy();
+    m_dragTabId = 0;
+    m_dragOriginalIndex = -1;
+    m_dragHotSpot = QPoint();
+
+    if (finalIndex >= 0 && originalIndex >= 0 && finalIndex != originalIndex)
+        Q_EMIT tabMoveRequested(tabId, finalIndex);
+    Q_EMIT tabDragFinished();
+}
+
+int VerticalTabSidebar::indexOfItemId(int tabId) const {
+    for (int i = 0; i < m_items.size(); ++i) {
+        if (m_items.at(i).id == tabId)
+            return i;
+    }
+    return -1;
+}
+
+int VerticalTabSidebar::targetIndexForPosition(int tabId, const QPoint &globalPos) const {
+    const int sourceIndex = indexOfItemId(tabId);
+    if (sourceIndex < 0)
+        return -1;
+
+    int insertionIndex = m_items.size();
+    auto sections = findChildren<ClickableSection *>(QString(), Qt::FindChildrenRecursively);
+    std::sort(sections.begin(), sections.end(), [](const ClickableSection *a, const ClickableSection *b) {
+        return a->mapToGlobal(QPoint(0, 0)).y() < b->mapToGlobal(QPoint(0, 0)).y();
+    });
+    for (auto *section : sections) {
+        const int sectionTabId = section->property("tabId").toInt();
+        int sectionIndex = -1;
+        for (int i = 0; i < m_items.size(); ++i) {
+            if (m_items.at(i).id == sectionTabId) {
+                sectionIndex = i;
+                break;
+            }
+        }
+        if (sectionIndex < 0)
+            continue;
+
+        const QPoint localPos = section->mapFromGlobal(globalPos);
+        if (localPos.y() < section->height() / 2) {
+            insertionIndex = sectionIndex;
+            break;
+        }
+    }
+
+    int targetIndex = insertionIndex;
+    if (sourceIndex < targetIndex)
+        --targetIndex;
+    return qBound(0, targetIndex, m_items.size() - 1);
+}
+
+ClickableSection *VerticalTabSidebar::sectionForTabId(int tabId) const {
+    for (auto *section : findChildren<ClickableSection *>(QString(), Qt::FindChildrenRecursively)) {
+        if (section->property("tabId").toInt() == tabId)
+            return section;
+    }
+    return nullptr;
+}
+
+void VerticalTabSidebar::moveDragProxy(const QPoint &globalPos) {
+    if (!m_dragProxy)
+        return;
+
+    m_dragProxy->move(mapFromGlobal(globalPos) - m_dragHotSpot);
+    m_dragProxy->raise();
+}
+
+void VerticalTabSidebar::clearDragProxy() {
+    if (auto *section = sectionForTabId(m_dragTabId)) {
+        section->setProperty("dragPlaceholder", false);
+        section->setGraphicsEffect(nullptr);
+        section->style()->unpolish(section);
+        section->style()->polish(section);
+        section->update();
+    }
+
+    if (m_dragProxy) {
+        m_dragProxy->hide();
+        m_dragProxy->deleteLater();
+        m_dragProxy = nullptr;
+    }
 }
 
 void VerticalTabSidebar::updateButtonElisions() {

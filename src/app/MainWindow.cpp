@@ -678,6 +678,25 @@ int MainWindow::indexOfTabId(int tabId) const {
     return -1;
 }
 
+void MainWindow::moveTabById(int tabId, int targetIndex) {
+    const int sourceIndex = indexOfTabId(tabId);
+    if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= m_tabs.size() || sourceIndex == targetIndex)
+        return;
+
+    int currentTabId = 0;
+    const int currentIndex = m_tabBar ? m_tabBar->currentIndex() : -1;
+    if (currentIndex >= 0 && currentIndex < m_tabs.size())
+        currentTabId = m_tabs.at(currentIndex).id;
+
+    TabRecord record = m_tabs.takeAt(sourceIndex);
+    m_tabs.insert(targetIndex, record);
+    syncTabWidgetsFromRecords();
+
+    const int restoredCurrentIndex = indexOfTabId(currentTabId);
+    if (restoredCurrentIndex >= 0 && m_tabBar && m_tabBar->currentIndex() != restoredCurrentIndex)
+        m_tabBar->setCurrentIndex(restoredCurrentIndex);
+}
+
 MainWindow::TabRecord *MainWindow::tabRecordForPane(TermPane *pane) {
     if (!pane)
         return nullptr;
@@ -712,8 +731,10 @@ void MainWindow::refreshTabRecords() {
 }
 
 void MainWindow::syncTabWidgetsFromRecords() {
-    for (int i = 0; i < m_tabs.size() && i < m_tabBar->count(); ++i)
+    for (int i = 0; i < m_tabs.size() && i < m_tabBar->count(); ++i) {
         m_tabBar->setTabText(i, m_tabs.at(i).title);
+        m_tabBar->setTabData(i, m_stackWidget->indexOf(m_tabs.at(i).pane));
+    }
 
     const int currentIndex = m_tabBar->currentIndex();
     if (currentIndex >= 0 && currentIndex < m_tabs.size())
@@ -726,6 +747,8 @@ void MainWindow::syncTabWidgetsFromRecords() {
 
 void MainWindow::refreshSidebar() {
     if (!m_verticalSidebar)
+        return;
+    if (m_verticalSidebar->isTabDragActive())
         return;
 
     QList<VerticalTabSidebar::TabItem> items;
@@ -802,6 +825,8 @@ void MainWindow::rebuildCentralLayout() {
                 m_tabs[index].expanded = !m_tabs[index].expanded;
                 refreshSidebar();
             });
+            connect(m_verticalSidebar, &VerticalTabSidebar::tabMoveRequested, this, &MainWindow::moveTabById);
+            connect(m_verticalSidebar, &VerticalTabSidebar::tabDragFinished, this, &MainWindow::refreshSidebar);
             connect(m_verticalSidebar, &VerticalTabSidebar::addTabRequested, this, &MainWindow::onTabAddRequested);
         }
         if (!m_mainSplitter) {

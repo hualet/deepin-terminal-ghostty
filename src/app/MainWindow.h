@@ -80,6 +80,7 @@ private:
     TermPane *currentPane() const;
     TerminalWidget *currentTerminal() const;
     int indexOfTabId(int tabId) const;
+    void moveTabById(int tabId, int targetIndex);
     TabRecord *tabRecordForPane(TermPane *pane);
     void refreshTabRecord(TabRecord &record);
     void refreshTabRecords();
