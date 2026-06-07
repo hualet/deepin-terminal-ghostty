@@ -91,6 +91,7 @@ private slots:
     void testHorizontalTitlebarTabsSurviveModeSwitch();
     void testHorizontalTitlebarTabsDoNotCoverMenuButton();
     void testVerticalSidebarTabClickSwitchesCurrentTab();
+    void testVerticalSidebarTabClickRecoversFromStaleTabData();
     void testVerticalSidebarDragReordersTabs();
     void testVerticalSidebarIncludesDecorativeHierarchyElements();
     void testVerticalSidebarElidesLabelsWhenNarrow();
@@ -1174,6 +1175,33 @@ void TestMainWindow::testVerticalSidebarTabClickSwitchesCurrentTab() {
     QVERIFY(buttons.size() >= 2);
 
     QTest::mouseClick(buttons.at(1), Qt::LeftButton);
+
+    QTRY_COMPARE(tabs->currentIndex(), 1);
+    QTRY_COMPARE(stack->currentIndex(), 1);
+}
+
+void TestMainWindow::testVerticalSidebarTabClickRecoversFromStaleTabData() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+
+    auto *stack = window.findChild<QStackedWidget *>();
+    QVERIFY(stack);
+
+    tabs->setCurrentIndex(0);
+    QCOMPARE(stack->currentIndex(), 0);
+
+    tabs->setTabData(1, -1);
+    tabs->setCurrentIndex(1);
 
     QTRY_COMPARE(tabs->currentIndex(), 1);
     QTRY_COMPARE(stack->currentIndex(), 1);

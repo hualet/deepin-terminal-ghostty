@@ -531,18 +531,27 @@ void MainWindow::onTabCloseRequested(int index, bool hasConfirmed) {
 void MainWindow::onTabCurrentChanged(int index) {
     if (index < 0 || index >= m_tabBar->count())
         return;
+    if (index >= m_tabs.size()) {
+        syncTabWidgetsFromRecords();
+        return;
+    }
 
-    if (index >= 0 && index < m_tabs.size())
-        m_tabs[index].hasPendingCommandResult = false;
+    auto *pane = m_tabs.at(index).pane;
+    const int stackIndex = m_stackWidget->indexOf(pane);
+    if (!pane || stackIndex < 0) {
+        qCWarning(appLog) << "Ignoring tab activation for pane outside stack" << index;
+        syncTabWidgetsFromRecords();
+        return;
+    }
 
-    int stackIndex = m_tabBar->tabData(index).toInt();
+    m_tabs[index].hasPendingCommandResult = false;
+    if (m_tabBar->tabData(index).toInt() != stackIndex)
+        m_tabBar->setTabData(index, stackIndex);
     m_stackWidget->setCurrentIndex(stackIndex);
 
-    if (auto *pane = currentPane()) {
-        if (auto *term = pane->currentTerminal()) {
-            setWindowTitle(term->property("currentTitle").toString());
-            term->setFocus();
-        }
+    if (auto *term = pane->currentTerminal()) {
+        setWindowTitle(term->property("currentTitle").toString());
+        term->setFocus();
     }
 
     syncTabWidgetsFromRecords();
