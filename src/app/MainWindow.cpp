@@ -211,10 +211,13 @@ DTabBar *MainWindow::ensureTabBar() {
     m_tabBar->setVisibleAddButton(true);
     m_tabBar->setElideMode(Qt::ElideRight);
     m_tabBar->setFocusPolicy(Qt::NoFocus);
+    m_tabBar->setMovable(true);
+    m_tabBar->setDragable(true);
 
     connect(m_tabBar, &DTabBar::tabAddRequested, this, &MainWindow::onTabAddRequested);
     connect(m_tabBar, &DTabBar::tabCloseRequested, this, [this](int index) { onTabCloseRequested(index, false); });
     connect(m_tabBar, &DTabBar::currentChanged, this, &MainWindow::onTabCurrentChanged);
+    connect(m_tabBar, &DTabBar::tabMoved, this, &MainWindow::onTabMoved);
 
     return m_tabBar;
 }
@@ -555,6 +558,26 @@ void MainWindow::onTabCurrentChanged(int index) {
     }
 
     syncTabWidgetsFromRecords();
+}
+
+void MainWindow::onTabMoved(int fromIndex, int toIndex) {
+    if (fromIndex < 0 || toIndex < 0 || fromIndex >= m_tabs.size() || toIndex >= m_tabs.size()
+        || fromIndex == toIndex) {
+        syncTabWidgetsFromRecords();
+        return;
+    }
+
+    auto *activePane = currentPane();
+    m_tabs.move(fromIndex, toIndex);
+    syncTabWidgetsFromRecords();
+
+    for (int i = 0; i < m_tabs.size(); ++i) {
+        if (m_tabs.at(i).pane != activePane)
+            continue;
+        if (m_tabBar->currentIndex() != i)
+            m_tabBar->setCurrentIndex(i);
+        break;
+    }
 }
 
 void MainWindow::onTerminalTitleChanged(const QString &title) {

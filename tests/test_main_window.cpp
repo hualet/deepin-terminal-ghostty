@@ -90,6 +90,8 @@ private slots:
     void testSidebarExpansionSurvivesModeSwitch();
     void testHorizontalTitlebarTabsSurviveModeSwitch();
     void testHorizontalTitlebarTabsDoNotCoverMenuButton();
+    void testHorizontalTabBarAllowsDragging();
+    void testHorizontalTabDragReordersTabs();
     void testVerticalSidebarTabClickSwitchesCurrentTab();
     void testVerticalSidebarTabClickRecoversFromStaleTabData();
     void testVerticalSidebarDragReordersTabs();
@@ -1146,6 +1148,61 @@ void TestMainWindow::testHorizontalTitlebarTabsDoNotCoverMenuButton() {
     };
     QVERIFY2(!tabsRect.intersects(optionRect), qPrintable(QStringLiteral("tabbar %1 overlaps titlebar menu button %2")
                                                               .arg(rectString(tabsRect), rectString(optionRect))));
+}
+
+void TestMainWindow::testHorizontalTabBarAllowsDragging() {
+    AppSettings::instance()->setVerticalTabsEnabled(false);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QVERIFY(tabs->isMovable());
+}
+
+void TestMainWindow::testHorizontalTabDragReordersTabs() {
+    AppSettings::instance()->setVerticalTabsEnabled(false);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    auto *pane = currentPane(window);
+    QVERIFY(pane);
+    pane->setCustomTitle(QStringLiteral("One"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+    pane = currentPane(window);
+    QVERIFY(pane);
+    pane->setCustomTitle(QStringLiteral("Two"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 3));
+    pane = currentPane(window);
+    QVERIFY(pane);
+    pane->setCustomTitle(QStringLiteral("Three"));
+
+    tabs->setCurrentIndex(1);
+    tabs->moveTab(0, 2);
+
+    QTRY_COMPARE(tabs->tabText(0), QStringLiteral("Two"));
+    QCOMPARE(tabs->tabText(1), QStringLiteral("Three"));
+    QCOMPARE(tabs->tabText(2), QStringLiteral("One"));
+    QCOMPARE(tabs->currentIndex(), 0);
+
+    const QJsonArray snapshotTabs = window.controlSnapshot().value(QStringLiteral("tabs")).toArray();
+    QCOMPARE(snapshotTabs.size(), 3);
+    QCOMPARE(snapshotTabs.at(0).toObject().value(QStringLiteral("title")).toString(), QStringLiteral("Two"));
+    QCOMPARE(snapshotTabs.at(1).toObject().value(QStringLiteral("title")).toString(), QStringLiteral("Three"));
+    QCOMPARE(snapshotTabs.at(2).toObject().value(QStringLiteral("title")).toString(), QStringLiteral("One"));
+    QVERIFY(snapshotTabs.at(0).toObject().value(QStringLiteral("active")).toBool());
 }
 
 void TestMainWindow::testVerticalSidebarTabClickSwitchesCurrentTab() {

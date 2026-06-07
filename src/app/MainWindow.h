@@ -56,6 +56,7 @@ private slots:
     void onTabAddRequested();
     void onTabCloseRequested(int index, bool hasConfirmed = false);
     void onTabCurrentChanged(int index);
+    void onTabMoved(int fromIndex, int toIndex);
     void onTerminalTitleChanged(const QString &title);
     void onTerminalSessionClosed();
     void onPaneTerminalChanged(TerminalWidget *term);
