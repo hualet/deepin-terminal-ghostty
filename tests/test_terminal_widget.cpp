@@ -46,6 +46,7 @@ private slots:
     void testRendersPreeditTextAcrossMultipleCells();
     void testFocusOutClearsPreeditText();
     void testRendersWideCharactersAcrossTwoCells();
+    void testFallbackGlyphDoesNotOverlapNextCell();
     void testRendersAnsiForegroundColors();
     void testRendersInverseTextWithDefaultColors();
     void testRendersInlineKittyPngImage();
@@ -705,6 +706,33 @@ void TestTerminalWidget::testRendersWideCharactersAcrossTwoCells() {
     QVERIFY2(diff.width() > cursorRect.width(), "wide character should render wider than a single terminal cell");
     QVERIFY2(secondCellChanges > cursorRect.width() * 3,
              "wide character should visibly paint a meaningful portion of the second terminal cell");
+}
+
+void TestTerminalWidget::testFallbackGlyphDoesNotOverlapNextCell() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    QInputMethodQueryEvent queryEvent(Qt::ImCursorRectangle);
+    QApplication::sendEvent(&widget, &queryEvent);
+    const QRect cursorRect = queryEvent.value(Qt::ImCursorRectangle).toRect();
+    QVERIFY(cursorRect.isValid());
+    QVERIFY(cursorRect.width() > 0);
+
+    const QImage before = renderWidgetImage(widget);
+    const int previousFlushCount = widget.debugPtyFlushCount();
+    const bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                                   Q_ARG(QByteArray, QStringLiteral("⚠️\n").toUtf8()));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+
+    const QImage after = renderWidgetImage(widget);
+    const QRect nextCellRect(cursorRect.topLeft() + QPoint(cursorRect.width(), 0), cursorRect.size());
+    QCOMPARE(countChangedPixels(before, after, nextCellRect), 0);
 }
 
 void TestTerminalWidget::testRendersAnsiForegroundColors() {

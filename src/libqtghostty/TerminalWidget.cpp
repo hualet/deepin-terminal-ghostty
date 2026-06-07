@@ -1595,6 +1595,19 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         }
         painter.setPen(previousPen);
     };
+    const auto drawClippedCellText = [&](int textX, int cells, const QString &text) {
+        painter.save();
+        painter.setClipRect(QRect(textX, y, cells * m_cellWidth, m_cellHeight), Qt::IntersectClip);
+        painter.drawText(textX, y + m_fontAscent, text);
+        painter.restore();
+    };
+    const auto drawClippedCenteredCellText = [&](int textX, int cells, const QString &text) {
+        painter.save();
+        painter.setClipRect(QRect(textX, y, cells * m_cellWidth, m_cellHeight), Qt::IntersectClip);
+        painter.drawText(QRectF(textX, y, cells * m_cellWidth, m_cellHeight), Qt::AlignCenter | Qt::TextSingleLine,
+                         text);
+        painter.restore();
+    };
     TextRun textRun;
     const auto flushTextRun = [&]() {
         if (textRun.text.isEmpty())
@@ -1612,7 +1625,7 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         painter.setLayoutDirection(Qt::LeftToRight);
         int cellX = textRun.x;
         for (const QString &cellText : textRun.cellTexts) {
-            painter.drawText(cellX, y + m_fontAscent, cellText);
+            drawClippedCellText(cellX, 1, cellText);
             cellX += m_cellWidth;
         }
         drawTextDecorations(textRun.x, textRun.cells, textRun.decorationColor, textRun.underline, textRun.strikethrough,
@@ -1782,7 +1795,7 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
                     }
 
                     painter.setLayoutDirection(Qt::LeftToRight);
-                    painter.drawText(x, y + m_fontAscent, cellText);
+                    drawClippedCellText(x, 1, cellText);
                     drawTextDecorations(x, 1, decorationColor, style.underline, style.strikethrough, style.overline);
 #ifdef QTGHOSTTY_TESTING
                     ++m_debugLastFrameTextRunCount;
@@ -1807,7 +1820,7 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
             painter.setFont(cellFont);
             painter.setPen(cellForeground);
             painter.setLayoutDirection(Qt::LeftToRight);
-            painter.drawText(QRectF(x, y, cellRenderWidth, m_cellHeight), Qt::AlignCenter | Qt::TextSingleLine, text);
+            drawClippedCenteredCellText(x, isWideHead ? 2 : 1, text);
             drawTextDecorations(x, isWideHead ? 2 : 1, decorationColor, style.underline, style.strikethrough,
                                 style.overline);
             activeFont = nullptr;

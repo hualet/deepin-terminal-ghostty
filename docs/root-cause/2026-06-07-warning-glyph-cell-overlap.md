@@ -1,0 +1,55 @@
+# Warning Glyph Cell Overlap Root Cause
+
+## Summary
+
+Text such as `⚠DI上涨，节点延期` could show the warning sign and the following
+`D` visually overlapping. The terminal grid advanced correctly, but the glyph
+ink from the warning sign could spill into the next cell when Qt selected a
+fallback or emoji-shaped glyph.
+
+## Root Cause
+
+`TerminalWidget::renderRow()` anchored narrow cells to fixed terminal cell
+origins, but each cell was still painted with `QPainter::drawText()` without a
+cell clip. Qt is allowed to paint glyph ink outside the logical advance or
+bounding box of the terminal cell. This matters for fallback glyphs and emoji
+variation sequences, where the selected glyph can be wider than the fixed
+terminal cell width.
+
+The VT state and cursor position were not the source of the bug: the overlap was
+created only when converting a grid cell into pixels.
+
+## Fix
+
+Terminal cell text is now clipped to the cell area while preserving the existing
+positioning model:
+
+- narrow cells draw at their fixed cell origin and are clipped to one cell
+- wide cells keep the existing centered rendering and are clipped to two cells
+
+This prevents one glyph from painting into the next logical terminal cell without
+changing PTY behavior, Ghostty grid state, cursor geometry, or selection logic.
+
+## Regression Coverage
+
+Added `TestTerminalWidget::testFallbackGlyphDoesNotOverlapNextCell`. The test
+uses the warning-sign emoji variation sequence, which had a wider Qt advance in
+the local font stack, and verifies that the next terminal cell remains unchanged
+when only the warning glyph is rendered.
+
+## Verification
+
+Commands run:
+
+```bash
+cmake --build build --target test_terminal_widget
+QT_QPA_PLATFORM=offscreen ./build/tests/test_terminal_widget \
+  testFallbackGlyphDoesNotOverlapNextCell \
+  testRendersWideCharactersAcrossTwoCells \
+  testStyledTextKeepsCharactersOnCellGrid \
+  testRendersTextDecorations \
+  testRendersSupplementaryPlaneCharacters
+```
+
+The new test first failed with 15 changed pixels in the next cell, then passed
+after clipping terminal-cell text painting.
