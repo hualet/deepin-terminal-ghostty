@@ -1,3 +1,18 @@
+deepin-terminal-ghostty (1.0-1) unstable; urgency=medium
+
+  * Add bare URL detection so http, https, ssh, mailto, and file links can be
+    hovered, opened, and copied even when applications do not emit OSC 8
+    hyperlinks.
+  * Add VT tracing at startup so terminal rendering issues can be diagnosed by
+    separating PTY output from grid and resize behavior.
+  * Improve terminal control documentation for dtermctl automation workflows.
+  * Preserve vertical tab drag operations when sidebar refreshes happen during
+    title or state updates.
+  * Fix fallback and emoji glyph rendering so wide warning symbols do not
+    overlap the following terminal cell.
+
+ -- Deepin Packages <packages@deepin.org>  Sun, 07 Jun 2026 20:43:43 +0800
+
 deepin-terminal-ghostty (0.9.9-1) unstable; urgency=medium
 
   * Add dtermctl and a D-Bus control service so agents and scripts can list
