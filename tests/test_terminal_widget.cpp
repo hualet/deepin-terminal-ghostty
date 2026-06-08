@@ -7,9 +7,11 @@
 #include <QImage>
 #include <QInputMethodEvent>
 #include <QInputMethodQueryEvent>
+#include <QMimeData>
 #include <QPainter>
 #include <QSignalSpy>
 #include <QTest>
+#include <QUrl>
 #include <QWheelEvent>
 
 // Undefine Qt's emit macro before Ghostty headers (same workaround as TerminalWidget.h)
@@ -124,6 +126,7 @@ private slots:
     void testSelectAllCreatesSelection();
     void testSelectAllThenCopyToClipboard();
     void testPasteFromClipboardSendsToPty();
+    void testDropLocalFileWritesEscapedPathToPty();
     void testOsc52WritesClipboard();
     void testOsc52WritesClipboardAcrossChunks();
     void testOsc52ReadRequestDoesNotChangeClipboard();
@@ -2498,6 +2501,33 @@ void TestTerminalWidget::testPasteFromClipboardSendsToPty() {
     QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 500);
     const QByteArray written = collectedPtyOutput(spy);
     QVERIFY(written.contains("pasted text"));
+}
+
+void TestTerminalWidget::testDropLocalFileWritesEscapedPathToPty() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    auto *session = widget.findChild<PtySession *>();
+    QVERIFY(session);
+    QSignalSpy spy(session, &PtySession::dataWritten);
+    QVERIFY(spy.isValid());
+
+    auto *mimeData = new QMimeData;
+    mimeData->setUrls({QUrl::fromLocalFile(QStringLiteral("/tmp/drop test/it's here.txt"))});
+
+    QDragEnterEvent dragEnter(QPoint(10, 10), Qt::CopyAction, mimeData, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &dragEnter);
+    QVERIFY(dragEnter.isAccepted());
+
+    QDropEvent drop(QPointF(10, 10), Qt::CopyAction, mimeData, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &drop);
+
+    QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 500);
+    const QByteArray written = collectedPtyOutput(spy);
+    QVERIFY(written.contains("'/tmp/drop test/it'\\''s here.txt'"));
 }
 
 void TestTerminalWidget::testOsc52WritesClipboard() {

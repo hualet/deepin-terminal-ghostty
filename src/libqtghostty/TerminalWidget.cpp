@@ -5,10 +5,13 @@
 #include "logging/Logging.h"
 
 #include <QClipboard>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QFontMetrics>
 #include <QGuiApplication>
 #include <QInputMethod>
 #include <QKeyEvent>
+#include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QUrl>
@@ -340,6 +343,33 @@ std::optional<QString> clipboardTextFromOsc52Payload(const QByteArray &payload) 
     return QString::fromUtf8(*decoded);
 }
 
+bool containsLocalFileUrl(const QMimeData *mimeData) {
+    if (!mimeData || !mimeData->hasUrls())
+        return false;
+
+    const QList<QUrl> urls = mimeData->urls();
+    return std::any_of(urls.cbegin(), urls.cend(), [](const QUrl &url) { return url.isLocalFile(); });
+}
+
+QString shellQuotePath(const QString &path) {
+    QString quoted = path;
+    quoted.replace(QLatin1Char('\''), QStringLiteral("'\\''"));
+    return QLatin1Char('\'') + quoted + QLatin1Char('\'');
+}
+
+QStringList localFilePathsForDrop(const QMimeData *mimeData) {
+    QStringList paths;
+    if (!mimeData || !mimeData->hasUrls())
+        return paths;
+
+    const QList<QUrl> urls = mimeData->urls();
+    for (const QUrl &url : urls) {
+        if (url.isLocalFile())
+            paths.append(shellQuotePath(url.toLocalFile()));
+    }
+    return paths;
+}
+
 bool isAcceptedBareLinkScheme(QStringView scheme) {
     return scheme == QStringLiteral("http") || scheme == QStringLiteral("https") || scheme == QStringLiteral("ssh")
            || scheme == QStringLiteral("mailto") || scheme == QStringLiteral("file");
@@ -550,6 +580,7 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     setAccessibleDescription(tr("Interactive terminal input and output area."));
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
+    setAcceptDrops(true);
     setAttribute(Qt::WA_InputMethodEnabled, true);
 
     m_lastMousePos = QPoint(-1, -1);
@@ -2487,6 +2518,20 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
     m_renderStateDirty = true;
     updateViewportScrollState();
     update();
+}
+
+void TerminalWidget::dragEnterEvent(QDragEnterEvent *event) {
+    if (containsLocalFileUrl(event->mimeData()))
+        event->acceptProposedAction();
+}
+
+void TerminalWidget::dropEvent(QDropEvent *event) {
+    const QStringList paths = localFilePathsForDrop(event->mimeData());
+    if (paths.isEmpty())
+        return;
+
+    writeUserInput(paths.join(QLatin1Char(' ')).toUtf8());
+    event->acceptProposedAction();
 }
 
 void TerminalWidget::onPtyDataReceived(const QByteArray &data) {
