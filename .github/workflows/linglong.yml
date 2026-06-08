@@ -1,0 +1,58 @@
+name: Build Linglong Package
+
+on:
+  push:
+    tags:
+      - "v*"
+  release:
+    types:
+      - published
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+
+jobs:
+  build-linglong:
+    runs-on: ubuntu-latest
+    container:
+      image: docker.io/deepin/linglong-builder:latest
+      options: --privileged
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build Linglong package
+        run: |
+          cd linglong
+          ll-builder build
+
+      - name: Export package
+        run: |
+          cd linglong
+          ll-builder export
+          mkdir -p "${GITHUB_WORKSPACE}/output"
+          find . -maxdepth 1 -type f \( -name '*.layer' -o -name '*.uab' \) \
+            -exec cp {} "${GITHUB_WORKSPACE}/output/" \;
+
+      - name: Upload Linglong package
+        uses: actions/upload-artifact@v4
+        with:
+          name: linglong-package
+          path: output/*
+
+      - name: Publish release assets
+        if: github.event_name == 'push' || github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: output/*
+          generate_release_notes: ${{ github.event_name == 'push' }}
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
