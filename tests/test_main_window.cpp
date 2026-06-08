@@ -95,6 +95,7 @@ private slots:
     void testHorizontalTabDragOutCreatesNewWindowWithExistingPane();
     void testHorizontalSingleTabDragOutClosesSourceWindow();
     void testVerticalSidebarTabClickSwitchesCurrentTab();
+    void testVerticalSidebarSmallPressMovementStillSwitchesTab();
     void testVerticalSidebarTabClickRecoversFromStaleTabData();
     void testVerticalSidebarDragReordersTabs();
     void testVerticalSidebarIncludesDecorativeHierarchyElements();
@@ -1319,6 +1320,53 @@ void TestMainWindow::testVerticalSidebarTabClickSwitchesCurrentTab() {
 
     QTest::mouseClick(buttons.at(1), Qt::LeftButton);
 
+    QTRY_COMPARE(tabs->currentIndex(), 1);
+    QTRY_COMPARE(stack->currentIndex(), 1);
+}
+
+void TestMainWindow::testVerticalSidebarSmallPressMovementStillSwitchesTab() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+
+    tabs->setCurrentIndex(0);
+    auto *stack = window.findChild<QStackedWidget *>();
+    QVERIFY(stack);
+    QCOMPARE(stack->currentIndex(), 0);
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+    QTRY_COMPARE(verticalSidebar->items().size(), 2);
+
+    const int targetTabId = verticalSidebar->items().at(1).id;
+    QWidget *targetSection = verticalTabSection(verticalSidebar, targetTabId);
+    QVERIFY(targetSection);
+    QSignalSpy activationSpy(verticalSidebar, &VerticalTabSidebar::tabActivated);
+    QVERIFY(activationSpy.isValid());
+
+    const QPoint startPos = targetSection->rect().center();
+    const QPoint endPos = startPos + QPoint(QApplication::startDragDistance(), 0);
+    const QPoint startGlobal = targetSection->mapToGlobal(startPos);
+    const QPoint endGlobal = targetSection->mapToGlobal(endPos);
+    QMouseEvent pressEvent(QEvent::MouseButtonPress, startPos, startPos, startGlobal, Qt::LeftButton, Qt::LeftButton,
+                           Qt::NoModifier);
+    QApplication::sendEvent(targetSection, &pressEvent);
+    QMouseEvent moveEvent(QEvent::MouseMove, endPos, endPos, endGlobal, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(targetSection, &moveEvent);
+    QMouseEvent releaseEvent(QEvent::MouseButtonRelease, endPos, endPos, endGlobal, Qt::LeftButton, Qt::NoButton,
+                             Qt::NoModifier);
+    QApplication::sendEvent(targetSection, &releaseEvent);
+
+    QCOMPARE(activationSpy.count(), 1);
     QTRY_COMPARE(tabs->currentIndex(), 1);
     QTRY_COMPARE(stack->currentIndex(), 1);
 }

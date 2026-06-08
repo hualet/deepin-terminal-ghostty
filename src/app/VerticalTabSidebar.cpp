@@ -176,7 +176,8 @@ void ClickableSection::mousePressEvent(QMouseEvent *event) {
 
 void ClickableSection::mouseMoveEvent(QMouseEvent *event) {
     if (m_leftButtonPressed && sidebar && (event->buttons() & Qt::LeftButton)) {
-        if ((event->pos() - m_dragStartPos).manhattanLength() >= QApplication::startDragDistance()) {
+        const int dragStartDistance = qMax(QApplication::startDragDistance() * 2, 20);
+        if ((event->pos() - m_dragStartPos).manhattanLength() >= dragStartDistance) {
             if (!m_dragging)
                 sidebar->beginTabDrag(tabId, event->globalPosition().toPoint(), m_dragStartPos);
             m_dragging = true;
@@ -194,10 +195,13 @@ void ClickableSection::mouseReleaseEvent(QMouseEvent *event) {
         m_leftButtonPressed = false;
         m_dragging = false;
 
-        if (wasDragging)
-            sidebar->finishTabDrag(tabId, event->globalPosition().toPoint());
-        else
+        if (wasDragging) {
+            const bool moved = sidebar->finishTabDrag(tabId, event->globalPosition().toPoint());
+            if (!moved)
+                Q_EMIT sidebar->tabActivated(tabId);
+        } else {
             Q_EMIT sidebar->tabActivated(tabId);
+        }
 
         event->accept();
         return;
@@ -395,6 +399,7 @@ void VerticalTabSidebar::setItems(const QList<TabItem> &items) {
     m_items = items;
     m_dragTabId = 0;
     m_dragOriginalIndex = -1;
+    m_dragMoved = false;
     rebuild();
 }
 
@@ -421,6 +426,7 @@ void VerticalTabSidebar::beginTabDrag(int tabId, const QPoint &globalPos, const 
     m_dragTabId = tabId;
     m_dragOriginalIndex = indexOfItemId(tabId);
     m_dragHotSpot = hotSpot;
+    m_dragMoved = false;
 
     auto *section = sectionForTabId(tabId);
     if (!section)
@@ -472,6 +478,7 @@ void VerticalTabSidebar::previewTabMove(int tabId, const QPoint &globalPos) {
 
     auto *section = sectionForTabId(tabId);
     m_items.move(sourceIndex, targetIndex);
+    m_dragMoved = true;
     if (section && m_layout) {
         m_layout->removeWidget(section);
         m_layout->insertWidget(targetIndex, section);
@@ -503,22 +510,25 @@ void VerticalTabSidebar::previewTabMove(int tabId, const QPoint &globalPos) {
     QTimer::singleShot(0, this, &VerticalTabSidebar::updateButtonElisions);
 }
 
-void VerticalTabSidebar::finishTabDrag(int tabId, const QPoint &globalPos) {
+bool VerticalTabSidebar::finishTabDrag(int tabId, const QPoint &globalPos) {
     if (m_dragTabId != tabId)
         beginTabDrag(tabId, globalPos, sectionForTabId(tabId) ? sectionForTabId(tabId)->rect().center() : QPoint());
 
-    previewTabMove(tabId, globalPos);
+    moveDragProxy(globalPos);
 
     const int finalIndex = indexOfItemId(tabId);
     const int originalIndex = m_dragOriginalIndex;
+    const bool moved = m_dragMoved && finalIndex >= 0 && originalIndex >= 0 && finalIndex != originalIndex;
     clearDragProxy();
     m_dragTabId = 0;
     m_dragOriginalIndex = -1;
     m_dragHotSpot = QPoint();
+    m_dragMoved = false;
 
-    if (finalIndex >= 0 && originalIndex >= 0 && finalIndex != originalIndex)
+    if (moved)
         Q_EMIT tabMoveRequested(tabId, finalIndex);
     Q_EMIT tabDragFinished();
+    return moved;
 }
 
 int VerticalTabSidebar::indexOfItemId(int tabId) const {
@@ -541,6 +551,9 @@ int VerticalTabSidebar::targetIndexForPosition(int tabId, const QPoint &globalPo
     });
     for (auto *section : sections) {
         const int sectionTabId = section->property("tabId").toInt();
+        if (sectionTabId == tabId)
+            continue;
+
         int sectionIndex = -1;
         for (int i = 0; i < m_items.size(); ++i) {
             if (m_items.at(i).id == sectionTabId) {

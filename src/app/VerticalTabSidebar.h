@@ -56,7 +56,7 @@ public:
     void requestTabMove(int tabId, const QPoint &globalPos);
     void beginTabDrag(int tabId, const QPoint &globalPos, const QPoint &hotSpot);
     void previewTabMove(int tabId, const QPoint &globalPos);
-    void finishTabDrag(int tabId, const QPoint &globalPos);
+    bool finishTabDrag(int tabId, const QPoint &globalPos);
 
 signals:
     void tabActivated(int tabId);
@@ -86,4 +86,5 @@ private:
     int m_dragTabId = 0;
     int m_dragOriginalIndex = -1;
     QPoint m_dragHotSpot;
+    bool m_dragMoved = false;
 };
