@@ -1,0 +1,42 @@
+version: "1"
+
+package:
+  id: org.deepin.terminal-ghostty
+  name: deepin-terminal-ghostty
+  version: 1.0.0.0
+  kind: app
+  description: |
+    Terminal emulator for deepin, powered by Ghostty's VT engine.
+
+command:
+  - /opt/apps/org.deepin.terminal-ghostty/files/bin/deepin-terminal-ghostty
+
+base: org.deepin.base/25.2.0
+runtime: org.deepin.runtime.dtk/25.2.0
+
+sources:
+  - kind: git
+    url: https://github.com/linuxdeepin/deepin-terminal-ghostty.git
+    version: main
+    commit: HEAD
+
+build: |
+  cd /project/linglong/sources/deepin-terminal-ghostty.git
+  cmake -B build \
+    -DCMAKE_INSTALL_PREFIX=${PREFIX} \
+    -DCMAKE_INSTALL_LIBDIR=${PREFIX}/lib/${TRIPLET} \
+    -DCMAKE_BUILD_TYPE=Release
+  cmake --build build --parallel "$(nproc)"
+  cmake --build build --target install
+
+buildext:
+  apt:
+    build_depends:
+      - cmake
+      - qt6-base-dev
+      - qt6-base-dev-tools
+      - libdtk6core-dev
+      - libdtk6gui-dev
+      - libdtk6widget-dev
+      - libdtk6core-bin
+    depends: []
