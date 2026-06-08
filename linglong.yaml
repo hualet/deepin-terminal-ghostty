@@ -14,11 +14,11 @@ command:
 base: org.deepin.base/25.2.2
 runtime: org.deepin.runtime.dtk/25.2.2
 
-sources:
-  - kind: git
-    url: https://github.com/hualet/deepin-terminal-ghostty.git
-    version: main
-    commit: 29dda5e8423ac36449f68bfb71ac41e4df4f9798
+# sources:
+#   - kind: git
+#     url: https://github.com/hualet/deepin-terminal-ghostty.git
+#     version: main
+#     commit: 29dda5e8423ac36449f68bfb71ac41e4df4f9798
 
 build: |
   cmake -B build \
