@@ -57,6 +57,7 @@ private slots:
     void onTabCloseRequested(int index, bool hasConfirmed = false);
     void onTabCurrentChanged(int index);
     void onTabMoved(int fromIndex, int toIndex);
+    void onTabReleaseRequested(int index);
     void onTerminalTitleChanged(const QString &title);
     void onTerminalSessionClosed();
     void onPaneTerminalChanged(TerminalWidget *term);
@@ -71,12 +72,16 @@ private:
         bool hasPendingCommandResult = false;
     };
 
+    MainWindow(const StartupOptions &startupOptions, QWidget *parent, bool createInitialTab);
     DTabBar *ensureTabBar();
     QWidget *ensureTabTitlebarWidget();
     QWidget *ensureCompactTitlebarWidget();
     void detachTabBarFromTitlebarWidget();
     void setupTitleBar();
     void addTab(bool activate = true, const std::optional<PtySession::StartOptions> &startOptions = std::nullopt);
+    void connectPaneSignals(TermPane *pane);
+    void adoptDetachedTab(TabRecord record, bool activate = true);
+    void detachTabToNewWindow(int index);
     void closePane(TermPane *pane);
     TermPane *currentPane() const;
     TerminalWidget *currentTerminal() const;

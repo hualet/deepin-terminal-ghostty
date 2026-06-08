@@ -37,6 +37,9 @@
 #include <algorithm>
 
 MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
+    : MainWindow(startupOptions, parent, true) {}
+
+MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent, bool createInitialTab)
     : DMainWindow(parent),
       m_stackWidget(new QStackedWidget(this)),
       m_contentHost(new QWidget(this)),
@@ -153,7 +156,7 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
     ensureTabBar();
 
     bool restored = false;
-    if (AppSettings::instance()->sessionRestore() && m_startupOptions.execute.isEmpty()
+    if (createInitialTab && AppSettings::instance()->sessionRestore() && m_startupOptions.execute.isEmpty()
         && m_startupOptions.workingDirectory.isEmpty()) {
         auto &mgr = SessionManager::instance();
         if (mgr.hasSnapshot()) {
@@ -179,7 +182,7 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
         }
     }
 
-    if (!restored) {
+    if (!restored && createInitialTab) {
         std::optional<PtySession::StartOptions> initialSessionOptions;
         if (!m_startupOptions.execute.isEmpty() || !m_startupOptions.workingDirectory.isEmpty()) {
             initialSessionOptions = PtySession::StartOptions{
@@ -218,6 +221,7 @@ DTabBar *MainWindow::ensureTabBar() {
     connect(m_tabBar, &DTabBar::tabCloseRequested, this, [this](int index) { onTabCloseRequested(index, false); });
     connect(m_tabBar, &DTabBar::currentChanged, this, &MainWindow::onTabCurrentChanged);
     connect(m_tabBar, &DTabBar::tabMoved, this, &MainWindow::onTabMoved);
+    connect(m_tabBar, &DTabBar::tabReleaseRequested, this, &MainWindow::onTabReleaseRequested);
 
     return m_tabBar;
 }
@@ -398,6 +402,40 @@ void MainWindow::addTab(bool activate, const std::optional<PtySession::StartOpti
     qCInfo(appLog) << "Creating terminal tab" << m_nextTabId;
     auto *pane = new TermPane(startOptions, m_stackWidget);
 
+    connectPaneSignals(pane);
+
+    int stackIndex = m_stackWidget->addWidget(pane);
+    m_tabs.append(TabRecord{m_nextTabId++, pane, tr("Terminal"), true});
+
+    // DTabBar::addTab returns the visual tab index; we keep it in sync with stack index
+    int tabIndex = m_tabBar->addTab(tr("Terminal"));
+    m_tabBar->setTabData(tabIndex, stackIndex);
+
+    if (auto *record = tabRecordForPane(pane))
+        refreshTabRecord(*record);
+    syncTabWidgetsFromRecords();
+
+    if (activate) {
+        m_tabBar->setCurrentIndex(tabIndex);
+        if (auto *term = pane->currentTerminal())
+            term->setFocus();
+    }
+
+    if (!m_themes.isEmpty()) {
+        auto theme = resolveTheme();
+        for (auto *term : pane->findChildren<TerminalWidget *>())
+            term->applyTheme(theme);
+    }
+
+    if (m_compositorHasBlur) {
+        pane->setOpacity(AppSettings::instance()->opacity());
+    }
+}
+
+void MainWindow::connectPaneSignals(TermPane *pane) {
+    if (!pane)
+        return;
+
     connect(pane, &TermPane::terminalTitleChanged, this, &MainWindow::onTerminalTitleChanged);
     connect(pane, &TermPane::startupSessionExited, this, [this](int exitCode) {
         if (m_startupSessionHandled)
@@ -438,23 +476,30 @@ void MainWindow::addTab(bool activate, const std::optional<PtySession::StartOpti
                 syncTabWidgetsFromRecords();
             });
     connect(pane, &TermPane::requestSettings, this, &MainWindow::onSettingsTriggered);
+}
 
-    int stackIndex = m_stackWidget->addWidget(pane);
-    m_tabs.append(TabRecord{m_nextTabId++, pane, tr("Terminal"), true});
+void MainWindow::adoptDetachedTab(TabRecord record, bool activate) {
+    auto *pane = record.pane;
+    if (!pane)
+        return;
 
-    // DTabBar::addTab returns the visual tab index; we keep it in sync with stack index
-    int tabIndex = m_tabBar->addTab(tr("Terminal"));
+    pane->setParent(m_stackWidget);
+    connectPaneSignals(pane);
+
+    const int stackIndex = m_stackWidget->addWidget(pane);
+    if (record.id <= 0)
+        record.id = m_nextTabId++;
+    else
+        m_nextTabId = qMax(m_nextTabId, record.id + 1);
+    if (record.title.isEmpty())
+        record.title = tr("Terminal");
+    m_tabs.append(record);
+
+    const int tabIndex = m_tabBar->addTab(record.title);
     m_tabBar->setTabData(tabIndex, stackIndex);
 
-    if (auto *record = tabRecordForPane(pane))
-        refreshTabRecord(*record);
-    syncTabWidgetsFromRecords();
-
-    if (activate) {
-        m_tabBar->setCurrentIndex(tabIndex);
-        if (auto *term = pane->currentTerminal())
-            term->setFocus();
-    }
+    if (auto *tabRecord = tabRecordForPane(pane))
+        refreshTabRecord(*tabRecord);
 
     if (!m_themes.isEmpty()) {
         auto theme = resolveTheme();
@@ -462,8 +507,56 @@ void MainWindow::addTab(bool activate, const std::optional<PtySession::StartOpti
             term->applyTheme(theme);
     }
 
-    if (m_compositorHasBlur) {
+    if (m_compositorHasBlur)
         pane->setOpacity(AppSettings::instance()->opacity());
+
+    syncTabWidgetsFromRecords();
+    if (activate) {
+        m_tabBar->setCurrentIndex(tabIndex);
+        if (auto *term = pane->currentTerminal())
+            term->setFocus();
+    }
+}
+
+void MainWindow::detachTabToNewWindow(int index) {
+    if (index < 0)
+        index = m_tabBar ? m_tabBar->currentIndex() : -1;
+    if (!m_tabBar || index < 0 || index >= m_tabs.size() || index >= m_tabBar->count())
+        return;
+
+    TabRecord record = m_tabs.takeAt(index);
+    auto *pane = record.pane;
+    if (!pane) {
+        syncTabWidgetsFromRecords();
+        return;
+    }
+
+    const bool detachedWasCurrent = (index == m_tabBar->currentIndex());
+    m_stackWidget->removeWidget(pane);
+    QObject::disconnect(pane, nullptr, this, nullptr);
+    pane->setParent(nullptr);
+    m_tabBar->removeTab(index);
+    syncTabWidgetsFromRecords();
+
+    auto *window = new MainWindow(StartupOptions{}, nullptr, false);
+    window->setAttribute(Qt::WA_DeleteOnClose);
+    window->resize(size());
+    window->move(pos() + QPoint(40, 40));
+    window->adoptDetachedTab(record, true);
+    window->show();
+    window->raise();
+    window->activateWindow();
+
+    if (m_tabs.isEmpty()) {
+        m_hasConfirmedClose = true;
+        close();
+        return;
+    }
+
+    if (detachedWasCurrent) {
+        const int nextIndex = qMin(index, m_tabs.size() - 1);
+        if (nextIndex >= 0)
+            m_tabBar->setCurrentIndex(nextIndex);
     }
 }
 
@@ -578,6 +671,10 @@ void MainWindow::onTabMoved(int fromIndex, int toIndex) {
             m_tabBar->setCurrentIndex(i);
         break;
     }
+}
+
+void MainWindow::onTabReleaseRequested(int index) {
+    detachTabToNewWindow(index);
 }
 
 void MainWindow::onTerminalTitleChanged(const QString &title) {

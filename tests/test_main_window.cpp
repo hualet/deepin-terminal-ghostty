@@ -92,6 +92,8 @@ private slots:
     void testHorizontalTitlebarTabsDoNotCoverMenuButton();
     void testHorizontalTabBarAllowsDragging();
     void testHorizontalTabDragReordersTabs();
+    void testHorizontalTabDragOutCreatesNewWindowWithExistingPane();
+    void testHorizontalSingleTabDragOutClosesSourceWindow();
     void testVerticalSidebarTabClickSwitchesCurrentTab();
     void testVerticalSidebarTabClickRecoversFromStaleTabData();
     void testVerticalSidebarDragReordersTabs();
@@ -1203,6 +1205,90 @@ void TestMainWindow::testHorizontalTabDragReordersTabs() {
     QCOMPARE(snapshotTabs.at(1).toObject().value(QStringLiteral("title")).toString(), QStringLiteral("Three"));
     QCOMPARE(snapshotTabs.at(2).toObject().value(QStringLiteral("title")).toString(), QStringLiteral("One"));
     QVERIFY(snapshotTabs.at(0).toObject().value(QStringLiteral("active")).toBool());
+}
+
+void TestMainWindow::testHorizontalTabDragOutCreatesNewWindowWithExistingPane() {
+    AppSettings::instance()->setVerticalTabsEnabled(false);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    auto *firstPane = currentPane(window);
+    QVERIFY(firstPane);
+    firstPane->setCustomTitle(QStringLiteral("One"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+
+    auto *secondPane = currentPane(window);
+    QVERIFY(secondPane);
+    secondPane->setCustomTitle(QStringLiteral("Two"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabReleaseRequested", Qt::DirectConnection, Q_ARG(int, 0)));
+
+    QTRY_COMPARE(tabs->count(), 1);
+    QCOMPARE(tabs->tabText(0), QStringLiteral("Two"));
+    QCOMPARE(currentPane(window), secondPane);
+
+    MainWindow *detachedWindow = nullptr;
+    QTRY_VERIFY([&]() {
+        for (auto *widget : QApplication::topLevelWidgets()) {
+            auto *candidate = qobject_cast<MainWindow *>(widget);
+            if (candidate && candidate != &window) {
+                detachedWindow = candidate;
+                return true;
+            }
+        }
+        return false;
+    }());
+
+    auto *detachedTabs = tabBar(*detachedWindow);
+    QVERIFY(detachedTabs);
+    QCOMPARE(detachedTabs->count(), 1);
+    QCOMPARE(detachedTabs->tabText(0), QStringLiteral("One"));
+    QCOMPARE(currentPane(*detachedWindow), firstPane);
+
+    delete detachedWindow;
+}
+
+void TestMainWindow::testHorizontalSingleTabDragOutClosesSourceWindow() {
+    AppSettings::instance()->setVerticalTabsEnabled(false);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *sourcePane = currentPane(window);
+    QVERIFY(sourcePane);
+    sourcePane->setCustomTitle(QStringLiteral("Solo"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabReleaseRequested", Qt::DirectConnection, Q_ARG(int, 0)));
+    QTRY_VERIFY(!window.isVisible());
+
+    MainWindow *detachedWindow = nullptr;
+    QTRY_VERIFY([&]() {
+        for (auto *widget : QApplication::topLevelWidgets()) {
+            auto *candidate = qobject_cast<MainWindow *>(widget);
+            if (candidate && candidate != &window) {
+                detachedWindow = candidate;
+                return true;
+            }
+        }
+        return false;
+    }());
+
+    auto *detachedTabs = tabBar(*detachedWindow);
+    QVERIFY(detachedTabs);
+    QCOMPARE(detachedTabs->count(), 1);
+    QCOMPARE(detachedTabs->tabText(0), QStringLiteral("Solo"));
+    QCOMPARE(currentPane(*detachedWindow), sourcePane);
+
+    delete detachedWindow;
 }
 
 void TestMainWindow::testVerticalSidebarTabClickSwitchesCurrentTab() {
