@@ -83,13 +83,30 @@ dpkg-buildpackage -us -uc -b
 
 Built `.deb` files will appear in the parent directory.
 
+## Linglong Package Build
+
+The `linglong/linglong.yaml` manifest describes the Linglong package.
+
+Build (requires `ll-builder` installed):
+
+```bash
+cd linglong && ll-builder build
+```
+
+Export the built artifact:
+
+```bash
+cd linglong && ll-builder export
+```
+
 ## Version Bumping
 
-When bumping the version (e.g. `0.3.0` → `0.4.0`), update two files:
+When bumping the version (e.g. `0.3.0` → `0.4.0`), update three files:
 
 1. **`CMakeLists.txt`** — change the `VERSION` in the `project()` call
 2. **`debian/changelog`** — prepend a new entry. Follow the rules below.
-3. Rebuild and verify: `cmake -B build && cmake --build build && cd build && ctest --output-on-failure`
+3. **`linglong/linglong.yaml`** — update `package.version` (four-segment format, e.g. `1.0.0.0`)
+4. Rebuild and verify: `cmake -B build && cmake --build build && cd build && ctest --output-on-failure`
 
 ### Changelog Rules
 
