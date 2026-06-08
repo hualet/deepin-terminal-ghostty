@@ -11,8 +11,8 @@ package:
 command:
   - /opt/apps/org.deepin.terminal-ghostty/files/bin/deepin-terminal-ghostty
 
-base: org.deepin.base/25.2.0
-runtime: org.deepin.runtime.dtk/25.2.0
+base: org.deepin.base/25.2.2
+runtime: org.deepin.runtime.dtk/25.2.2
 
 sources:
   - kind: git
@@ -21,7 +21,6 @@ sources:
     commit: 29dda5e8423ac36449f68bfb71ac41e4df4f9798
 
 build: |
-  cd /project/linglong/sources/deepin-terminal-ghostty.git
   cmake -B build \
     -DCMAKE_INSTALL_PREFIX=${PREFIX} \
     -DCMAKE_INSTALL_LIBDIR=${PREFIX}/lib/${TRIPLET} \
@@ -32,11 +31,7 @@ build: |
 buildext:
   apt:
     build_depends:
-      - cmake
-      - qt6-base-dev
-      - qt6-base-dev-tools
-      - libdtk6core-dev
-      - libdtk6gui-dev
-      - libdtk6widget-dev
-      - libdtk6core-bin
+      - libglx-dev
+      - libopengl-dev
     depends: []
+
