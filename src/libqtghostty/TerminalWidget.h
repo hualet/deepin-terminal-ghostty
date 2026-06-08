@@ -209,7 +209,13 @@ private:
     QString selectedText() const;
 
     bool isWordBoundary(uint32_t codepoint) const;
+    uint32_t codepointAtCell(int screenRow, int col) const;
+    GhosttyCellWide cellWidthAtCell(int screenRow, int col) const;
+    bool rowFlagAt(int screenRow, GhosttyRowData data) const;
+    bool isRowWrapped(int screenRow) const;
+    bool isRowContinuation(int screenRow) const;
     void wordBoundsAt(int screenRow, int col, int *startCol, int *endCol) const;
+    void wordRangeAt(int screenRow, int col, int *startRow, int *startCol, int *endRow, int *endCol) const;
     void selectWordAt(int screenRow, int col);
     void selectLineAt(int screenRow);
     void extendWordSelection(int screenRow, int col);

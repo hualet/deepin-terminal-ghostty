@@ -82,6 +82,7 @@ private slots:
 
     void testDoubleClickSelectsWord();
     void testDoubleClickSelectsWordWithDots();
+    void testDoubleClickSelectsWrappedFilename();
     void testDoubleClickSelectsWordWithHyphens();
     void testDoubleClickSelectsWordWithUnderscores();
     void testDoubleClickSelectsWordWithMixedPunctuation();
@@ -1570,6 +1571,38 @@ void TestTerminalWidget::testDoubleClickSelectsWordWithDots() {
 
     const QString text = widget.debugSelectedText();
     QCOMPARE(text, QStringLiteral("linux-image-6.18.19-amd64-desktop-rolling"));
+}
+
+void TestTerminalWidget::testDoubleClickSelectsWrappedFilename() {
+    CountingTerminalWidget widget;
+    widget.resize(120, 120);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const QString filename = QStringLiteral("linux-image-6.18.19-amd64-desktop-rolling-wrapped-target-package.deb");
+    feedTerminalOutput(widget, filename.toUtf8());
+    widget.repaint();
+    QApplication::processEvents();
+
+    const int continuationRow = firstScreenRowContaining(widget, QStringLiteral("amd64"));
+    QVERIFY2(continuationRow > 0, qPrintable(widget.visibleText()));
+    const int continuationCol = widget.debugTextForScreenRow(continuationRow).indexOf(QStringLiteral("amd64"));
+    QVERIFY(continuationCol >= 0);
+
+    const QPoint pos = cellCenterForPos(widget, continuationCol, continuationRow);
+    QMouseEvent press1(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press1);
+    QMouseEvent release1(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release1);
+    QMouseEvent press2(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press2);
+    QMouseEvent release2(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release2);
+
+    const QString text = widget.debugSelectedText();
+    QCOMPARE(text, filename);
 }
 
 void TestTerminalWidget::testDoubleClickSelectsWordWithHyphens() {

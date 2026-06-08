@@ -3464,55 +3464,91 @@ bool TerminalWidget::isWordBoundary(uint32_t codepoint) const {
     }
 }
 
+uint32_t TerminalWidget::codepointAtCell(int screenRow, int col) const {
+    if (!m_terminal || col < 0 || col >= static_cast<int>(m_cols))
+        return 0;
+
+    GhosttyPoint point = {
+        .tag = GHOSTTY_POINT_TAG_SCREEN,
+        .value = {.coordinate = {.x = static_cast<uint16_t>(col), .y = static_cast<uint32_t>(screenRow)}}};
+    GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+    if (ghostty_terminal_grid_ref(m_terminal, point, &ref) != GHOSTTY_SUCCESS)
+        return 0;
+    uint32_t graphemes[16];
+    size_t len = 0;
+    if (ghostty_grid_ref_graphemes(&ref, graphemes, 16, &len) == GHOSTTY_SUCCESS && len > 0)
+        return graphemes[0];
+    return 0;
+}
+
+GhosttyCellWide TerminalWidget::cellWidthAtCell(int screenRow, int col) const {
+    if (!m_terminal || col < 0 || col >= static_cast<int>(m_cols))
+        return GHOSTTY_CELL_WIDE_NARROW;
+
+    GhosttyPoint point = {
+        .tag = GHOSTTY_POINT_TAG_SCREEN,
+        .value = {.coordinate = {.x = static_cast<uint16_t>(col), .y = static_cast<uint32_t>(screenRow)}}};
+    GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+    if (ghostty_terminal_grid_ref(m_terminal, point, &ref) != GHOSTTY_SUCCESS)
+        return GHOSTTY_CELL_WIDE_NARROW;
+    GhosttyCell cell = 0;
+    if (ghostty_grid_ref_cell(&ref, &cell) != GHOSTTY_SUCCESS)
+        return GHOSTTY_CELL_WIDE_NARROW;
+    GhosttyCellWide wide = GHOSTTY_CELL_WIDE_NARROW;
+    ghostty_cell_get(cell, GHOSTTY_CELL_DATA_WIDE, &wide);
+    return wide;
+}
+
+bool TerminalWidget::rowFlagAt(int screenRow, GhosttyRowData data) const {
+    if (!m_terminal || screenRow < 0)
+        return false;
+
+    size_t totalRows = 0;
+    ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_TOTAL_ROWS, &totalRows);
+    if (screenRow >= static_cast<int>(totalRows))
+        return false;
+
+    GhosttyPoint point = {.tag = GHOSTTY_POINT_TAG_SCREEN,
+                          .value = {.coordinate = {.x = 0, .y = static_cast<uint32_t>(screenRow)}}};
+    GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+    if (ghostty_terminal_grid_ref(m_terminal, point, &ref) != GHOSTTY_SUCCESS)
+        return false;
+    GhosttyRow row = 0;
+    if (ghostty_grid_ref_row(&ref, &row) != GHOSTTY_SUCCESS || row == 0)
+        return false;
+    bool flag = false;
+    ghostty_row_get(row, data, &flag);
+    return flag;
+}
+
+bool TerminalWidget::isRowWrapped(int screenRow) const {
+    return rowFlagAt(screenRow, GHOSTTY_ROW_DATA_WRAP);
+}
+
+bool TerminalWidget::isRowContinuation(int screenRow) const {
+    return rowFlagAt(screenRow, GHOSTTY_ROW_DATA_WRAP_CONTINUATION);
+}
+
 void TerminalWidget::wordBoundsAt(int screenRow, int col, int *startCol, int *endCol) const {
     *startCol = col;
     *endCol = col;
     if (!m_terminal || col < 0 || col >= static_cast<int>(m_cols))
         return;
 
-    auto getCodepointAt = [&](int c) -> uint32_t {
-        GhosttyPoint point = {
-            .tag = GHOSTTY_POINT_TAG_SCREEN,
-            .value = {.coordinate = {.x = static_cast<uint16_t>(c), .y = static_cast<uint32_t>(screenRow)}}};
-        GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
-        if (ghostty_terminal_grid_ref(m_terminal, point, &ref) != GHOSTTY_SUCCESS)
-            return 0;
-        uint32_t graphemes[16];
-        size_t len = 0;
-        if (ghostty_grid_ref_graphemes(&ref, graphemes, 16, &len) == GHOSTTY_SUCCESS && len > 0)
-            return graphemes[0];
-        return 0;
-    };
-
-    auto cellWidthAt = [&](int c) -> GhosttyCellWide {
-        GhosttyPoint point = {
-            .tag = GHOSTTY_POINT_TAG_SCREEN,
-            .value = {.coordinate = {.x = static_cast<uint16_t>(c), .y = static_cast<uint32_t>(screenRow)}}};
-        GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
-        if (ghostty_terminal_grid_ref(m_terminal, point, &ref) != GHOSTTY_SUCCESS)
-            return GHOSTTY_CELL_WIDE_NARROW;
-        GhosttyCell cell = 0;
-        if (ghostty_grid_ref_cell(&ref, &cell) != GHOSTTY_SUCCESS)
-            return GHOSTTY_CELL_WIDE_NARROW;
-        GhosttyCellWide wide = GHOSTTY_CELL_WIDE_NARROW;
-        ghostty_cell_get(cell, GHOSTTY_CELL_DATA_WIDE, &wide);
-        return wide;
-    };
-
     int adjustedCol = col;
-    GhosttyCellWide clickedWide = cellWidthAt(col);
+    GhosttyCellWide clickedWide = cellWidthAtCell(screenRow, col);
     if (clickedWide == GHOSTTY_CELL_WIDE_SPACER_TAIL || clickedWide == GHOSTTY_CELL_WIDE_SPACER_HEAD) {
         adjustedCol = qMax(0, col - 1);
     }
 
-    uint32_t anchorCp = getCodepointAt(adjustedCol);
+    uint32_t anchorCp = codepointAtCell(screenRow, adjustedCol);
     const bool anchorIsBoundary = isWordBoundary(anchorCp);
 
     for (int c = adjustedCol; c >= 0; --c) {
-        GhosttyCellWide cw = cellWidthAt(c);
+        GhosttyCellWide cw = cellWidthAtCell(screenRow, c);
         if (cw == GHOSTTY_CELL_WIDE_SPACER_TAIL || cw == GHOSTTY_CELL_WIDE_SPACER_HEAD)
             continue;
-        uint32_t cp = getCodepointAt(c);
+        uint32_t cp = codepointAtCell(screenRow, c);
         if (isWordBoundary(cp) != anchorIsBoundary) {
             *startCol = c + 1;
             break;
@@ -3521,10 +3557,10 @@ void TerminalWidget::wordBoundsAt(int screenRow, int col, int *startCol, int *en
     }
 
     for (int c = adjustedCol; c < static_cast<int>(m_cols); ++c) {
-        GhosttyCellWide cw = cellWidthAt(c);
+        GhosttyCellWide cw = cellWidthAtCell(screenRow, c);
         if (cw == GHOSTTY_CELL_WIDE_SPACER_TAIL || cw == GHOSTTY_CELL_WIDE_SPACER_HEAD)
             continue;
-        uint32_t cp = getCodepointAt(c);
+        uint32_t cp = codepointAtCell(screenRow, c);
         if (isWordBoundary(cp) != anchorIsBoundary) {
             *endCol = c - 1;
             break;
@@ -3536,14 +3572,58 @@ void TerminalWidget::wordBoundsAt(int screenRow, int col, int *startCol, int *en
     }
 }
 
+void TerminalWidget::wordRangeAt(int screenRow, int col, int *startRow, int *startCol, int *endRow, int *endCol) const {
+    *startRow = screenRow;
+    *endRow = screenRow;
+    wordBoundsAt(screenRow, col, startCol, endCol);
+    if (!m_terminal)
+        return;
+
+    const bool anchorIsBoundary = isWordBoundary(codepointAtCell(screenRow, *startCol));
+
+    while (*startCol == 0 && isRowContinuation(*startRow)) {
+        const int previousRow = *startRow - 1;
+        if (!isRowWrapped(previousRow))
+            break;
+
+        int previousStartCol = 0;
+        int previousEndCol = 0;
+        wordBoundsAt(previousRow, m_cols - 1, &previousStartCol, &previousEndCol);
+        if (previousEndCol < static_cast<int>(m_cols) - 1
+            || isWordBoundary(codepointAtCell(previousRow, previousEndCol)) != anchorIsBoundary) {
+            break;
+        }
+
+        *startRow = previousRow;
+        *startCol = previousStartCol;
+    }
+
+    while (*endCol >= static_cast<int>(m_cols) - 1 && isRowWrapped(*endRow)) {
+        const int nextRow = *endRow + 1;
+        if (!isRowContinuation(nextRow))
+            break;
+
+        int nextStartCol = 0;
+        int nextEndCol = 0;
+        wordBoundsAt(nextRow, 0, &nextStartCol, &nextEndCol);
+        if (nextStartCol != 0 || isWordBoundary(codepointAtCell(nextRow, nextStartCol)) != anchorIsBoundary)
+            break;
+
+        *endRow = nextRow;
+        *endCol = nextEndCol;
+    }
+}
+
 void TerminalWidget::selectWordAt(int screenRow, int col) {
+    int startRow = screenRow;
     int startCol = col;
+    int endRow = screenRow;
     int endCol = col;
-    wordBoundsAt(screenRow, col, &startCol, &endCol);
+    wordRangeAt(screenRow, col, &startRow, &startCol, &endRow, &endCol);
     m_selection.active = true;
-    m_selection.startRow = screenRow;
+    m_selection.startRow = startRow;
     m_selection.startCol = startCol;
-    m_selection.endRow = screenRow;
+    m_selection.endRow = endRow;
     m_selection.endCol = endCol;
 }
 
@@ -3608,19 +3688,27 @@ void TerminalWidget::selectLineAt(int screenRow) {
 }
 
 void TerminalWidget::extendWordSelection(int screenRow, int col) {
-    int anchorWordStart = 0, anchorWordEnd = 0;
-    wordBoundsAt(m_clickAnchorRow, m_clickAnchorCol, &anchorWordStart, &anchorWordEnd);
-    int currentWordStart = 0, currentWordEnd = 0;
-    wordBoundsAt(screenRow, col, &currentWordStart, &currentWordEnd);
+    int anchorStartRow = m_clickAnchorRow;
+    int anchorWordStart = 0;
+    int anchorEndRow = m_clickAnchorRow;
+    int anchorWordEnd = 0;
+    wordRangeAt(m_clickAnchorRow, m_clickAnchorCol, &anchorStartRow, &anchorWordStart, &anchorEndRow, &anchorWordEnd);
+
+    int currentStartRow = screenRow;
+    int currentWordStart = 0;
+    int currentEndRow = screenRow;
+    int currentWordEnd = 0;
+    wordRangeAt(screenRow, col, &currentStartRow, &currentWordStart, &currentEndRow, &currentWordEnd);
+
     if (screenRow < m_clickAnchorRow || (screenRow == m_clickAnchorRow && col < m_clickAnchorCol)) {
-        m_selection.startRow = screenRow;
+        m_selection.startRow = currentStartRow;
         m_selection.startCol = currentWordStart;
-        m_selection.endRow = m_clickAnchorRow;
+        m_selection.endRow = anchorEndRow;
         m_selection.endCol = anchorWordEnd;
     } else {
-        m_selection.startRow = m_clickAnchorRow;
+        m_selection.startRow = anchorStartRow;
         m_selection.startCol = anchorWordStart;
-        m_selection.endRow = screenRow;
+        m_selection.endRow = currentEndRow;
         m_selection.endCol = currentWordEnd;
     }
     m_selection.active = true;
