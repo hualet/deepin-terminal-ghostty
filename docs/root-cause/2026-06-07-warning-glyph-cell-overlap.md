@@ -30,12 +30,21 @@ positioning model:
 This prevents one glyph from painting into the next logical terminal cell without
 changing PTY behavior, Ghostty grid state, cursor geometry, or selection logic.
 
+## Follow-up
+
+The initial hard cell clip fixed overlap but could cut emoji-shaped fallback
+glyphs in half when Qt selected a glyph wider than one narrow terminal cell. The
+follow-up keeps the cell clip, but fits multi-code-unit narrow graphemes inside
+the single cell before drawing them. That preserves the no-overlap guarantee
+while avoiding a visible half-rendered emoji.
+
 ## Regression Coverage
 
 Added `TestTerminalWidget::testFallbackGlyphDoesNotOverlapNextCell`. The test
 uses the warning-sign emoji variation sequence, which had a wider Qt advance in
 the local font stack, and verifies that the next terminal cell remains unchanged
-when only the warning glyph is rendered.
+when only the warning glyph is rendered. The follow-up also verifies that the
+glyph is not cut at the right edge of its own cell.
 
 ## Verification
 
