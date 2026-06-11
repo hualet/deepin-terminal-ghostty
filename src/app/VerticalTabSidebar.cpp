@@ -177,14 +177,15 @@ void ClickableSection::mousePressEvent(QMouseEvent *event) {
 void ClickableSection::mouseMoveEvent(QMouseEvent *event) {
     if (m_leftButtonPressed && sidebar && (event->buttons() & Qt::LeftButton)) {
         const int dragStartDistance = qMax(QApplication::startDragDistance() * 2, 20);
-        if ((event->pos() - m_dragStartPos).manhattanLength() >= dragStartDistance) {
+        if (m_dragging || (event->pos() - m_dragStartPos).manhattanLength() >= dragStartDistance) {
             if (!m_dragging)
                 sidebar->beginTabDrag(tabId, event->globalPosition().toPoint(), m_dragStartPos);
             m_dragging = true;
             sidebar->previewTabMove(tabId, event->globalPosition().toPoint());
-            event->accept();
-            return;
         }
+
+        event->accept();
+        return;
     }
     QFrame::mouseMoveEvent(event);
 }

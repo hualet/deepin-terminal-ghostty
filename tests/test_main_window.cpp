@@ -96,6 +96,7 @@ private slots:
     void testHorizontalSingleTabDragOutClosesSourceWindow();
     void testVerticalSidebarTabClickSwitchesCurrentTab();
     void testVerticalSidebarSmallPressMovementStillSwitchesTab();
+    void testVerticalSidebarPressedMoveDoesNotPropagateAsWindowDrag();
     void testVerticalSidebarTabClickRecoversFromStaleTabData();
     void testVerticalSidebarDragReordersTabs();
     void testVerticalSidebarIncludesDecorativeHierarchyElements();
@@ -1369,6 +1370,53 @@ void TestMainWindow::testVerticalSidebarSmallPressMovementStillSwitchesTab() {
     QCOMPARE(activationSpy.count(), 1);
     QTRY_COMPARE(tabs->currentIndex(), 1);
     QTRY_COMPARE(stack->currentIndex(), 1);
+}
+
+void TestMainWindow::testVerticalSidebarPressedMoveDoesNotPropagateAsWindowDrag() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+    QTRY_COMPARE(verticalSidebar->items().size(), 2);
+
+    const int targetTabId = verticalSidebar->items().at(1).id;
+    QWidget *targetSection = verticalTabSection(verticalSidebar, targetTabId);
+    QVERIFY(targetSection);
+
+    const QPoint startPos = targetSection->rect().center();
+    const QPoint movePos = startPos + QPoint(QApplication::startDragDistance() + 1, 0);
+    const QPoint startGlobal = targetSection->mapToGlobal(startPos);
+    const QPoint moveGlobal = targetSection->mapToGlobal(movePos);
+
+    QMouseEvent pressEvent(QEvent::MouseButtonPress, startPos, startPos, startGlobal, Qt::LeftButton, Qt::LeftButton,
+                           Qt::NoModifier);
+    pressEvent.setAccepted(false);
+    QApplication::sendEvent(targetSection, &pressEvent);
+    QVERIFY(pressEvent.isAccepted());
+
+    QMouseEvent moveEvent(QEvent::MouseMove, movePos, movePos, moveGlobal, Qt::NoButton, Qt::LeftButton,
+                          Qt::NoModifier);
+    moveEvent.setAccepted(false);
+    QApplication::sendEvent(targetSection, &moveEvent);
+    QVERIFY(moveEvent.isAccepted());
+    QVERIFY(!verticalSidebar->findChild<QWidget *>(QStringLiteral("verticalTabDragProxy")));
+
+    QMouseEvent releaseEvent(QEvent::MouseButtonRelease, movePos, movePos, moveGlobal, Qt::LeftButton, Qt::NoButton,
+                             Qt::NoModifier);
+    QApplication::sendEvent(targetSection, &releaseEvent);
+
+    QTRY_COMPARE(tabs->currentIndex(), 1);
 }
 
 void TestMainWindow::testVerticalSidebarTabClickRecoversFromStaleTabData() {
