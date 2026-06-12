@@ -322,6 +322,7 @@ private:
     mutable QVector<int> m_linkScanLru;
     quint64 m_linkScanGeneration = 1;
     QPoint m_lastMousePos;
+    QPoint m_selectionDragStartPos;
     bool m_selectionDragActive = false;
 
     // Multi-click detection

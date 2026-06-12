@@ -96,6 +96,7 @@ private slots:
     void testDoubleClickStopsAtExclamation();
     void testDoubleClickStopsAtGlob();
     void testDoubleClickSelectsPath();
+    void testSingleClickDoesNotSelectCell();
     void testTripleClickSelectsLine();
     void testDoubleClickDragExtendsByWord();
     void testTripleClickDragExtendsByLine();
@@ -1908,6 +1909,33 @@ void TestTerminalWidget::testDoubleClickSelectsPath() {
 
     const QString text = widget.debugSelectedText();
     QCOMPARE(text, QStringLiteral("/usr/local/bin/app"));
+}
+
+void TestTerminalWidget::testSingleClickDoesNotSelectCell() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("hello world\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const QPoint clickPos = cellCenterForPos(widget, 1, 0);
+    QMouseEvent pressEvent = mousePressEventFor(widget, clickPos, Qt::LeftButton, Qt::LeftButton);
+    QApplication::sendEvent(&widget, &pressEvent);
+    QMouseEvent releaseEvent(QEvent::MouseButtonRelease, clickPos, clickPos, Qt::LeftButton, Qt::NoButton,
+                             Qt::NoModifier);
+    QApplication::sendEvent(&widget, &releaseEvent);
+    QApplication::processEvents();
+
+    QVERIFY(!widget.debugCellInSelection(0, 1));
+    QVERIFY(widget.debugSelectedText().isEmpty());
 }
 
 void TestTerminalWidget::testTripleClickSelectsLine() {

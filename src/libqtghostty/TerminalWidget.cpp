@@ -4,6 +4,7 @@
 #include "TerminalTrace.h"
 #include "logging/Logging.h"
 
+#include <QApplication>
 #include <QClipboard>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -3106,7 +3107,8 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
         }
         m_clickTimer.start();
         m_lastClickPos = event->pos();
-        m_selectionDragActive = true;
+        m_selectionDragStartPos = event->pos();
+        m_selectionDragActive = false;
 
         m_clickAnchorRow = screenRow;
         m_clickAnchorCol = col;
@@ -3171,6 +3173,10 @@ void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
     updateHyperlinkHoverState(event->pos());
 
     if (event->buttons() & Qt::LeftButton) {
+        if (!m_selectionDragActive
+            && (event->pos() - m_selectionDragStartPos).manhattanLength() < QApplication::startDragDistance()) {
+            return;
+        }
         m_selectionDragActive = true;
         extendSelectionToPosition(event->pos());
         updateSelectionAutoScroll(event->pos());
@@ -3206,12 +3212,17 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
     }
 
     if (event->button() == Qt::LeftButton) {
-        extendSelectionToPosition(event->pos());
+        const bool selectionWasDragged = m_selectionDragActive;
+        if (selectionWasDragged)
+            extendSelectionToPosition(event->pos());
+
         stopSelectionAutoScroll();
 
-        QString text = selectedText();
-        if (!text.isEmpty())
-            QGuiApplication::clipboard()->setText(text, QClipboard::Selection);
+        if (selectionWasDragged) {
+            QString text = selectedText();
+            if (!text.isEmpty())
+                QGuiApplication::clipboard()->setText(text, QClipboard::Selection);
+        }
     }
 
     if (event->button() == Qt::MiddleButton) {
