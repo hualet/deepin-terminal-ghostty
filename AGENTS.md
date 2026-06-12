@@ -101,11 +101,15 @@ cd linglong && ll-builder export
 
 ## Version Bumping
 
-When bumping the version (e.g. `0.3.0` → `0.4.0`), update three files:
+When bumping the version (e.g. `1.0` → `1.0.1`), keep the Debian/CMake
+version to at most three numeric segments (`major.minor.patch`) and update
+these files:
 
 1. **`CMakeLists.txt`** — change the `VERSION` in the `project()` call
-2. **`debian/changelog`** — prepend a new entry. Follow the rules below.
-3. **`linglong/linglong.yaml`** — update `package.version` (four-segment format, e.g. `1.0.0.0`)
+2. **`debian/changelog`** — prepend a new entry using the same version plus
+   Debian revision, e.g. `1.0.1-1`. Follow the rules below.
+3. **`linglong.yaml`** — update `package.version` to the Linglong
+   four-segment form derived from the same release, e.g. `1.0.1.0`
 4. Rebuild and verify: `cmake -B build && cmake --build build && cd build && ctest --output-on-failure`
 
 ### Changelog Rules
