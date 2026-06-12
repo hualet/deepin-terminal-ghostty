@@ -1,3 +1,20 @@
+deepin-terminal-ghostty (1.0.4-1) unstable; urgency=medium
+
+  * Add file drop support so dropped files insert escaped paths at the
+    terminal prompt.
+  * Improve vertical tab dragging so sidebar gestures remain stable during
+    reorder and window movement.
+  * Fix terminal selection so accidental mouse movement does not start a
+    selection before the drag threshold is reached.
+  * Improve sidebar badge performance by caching pixmaps and rebuilding only
+    changed items.
+  * Refresh the bundled Ghostty VT engine for newer terminal behavior and
+    compatibility fixes.
+  * Clarify release instructions so Debian and CMake versions stay within
+    three numeric segments while Linglong keeps its four-segment version.
+
+ -- Deepin Packages <packages@deepin.org>  Fri, 12 Jun 2026 15:07:52 +0800
+
 deepin-terminal-ghostty (1.0-1) unstable; urgency=medium
 
   * Add bare URL detection so http, https, ssh, mailto, and file links can be
