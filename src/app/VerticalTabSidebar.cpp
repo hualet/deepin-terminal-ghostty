@@ -3,6 +3,7 @@
 #include <DGuiApplicationHelper>
 #include <QAbstractAnimation>
 #include <QAbstractButton>
+#include <QAccessibleEvent>
 #include <QApplication>
 #include <QBitmap>
 #include <QEasingCurve>
@@ -97,6 +98,26 @@ QPixmap applyCircleMask(const QPixmap &src, int size) {
     return dst;
 }
 
+QHash<QString, QPixmap> &badgeCache() {
+    static QHash<QString, QPixmap> cache;
+    return cache;
+}
+
+QPixmap cachedBadgePixmap(const QString &iconName) {
+    const QString name = iconName.isEmpty() ? QStringLiteral("terminal") : resolveBadgeName(iconName);
+    auto &cache = badgeCache();
+    if (cache.contains(name))
+        return cache.value(name);
+
+    const QString resourcePath = resolveBadgeResourcePath(iconName);
+    QIcon icon(resourcePath);
+    if (icon.isNull())
+        icon = QIcon(QStringLiteral(":/badges/process/terminal.svg"));
+    QPixmap pm = applyCircleMask(icon.pixmap(kProcessIconSize, kProcessIconSize), kProcessIconSize);
+    cache.insert(name, pm);
+    return pm;
+}
+
 QLabel *createProcessBadge(const QString &objectName, QWidget *parent, const QString &iconName,
                            const QString &toneProperty) {
     auto *badge = new QLabel(parent);
@@ -107,13 +128,52 @@ QLabel *createProcessBadge(const QString &objectName, QWidget *parent, const QSt
     badge->setProperty("tone", toneProperty);
     badge->setFixedSize(kProcessBadgeSize, kProcessBadgeSize);
     badge->setAlignment(Qt::AlignCenter);
-
-    const QString resourcePath = resolveBadgeResourcePath(iconName);
-    QIcon icon(resourcePath);
-    if (icon.isNull())
-        icon = QIcon(QStringLiteral(":/badges/process/terminal.svg"));
-    badge->setPixmap(applyCircleMask(icon.pixmap(kProcessIconSize, kProcessIconSize), kProcessIconSize));
+    badge->setPixmap(cachedBadgePixmap(iconName));
     return badge;
+}
+
+using DotKey = QPair<TerminalWidget::CommandState, QPair<bool, int>>;
+
+QHash<DotKey, QPixmap> &statusDotCache() {
+    static QHash<DotKey, QPixmap> cache;
+    return cache;
+}
+
+QPixmap cachedStatusDotPixmap(TerminalWidget::CommandState state, qreal dpr) {
+    const auto *helper = DGuiApplicationHelper::instance();
+    const bool isDark = helper->themeType() == DGuiApplicationHelper::DarkType;
+    const int dprKey = qRound(dpr * 1000);
+    DotKey key(state, qMakePair(isDark, dprKey));
+
+    auto &cache = statusDotCache();
+    if (cache.contains(key))
+        return cache.value(key);
+
+    QColor color;
+    switch (state) {
+        case TerminalWidget::CommandState::Succeeded:
+            color = isDark ? QColor(46, 213, 115) : QColor(34, 170, 91);
+            break;
+        case TerminalWidget::CommandState::Failed:
+            color = isDark ? QColor(255, 71, 87) : QColor(210, 55, 70);
+            break;
+        default:
+            return {};
+    }
+
+    QPixmap pixmap(static_cast<int>(kStatusDotSize * dpr), static_cast<int>(kStatusDotSize * dpr));
+    pixmap.setDevicePixelRatio(dpr);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setBrush(color);
+    painter.setPen(Qt::NoPen);
+    painter.drawEllipse(0, 0, kStatusDotSize, kStatusDotSize);
+    painter.end();
+
+    cache.insert(key, pixmap);
+    return pixmap;
 }
 
 QLabel *createCommandStatusDot(QWidget *parent, TerminalWidget::CommandState state, bool isActive, bool hasPending) {
@@ -129,35 +189,12 @@ QLabel *createCommandStatusDot(QWidget *parent, TerminalWidget::CommandState sta
         return dot;
     }
 
-    const auto *helper = DGuiApplicationHelper::instance();
-    const bool isDark = helper->themeType() == DGuiApplicationHelper::DarkType;
-
-    QColor color;
-    switch (state) {
-        case TerminalWidget::CommandState::Succeeded:
-            color = isDark ? QColor(46, 213, 115) : QColor(34, 170, 91);
-            break;
-        case TerminalWidget::CommandState::Failed:
-            color = isDark ? QColor(255, 71, 87) : QColor(210, 55, 70);
-            break;
-        default:
-            dot->setVisible(false);
-            return dot;
+    if (state != TerminalWidget::CommandState::Succeeded && state != TerminalWidget::CommandState::Failed) {
+        dot->setVisible(false);
+        return dot;
     }
 
-    const qreal dpr = dot->devicePixelRatioF();
-    QPixmap pixmap(static_cast<int>(kStatusDotSize * dpr), static_cast<int>(kStatusDotSize * dpr));
-    pixmap.setDevicePixelRatio(dpr);
-    pixmap.fill(Qt::transparent);
-
-    QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-    painter.setBrush(color);
-    painter.setPen(Qt::NoPen);
-    painter.drawEllipse(0, 0, kStatusDotSize, kStatusDotSize);
-    painter.end();
-
-    dot->setPixmap(pixmap);
+    dot->setPixmap(cachedStatusDotPixmap(state, dot->devicePixelRatioF()));
     return dot;
 }
 
@@ -627,158 +664,317 @@ void VerticalTabSidebar::resizeEvent(QResizeEvent *event) {
     QTimer::singleShot(0, this, &VerticalTabSidebar::updateButtonElisions);
 }
 
+void removeOldPaneList(ClickableSection *section) {
+    auto oldList = section->findChildren<QWidget *>(QStringLiteral("verticalPaneList"), Qt::FindDirectChildrenOnly);
+    for (auto *w : oldList)
+        w->deleteLater();
+}
+
+void buildPaneList(ClickableSection *section, const VerticalTabSidebar::TabItem &tab) {
+    removeOldPaneList(section);
+
+    const bool isMultiPane = tab.panes.size() > 1;
+    if (!tab.expanded || !isMultiPane)
+        return;
+
+    auto *paneList = new QWidget(section);
+    paneList->setObjectName(QStringLiteral("verticalPaneList"));
+    paneList->setAccessibleName(VerticalTabSidebar::tr("Terminal panes"));
+    paneList->setAccessibleDescription(VerticalTabSidebar::tr("Panes inside the expanded terminal tab."));
+    paneList->setProperty("tabId", tab.id);
+    paneList->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    allowHorizontalShrink(paneList);
+
+    auto *paneListLayout = new QHBoxLayout(paneList);
+    paneListLayout->setContentsMargins(10, 0, 4, 0);
+    paneListLayout->setSpacing(8);
+
+    auto *paneGuide = new QFrame(paneList);
+    paneGuide->setObjectName(QStringLiteral("verticalPaneGuide"));
+    paneGuide->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    paneListLayout->addWidget(paneGuide);
+
+    auto *paneColumn = new QWidget(paneList);
+    allowHorizontalShrink(paneColumn);
+    auto *paneLayout = new QVBoxLayout(paneColumn);
+    paneLayout->setContentsMargins(0, 0, 0, 0);
+    paneLayout->setSpacing(2);
+
+    for (int paneIndex = 0; paneIndex < tab.panes.size(); ++paneIndex) {
+        const auto &pane = tab.panes.at(paneIndex);
+        const QString paneTitle = pane.title.isEmpty() ? VerticalTabSidebar::tr("Terminal") : pane.title;
+        auto *paneRow = new QWidget(paneColumn);
+        paneRow->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        allowHorizontalShrink(paneRow);
+        auto *paneRowLayout = new QHBoxLayout(paneRow);
+        paneRowLayout->setContentsMargins(6, 3, 4, 3);
+        paneRowLayout->setSpacing(6);
+
+        auto *paneBadge = createProcessBadge(QStringLiteral("verticalPaneBadge"), paneRow, pane.iconName,
+                                             pane.isActive ? QStringLiteral("bright") : QStringLiteral("muted"));
+        paneBadge->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        auto *paneButton = createButton(QStringLiteral("verticalPaneButton"), paneTitle, paneRow);
+        paneButton->setAccessibleName(VerticalTabSidebar::tr("Terminal pane: %1").arg(paneTitle));
+        paneButton->setAccessibleDescription(VerticalTabSidebar::tr("Activate this terminal pane."));
+        paneButton->setCheckable(true);
+        paneButton->setChecked(pane.isActive);
+        paneButton->setProperty("tabId", tab.id);
+        paneButton->setProperty("paneId", pane.id);
+        paneButton->setProperty("active", pane.isActive);
+        paneButton->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+
+        auto *paneStatusDot = createCommandStatusDot(paneRow, pane.commandState, tab.isCurrent,
+                                                     !tab.isCurrent && tab.hasPendingCommandResult);
+        paneStatusDot->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+
+        paneRowLayout->addWidget(paneBadge, 0, Qt::AlignVCenter);
+        paneRowLayout->addWidget(paneButton, 1);
+        paneRowLayout->addWidget(paneStatusDot, 0, Qt::AlignVCenter);
+        paneLayout->addWidget(paneRow);
+    }
+
+    paneListLayout->addWidget(paneColumn, 1);
+
+    auto *sectionLayout = qobject_cast<QVBoxLayout *>(section->layout());
+    if (sectionLayout)
+        sectionLayout->addWidget(paneList);
+}
+
+ClickableSection *buildSection(VerticalTabSidebar *sidebar, const VerticalTabSidebar::TabItem &tab) {
+    auto *section = new ClickableSection(sidebar);
+    section->setObjectName(QStringLiteral("verticalTabSection"));
+    section->setAccessibleName(VerticalTabSidebar::tr("Terminal tab section: %1").arg(tab.title));
+    section->setAccessibleDescription(VerticalTabSidebar::tr("A terminal tab and its panes."));
+    section->setProperty("tabId", tab.id);
+    section->setProperty("isCurrent", tab.isCurrent);
+    section->tabId = tab.id;
+    section->sidebar = sidebar;
+    allowHorizontalShrink(section);
+
+    auto *sectionLayout = new QVBoxLayout(section);
+    sectionLayout->setContentsMargins(4, 2, 4, 2);
+    sectionLayout->setSpacing(2);
+
+    auto *header = new QWidget(section);
+    header->setObjectName(QStringLiteral("verticalTabHeader"));
+    header->setAccessibleName(VerticalTabSidebar::tr("Terminal tab header: %1").arg(tab.title));
+    header->setProperty("tabId", tab.id);
+    header->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    allowHorizontalShrink(header);
+
+    auto *headerLayout = new QHBoxLayout(header);
+    headerLayout->setContentsMargins(6, 4, 6, 4);
+    headerLayout->setSpacing(6);
+
+    const int paneCount = tab.panes.size();
+    const bool isMultiPane = paneCount > 1;
+
+    auto *expandButton = new QToolButton(section);
+    expandButton->setObjectName(QStringLiteral("verticalTabExpandButton"));
+    expandButton->setAccessibleName(tab.expanded ? VerticalTabSidebar::tr("Collapse panes for terminal tab")
+                                                 : VerticalTabSidebar::tr("Expand panes for terminal tab"));
+    expandButton->setAccessibleDescription(VerticalTabSidebar::tr("Show or hide the pane list for this terminal tab."));
+    expandButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    expandButton->setArrowType(tab.expanded ? Qt::DownArrow : Qt::RightArrow);
+    expandButton->setAutoRaise(true);
+    expandButton->setFixedSize(16, 16);
+    expandButton->setProperty("tabId", tab.id);
+    expandButton->setProperty("expanded", tab.expanded);
+    expandButton->setVisible(isMultiPane);
+    QObject::connect(expandButton, &QToolButton::clicked, sidebar,
+                     [sidebar, tab]() { Q_EMIT sidebar->tabExpansionToggled(tab.id); });
+
+    auto *tabBadge =
+        createProcessBadge(QStringLiteral("verticalTabBadge"), header,
+                           isMultiPane ? QString() : (paneCount == 1 ? tab.panes.first().iconName : QString()),
+                           tab.isCurrent ? QStringLiteral("bright") : QStringLiteral("muted"));
+    tabBadge->setVisible(!isMultiPane);
+    tabBadge->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+
+    TerminalWidget::CommandState tabCommandState = TerminalWidget::CommandState::Idle;
+    if (paneCount == 1)
+        tabCommandState = tab.panes.first().commandState;
+    auto *tabStatusDot = createCommandStatusDot(header, tabCommandState, tab.isCurrent, tab.hasPendingCommandResult);
+    if (isMultiPane)
+        tabStatusDot->setVisible(false);
+    tabStatusDot->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+
+    auto *tabButton = createButton(QStringLiteral("verticalTabButton"), tab.title, header);
+    tabButton->setAccessibleName(VerticalTabSidebar::tr("Terminal tab: %1").arg(tab.title));
+    tabButton->setAccessibleDescription(VerticalTabSidebar::tr("Activate this terminal tab."));
+    tabButton->setCheckable(true);
+    tabButton->setChecked(tab.isCurrent);
+    tabButton->setProperty("tabId", tab.id);
+    tabButton->setProperty("active", tab.isCurrent);
+    QObject::connect(tabButton, &QPushButton::clicked, sidebar,
+                     [sidebar, tab]() { Q_EMIT sidebar->tabActivated(tab.id); });
+
+    headerLayout->addWidget(expandButton, 0, Qt::AlignVCenter);
+    headerLayout->addWidget(tabBadge, 0, Qt::AlignVCenter);
+    headerLayout->addWidget(tabButton, 1);
+    headerLayout->addWidget(tabStatusDot, 0, Qt::AlignVCenter);
+
+    sectionLayout->addWidget(header);
+
+    buildPaneList(section, tab);
+
+    return section;
+}
+
+QByteArray paneListFingerprint(const QList<TermPane::PaneInfo> &panes, bool expanded, bool isCurrent, bool hasPending) {
+    QByteArray fp;
+    fp.reserve(panes.size() * 64);
+    for (const auto &p : panes) {
+        fp.append(p.id.toByteArray());
+        fp.append(p.title.toUtf8());
+        fp.append(p.iconName.toUtf8());
+        fp.append(reinterpret_cast<const char *>(&p.commandState), sizeof(p.commandState));
+        fp.append(static_cast<char>(p.isActive ? 1 : 0));
+    }
+    fp.append(static_cast<char>(expanded ? 1 : 0));
+    fp.append(static_cast<char>(isCurrent ? 1 : 0));
+    fp.append(static_cast<char>(hasPending ? 1 : 0));
+    return fp;
+}
+
+void updateSectionHeader(ClickableSection *section, const VerticalTabSidebar::TabItem &tab) {
+    const int paneCount = tab.panes.size();
+    const bool isMultiPane = paneCount > 1;
+
+    const bool wasCurrent = section->property("isCurrent").toBool();
+    section->setProperty("isCurrent", tab.isCurrent);
+    if (wasCurrent != tab.isCurrent) {
+        section->style()->unpolish(section);
+        section->style()->polish(section);
+    }
+
+    auto expandButtons =
+        section->findChildren<QToolButton *>(QStringLiteral("verticalTabExpandButton"), Qt::FindChildrenRecursively);
+    if (!expandButtons.isEmpty()) {
+        auto *btn = expandButtons.first();
+        btn->setAccessibleName(tab.expanded ? VerticalTabSidebar::tr("Collapse panes for terminal tab")
+                                            : VerticalTabSidebar::tr("Expand panes for terminal tab"));
+        QAccessibleEvent nameEvent(btn, QAccessible::NameChanged);
+        QAccessible::updateAccessibility(&nameEvent);
+        btn->setArrowType(tab.expanded ? Qt::DownArrow : Qt::RightArrow);
+        btn->setProperty("expanded", tab.expanded);
+        btn->setVisible(isMultiPane);
+    }
+
+    auto badges = section->findChildren<QLabel *>(QStringLiteral("verticalTabBadge"), Qt::FindChildrenRecursively);
+    if (!badges.isEmpty()) {
+        auto *badge = badges.first();
+        const QString iconName = isMultiPane ? QString() : (paneCount == 1 ? tab.panes.first().iconName : QString());
+        badge->setPixmap(cachedBadgePixmap(iconName));
+        badge->setProperty("tone", tab.isCurrent ? QStringLiteral("bright") : QStringLiteral("muted"));
+        badge->setVisible(!isMultiPane);
+    }
+
+    auto dots = section->findChildren<QLabel *>(QStringLiteral("commandStatusDot"), Qt::FindChildrenRecursively);
+    if (!dots.isEmpty()) {
+        auto *dot = dots.first();
+        TerminalWidget::CommandState cmdState = TerminalWidget::CommandState::Idle;
+        if (paneCount == 1)
+            cmdState = tab.panes.first().commandState;
+        bool shouldShow = tab.hasPendingCommandResult && !tab.isCurrent
+                          && cmdState != TerminalWidget::CommandState::Idle
+                          && cmdState != TerminalWidget::CommandState::Running;
+        if (shouldShow
+            && (cmdState == TerminalWidget::CommandState::Succeeded
+                || cmdState == TerminalWidget::CommandState::Failed)) {
+            dot->setPixmap(cachedStatusDotPixmap(cmdState, dot->devicePixelRatioF()));
+            dot->setVisible(!isMultiPane);
+        } else {
+            dot->setVisible(false);
+        }
+    }
+
+    auto buttons =
+        section->findChildren<QPushButton *>(QStringLiteral("verticalTabButton"), Qt::FindChildrenRecursively);
+    if (!buttons.isEmpty()) {
+        auto *btn = buttons.first();
+        btn->setAccessibleName(VerticalTabSidebar::tr("Terminal tab: %1").arg(tab.title));
+        QAccessibleEvent nameEvent(btn, QAccessible::NameChanged);
+        QAccessible::updateAccessibility(&nameEvent);
+        btn->setProperty("_fullText", tab.title);
+        btn->setChecked(tab.isCurrent);
+        btn->setProperty("active", tab.isCurrent);
+    }
+}
+
 void VerticalTabSidebar::rebuild() {
     if (!m_layout)
         return;
 
-    while (m_layout->count() > 0) {
-        QLayoutItem *item = m_layout->takeAt(0);
-        if (auto *widget = item->widget())
-            widget->deleteLater();
-        delete item;
+    QSet<int> liveIds;
+    for (const auto &tab : m_items)
+        liveIds.insert(tab.id);
+
+    QSet<int> existingIds;
+    auto sections = findChildren<ClickableSection *>(QString(), Qt::FindChildrenRecursively);
+    for (auto *section : sections)
+        existingIds.insert(section->tabId);
+
+    for (auto *section : sections) {
+        if (!liveIds.contains(section->tabId)) {
+            m_layout->removeWidget(section);
+            section->deleteLater();
+        }
     }
 
-    for (const auto &tab : m_items) {
-        auto *section = new ClickableSection(this);
-        section->setObjectName(QStringLiteral("verticalTabSection"));
-        section->setAccessibleName(tr("Terminal tab section: %1").arg(tab.title));
-        section->setAccessibleDescription(tr("A terminal tab and its panes."));
-        section->setProperty("tabId", tab.id);
-        section->setProperty("isCurrent", tab.isCurrent);
-        section->tabId = tab.id;
-        section->sidebar = this;
-        allowHorizontalShrink(section);
+    for (int i = 0; i < m_items.size(); ++i) {
+        const auto &tab = m_items.at(i);
+        auto *existing = sectionForTabId(tab.id);
 
-        auto *sectionLayout = new QVBoxLayout(section);
-        sectionLayout->setContentsMargins(4, 2, 4, 2);
-        sectionLayout->setSpacing(2);
+        if (existing) {
+            updateSectionHeader(existing, tab);
 
-        auto *header = new QWidget(section);
-        header->setObjectName(QStringLiteral("verticalTabHeader"));
-        header->setAccessibleName(tr("Terminal tab header: %1").arg(tab.title));
-        header->setProperty("tabId", tab.id);
-        header->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-        allowHorizontalShrink(header);
-
-        auto *headerLayout = new QHBoxLayout(header);
-        headerLayout->setContentsMargins(6, 4, 6, 4);
-        headerLayout->setSpacing(6);
-
-        const int paneCount = tab.panes.size();
-        const bool isMultiPane = paneCount > 1;
-
-        auto *expandButton = new QToolButton(section);
-        expandButton->setObjectName(QStringLiteral("verticalTabExpandButton"));
-        expandButton->setAccessibleName(tab.expanded ? tr("Collapse panes for terminal tab")
-                                                     : tr("Expand panes for terminal tab"));
-        expandButton->setAccessibleDescription(tr("Show or hide the pane list for this terminal tab."));
-        expandButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
-        expandButton->setArrowType(tab.expanded ? Qt::DownArrow : Qt::RightArrow);
-        expandButton->setAutoRaise(true);
-        expandButton->setFixedSize(16, 16);
-        expandButton->setProperty("tabId", tab.id);
-        expandButton->setProperty("expanded", tab.expanded);
-        expandButton->setVisible(isMultiPane);
-        connect(expandButton, &QToolButton::clicked, this, [this, tab]() { Q_EMIT tabExpansionToggled(tab.id); });
-
-        auto *tabBadge =
-            createProcessBadge(QStringLiteral("verticalTabBadge"), header,
-                               isMultiPane ? QString() : (paneCount == 1 ? tab.panes.first().iconName : QString()),
-                               tab.isCurrent ? QStringLiteral("bright") : QStringLiteral("muted"));
-        tabBadge->setVisible(!isMultiPane);
-        tabBadge->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-
-        TerminalWidget::CommandState tabCommandState = TerminalWidget::CommandState::Idle;
-        if (paneCount == 1)
-            tabCommandState = tab.panes.first().commandState;
-        auto *tabStatusDot =
-            createCommandStatusDot(header, tabCommandState, tab.isCurrent, tab.hasPendingCommandResult);
-        if (isMultiPane)
-            tabStatusDot->setVisible(false);
-        tabStatusDot->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-
-        auto *tabButton = createButton(QStringLiteral("verticalTabButton"), tab.title, header);
-        tabButton->setAccessibleName(tr("Terminal tab: %1").arg(tab.title));
-        tabButton->setAccessibleDescription(tr("Activate this terminal tab."));
-        tabButton->setCheckable(true);
-        tabButton->setChecked(tab.isCurrent);
-        tabButton->setProperty("tabId", tab.id);
-        tabButton->setProperty("active", tab.isCurrent);
-        connect(tabButton, &QPushButton::clicked, this, [this, tab]() { Q_EMIT tabActivated(tab.id); });
-
-        headerLayout->addWidget(expandButton, 0, Qt::AlignVCenter);
-        headerLayout->addWidget(tabBadge, 0, Qt::AlignVCenter);
-        headerLayout->addWidget(tabButton, 1);
-        headerLayout->addWidget(tabStatusDot, 0, Qt::AlignVCenter);
-
-        sectionLayout->addWidget(header);
-
-        if (tab.expanded && isMultiPane) {
-            auto *paneList = new QWidget(section);
-            paneList->setObjectName(QStringLiteral("verticalPaneList"));
-            paneList->setAccessibleName(tr("Terminal panes"));
-            paneList->setAccessibleDescription(tr("Panes inside the expanded terminal tab."));
-            paneList->setProperty("tabId", tab.id);
-            paneList->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-            allowHorizontalShrink(paneList);
-
-            auto *paneListLayout = new QHBoxLayout(paneList);
-            paneListLayout->setContentsMargins(10, 0, 4, 0);
-            paneListLayout->setSpacing(8);
-
-            auto *paneGuide = new QFrame(paneList);
-            paneGuide->setObjectName(QStringLiteral("verticalPaneGuide"));
-            paneGuide->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
-            paneListLayout->addWidget(paneGuide);
-
-            auto *paneColumn = new QWidget(paneList);
-            allowHorizontalShrink(paneColumn);
-            auto *paneLayout = new QVBoxLayout(paneColumn);
-            paneLayout->setContentsMargins(0, 0, 0, 0);
-            paneLayout->setSpacing(2);
-
-            for (int paneIndex = 0; paneIndex < tab.panes.size(); ++paneIndex) {
-                const auto &pane = tab.panes.at(paneIndex);
-                const QString paneTitle = pane.title.isEmpty() ? tr("Terminal") : pane.title;
-                auto *paneRow = new QWidget(paneColumn);
-                paneRow->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-                allowHorizontalShrink(paneRow);
-                auto *paneRowLayout = new QHBoxLayout(paneRow);
-                paneRowLayout->setContentsMargins(6, 3, 4, 3);
-                paneRowLayout->setSpacing(6);
-
-                auto *paneBadge =
-                    createProcessBadge(QStringLiteral("verticalPaneBadge"), paneRow, pane.iconName,
-                                       pane.isActive ? QStringLiteral("bright") : QStringLiteral("muted"));
-                paneBadge->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-                auto *paneButton = createButton(QStringLiteral("verticalPaneButton"), paneTitle, paneRow);
-                paneButton->setAccessibleName(tr("Terminal pane: %1").arg(paneTitle));
-                paneButton->setAccessibleDescription(tr("Activate this terminal pane."));
-                paneButton->setCheckable(true);
-                paneButton->setChecked(pane.isActive);
-                paneButton->setProperty("tabId", tab.id);
-                paneButton->setProperty("paneId", pane.id);
-                paneButton->setProperty("active", pane.isActive);
-                paneButton->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-
-                auto *paneStatusDot = createCommandStatusDot(paneRow, pane.commandState, tab.isCurrent,
-                                                             !tab.isCurrent && tab.hasPendingCommandResult);
-                paneStatusDot->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-
-                paneRowLayout->addWidget(paneBadge, 0, Qt::AlignVCenter);
-                paneRowLayout->addWidget(paneButton, 1);
-                paneRowLayout->addWidget(paneStatusDot, 0, Qt::AlignVCenter);
-                paneLayout->addWidget(paneRow);
+            QByteArray newFp = paneListFingerprint(tab.panes, tab.expanded, tab.isCurrent, tab.hasPendingCommandResult);
+            QByteArray oldFp = existing->property("_paneFp").toByteArray();
+            if (newFp != oldFp) {
+                buildPaneList(existing, tab);
+                existing->setProperty("_paneFp", newFp);
             }
 
-            paneListLayout->addWidget(paneColumn, 1);
-            sectionLayout->addWidget(paneList);
-        }
+            int currentIdx = -1;
+            for (int j = 0; j < m_layout->count(); ++j) {
+                if (auto *w = m_layout->itemAt(j)->widget()) {
+                    if (auto *cs = qobject_cast<ClickableSection *>(w)) {
+                        if (cs->tabId == tab.id) {
+                            currentIdx = j;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (currentIdx >= 0 && currentIdx != i) {
+                QLayoutItem *item = m_layout->takeAt(currentIdx);
+                m_layout->insertWidget(i, item->widget());
+                delete item;
+            }
 
-        m_layout->addWidget(section);
+        } else {
+            auto *section = buildSection(this, tab);
+            QByteArray fp = paneListFingerprint(tab.panes, tab.expanded, tab.isCurrent, tab.hasPendingCommandResult);
+            section->setProperty("_paneFp", fp);
+            m_layout->insertWidget(i, section);
+        }
     }
 
-    m_layout->addStretch(1);
+    bool hasStretch = false;
+    for (int i = 0; i < m_layout->count(); ++i) {
+        if (m_layout->itemAt(i)->spacerItem()) {
+            if (!hasStretch) {
+                hasStretch = true;
+            } else {
+                QLayoutItem *item = m_layout->takeAt(i);
+                delete item;
+                --i;
+            }
+        }
+    }
+    if (!hasStretch)
+        m_layout->addStretch(1);
 
     QTimer::singleShot(0, this, &VerticalTabSidebar::updateButtonElisions);
 }
