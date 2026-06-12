@@ -54,6 +54,7 @@ public:
     void setOpacity(qreal opacity);
     bool isTabDragActive() const;
     void requestTabMove(int tabId, const QPoint &globalPos);
+    void requestTabClose(int tabId);
     void beginTabDrag(int tabId, const QPoint &globalPos, const QPoint &hotSpot);
     void previewTabMove(int tabId, const QPoint &globalPos);
     bool finishTabDrag(int tabId, const QPoint &globalPos);

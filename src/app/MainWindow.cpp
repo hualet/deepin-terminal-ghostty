@@ -5,6 +5,7 @@
 #include "SessionManager.h"
 #include "SessionSnapshot.h"
 #include "SettingsDialog.h"
+#include "TabBar.h"
 #include "TermPane.h"
 #include "TerminalWidget.h"
 #include "ThemeLoader.h"
@@ -206,7 +207,7 @@ DTabBar *MainWindow::ensureTabBar() {
     if (m_tabBar)
         return m_tabBar;
 
-    m_tabBar = new DTabBar(this);
+    m_tabBar = new TabBar(this);
     m_tabBar->setObjectName(QStringLiteral("mainTabBar"));
     m_tabBar->setAccessibleName(tr("Terminal tabs"));
     m_tabBar->setAccessibleDescription(tr("Switch between terminal tabs."));

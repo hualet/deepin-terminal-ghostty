@@ -8,6 +8,7 @@
 #include "SessionSnapshot.h"
 #include "SettingsDialog.h"
 #include "StartupOptions.h"
+#include "TabBar.h"
 #include "TermPane.h"
 #include "TerminalControlService.h"
 #include "TerminalScrollContainer.h"
@@ -45,6 +46,8 @@
 #include <QTest>
 #include <QTimer>
 #include <QToolButton>
+
+#include <algorithm>
 
 DWIDGET_USE_NAMESPACE
 
@@ -129,6 +132,8 @@ private slots:
     void testGotoTabShortcutSwitchesInVerticalMode();
     void testVerticalSidebarAddTabButtonCreatesNewTab();
     void testVerticalSidebarCloseButtonMatchesTabStyleAndClosesTab();
+    void testHorizontalTabBarMiddleClickClosesTab();
+    void testVerticalSidebarMiddleClickClosesTab();
     void testCommandStatusDotNotShownAfterSwitchingFromTabWhereCommandRan();
     void testCommandStatusDotShownWhenCommandFinishesInBackgroundTab();
     void testCommandStatusDotNotShownForInactivePaneInCurrentTab();
@@ -2287,6 +2292,66 @@ void TestMainWindow::testVerticalSidebarCloseButtonMatchesTabStyleAndClosesTab()
     QCOMPARE(QApplication::widgetAt(globalCenter), closeButton);
 
     QTest::mouseClick(closeButton, Qt::LeftButton);
+    QVERIFY(waitForTabCount(tabs, 1));
+}
+
+void TestMainWindow::testHorizontalTabBarMiddleClickClosesTab() {
+    AppSettings::instance()->setVerticalTabsEnabled(false);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = qobject_cast<TabBar *>(tabBar(window));
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+
+    QSignalSpy closeSpy(tabs, &DTabBar::tabCloseRequested);
+    QVERIFY(closeSpy.isValid());
+
+    const int currentIndex = tabs->currentIndex();
+    QTest::mousePress(tabs, Qt::MiddleButton, Qt::NoModifier, tabs->tabRect(currentIndex).center());
+
+    QCOMPARE(closeSpy.count(), 1);
+    QCOMPARE(closeSpy.first().first().toInt(), currentIndex);
+    QVERIFY(waitForTabCount(tabs, 1));
+}
+
+void TestMainWindow::testVerticalSidebarMiddleClickClosesTab() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+    QTRY_COMPARE(verticalSidebar->items().size(), 2);
+
+    const auto items = verticalSidebar->items();
+    auto currentItem = std::find_if(items.cbegin(), items.cend(),
+                                    [](const VerticalTabSidebar::TabItem &item) { return item.isCurrent; });
+    QVERIFY(currentItem != items.cend());
+    QWidget *currentSection = verticalTabSection(verticalSidebar, currentItem->id);
+    QVERIFY(currentSection);
+
+    QSignalSpy closeSpy(verticalSidebar, &VerticalTabSidebar::tabCloseRequested);
+    QVERIFY(closeSpy.isValid());
+
+    QTest::mouseClick(currentSection, Qt::MiddleButton, Qt::NoModifier, currentSection->rect().center());
+
+    QCOMPARE(closeSpy.count(), 1);
+    QCOMPARE(closeSpy.first().first().toInt(), currentItem->id);
     QVERIFY(waitForTabCount(tabs, 1));
 }
 
