@@ -64,6 +64,7 @@ signals:
     void tabMoveRequested(int tabId, int targetIndex);
     void tabDragFinished();
     void addTabRequested();
+    void tabCloseRequested(int tabId);
 
 protected:
     void resizeEvent(QResizeEvent *event) override;

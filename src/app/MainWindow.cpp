@@ -957,6 +957,11 @@ void MainWindow::rebuildCentralLayout() {
             connect(m_verticalSidebar, &VerticalTabSidebar::tabMoveRequested, this, &MainWindow::moveTabById);
             connect(m_verticalSidebar, &VerticalTabSidebar::tabDragFinished, this, &MainWindow::refreshSidebar);
             connect(m_verticalSidebar, &VerticalTabSidebar::addTabRequested, this, &MainWindow::onTabAddRequested);
+            connect(m_verticalSidebar, &VerticalTabSidebar::tabCloseRequested, this, [this](int tabId) {
+                const int index = indexOfTabId(tabId);
+                if (index >= 0)
+                    onTabCloseRequested(index, false);
+            });
         }
         if (!m_mainSplitter) {
             m_mainSplitter = new QSplitter(Qt::Horizontal, this);

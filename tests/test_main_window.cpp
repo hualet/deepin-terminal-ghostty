@@ -44,6 +44,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QToolButton>
 
 DWIDGET_USE_NAMESPACE
 
@@ -127,6 +128,7 @@ private slots:
     void testPrevTabShortcutSwitchesInVerticalMode();
     void testGotoTabShortcutSwitchesInVerticalMode();
     void testVerticalSidebarAddTabButtonCreatesNewTab();
+    void testVerticalSidebarCloseButtonMatchesTabStyleAndClosesTab();
     void testCommandStatusDotNotShownAfterSwitchingFromTabWhereCommandRan();
     void testCommandStatusDotShownWhenCommandFinishesInBackgroundTab();
     void testCommandStatusDotNotShownForInactivePaneInCurrentTab();
@@ -2249,6 +2251,43 @@ void TestMainWindow::testVerticalSidebarAddTabButtonCreatesNewTab() {
 
     QTest::mouseClick(addButton, Qt::LeftButton);
     QVERIFY(waitForTabCount(tabs, 2));
+}
+
+void TestMainWindow::testVerticalSidebarCloseButtonMatchesTabStyleAndClosesTab() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+
+    QToolButton *closeButton = nullptr;
+    QTRY_VERIFY([&]() {
+        for (auto *button : verticalSidebar->findChildren<QToolButton *>(QStringLiteral("verticalTabCloseButton"))) {
+            if (button->isVisibleTo(verticalSidebar)) {
+                closeButton = button;
+                return true;
+            }
+        }
+        return false;
+    }());
+    QVERIFY(closeButton);
+    QCOMPARE(closeButton->iconSize(), QSize(16, 16));
+
+    const QPoint globalCenter = closeButton->mapToGlobal(closeButton->rect().center());
+    QCOMPARE(QApplication::widgetAt(globalCenter), closeButton);
+
+    QTest::mouseClick(closeButton, Qt::LeftButton);
+    QVERIFY(waitForTabCount(tabs, 1));
 }
 
 void triggerCommandSucceeded(TerminalWidget *terminal) {

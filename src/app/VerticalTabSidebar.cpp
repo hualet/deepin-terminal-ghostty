@@ -1,6 +1,7 @@
 #include "VerticalTabSidebar.h"
 
 #include <DGuiApplicationHelper>
+#include <DStyle>
 #include <QAbstractAnimation>
 #include <QAbstractButton>
 #include <QAccessibleEvent>
@@ -30,12 +31,15 @@
 #include <algorithm>
 
 DGUI_USE_NAMESPACE
+DWIDGET_USE_NAMESPACE
 
 namespace {
 
 constexpr int kProcessBadgeSize = 24;
 constexpr int kProcessIconSize = 16;
 constexpr int kStatusDotSize = 8;
+constexpr int kTabCloseButtonSize = 20;
+constexpr int kTabCloseIconSize = 16;
 constexpr int kReflowAnimationDurationMs = 120;
 
 QPushButton *createButton(const QString &objectName, const QString &text, QWidget *parent) {
@@ -366,6 +370,16 @@ void VerticalTabSidebar::applyStylesheet() {
             color: %9;
             text-align: left;
             font-size: 15px;
+        }
+        #verticalTabCloseButton {
+            border: none;
+            background: transparent;
+            padding: 0px;
+            margin: 0px;
+        }
+        #verticalTabCloseButton:hover {
+            background-color: %8;
+            border-radius: 4px;
         }
         #verticalTabButton:checked {
             font-weight: 600;
@@ -759,7 +773,6 @@ ClickableSection *buildSection(VerticalTabSidebar *sidebar, const VerticalTabSid
     header->setObjectName(QStringLiteral("verticalTabHeader"));
     header->setAccessibleName(VerticalTabSidebar::tr("Terminal tab header: %1").arg(tab.title));
     header->setProperty("tabId", tab.id);
-    header->setAttribute(Qt::WA_TransparentForMouseEvents, true);
     allowHorizontalShrink(header);
 
     auto *headerLayout = new QHBoxLayout(header);
@@ -809,10 +822,25 @@ ClickableSection *buildSection(VerticalTabSidebar *sidebar, const VerticalTabSid
     QObject::connect(tabButton, &QPushButton::clicked, sidebar,
                      [sidebar, tab]() { Q_EMIT sidebar->tabActivated(tab.id); });
 
+    auto *closeButton = new QToolButton(header);
+    closeButton->setObjectName(QStringLiteral("verticalTabCloseButton"));
+    closeButton->setAccessibleName(VerticalTabSidebar::tr("Close tab"));
+    closeButton->setAccessibleDescription(VerticalTabSidebar::tr("Close this terminal tab."));
+    closeButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    closeButton->setIcon(DStyle::standardIcon(sidebar->style(), DStyle::SP_CloseButton));
+    closeButton->setIconSize(QSize(kTabCloseIconSize, kTabCloseIconSize));
+    closeButton->setAutoRaise(true);
+    closeButton->setFixedSize(kTabCloseButtonSize, kTabCloseButtonSize);
+    closeButton->setProperty("tabId", tab.id);
+    closeButton->setVisible(tab.isCurrent);
+    QObject::connect(closeButton, &QToolButton::clicked, sidebar,
+                     [sidebar, tab]() { Q_EMIT sidebar->tabCloseRequested(tab.id); });
+
     headerLayout->addWidget(expandButton, 0, Qt::AlignVCenter);
     headerLayout->addWidget(tabBadge, 0, Qt::AlignVCenter);
     headerLayout->addWidget(tabButton, 1);
     headerLayout->addWidget(tabStatusDot, 0, Qt::AlignVCenter);
+    headerLayout->addWidget(closeButton, 0, Qt::AlignVCenter);
 
     sectionLayout->addWidget(header);
 
@@ -899,6 +927,14 @@ void updateSectionHeader(ClickableSection *section, const VerticalTabSidebar::Ta
         btn->setProperty("_fullText", tab.title);
         btn->setChecked(tab.isCurrent);
         btn->setProperty("active", tab.isCurrent);
+    }
+
+    auto closeButtons =
+        section->findChildren<QToolButton *>(QStringLiteral("verticalTabCloseButton"), Qt::FindChildrenRecursively);
+    if (!closeButtons.isEmpty()) {
+        auto *btn = closeButtons.first();
+        btn->setVisible(tab.isCurrent);
+        btn->setIcon(DStyle::standardIcon(section->style(), DStyle::SP_CloseButton));
     }
 }
 
