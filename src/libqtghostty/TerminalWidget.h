@@ -136,6 +136,8 @@ protected:
     void leaveEvent(QEvent *event) override;
     bool focusNextPrevChild(bool next) override;
 
+    virtual void setSelectionClipboardText(const QString &text);
+
 private slots:
     void onPtyDataReceived(const QByteArray &data);
     void onPtySessionClosed();

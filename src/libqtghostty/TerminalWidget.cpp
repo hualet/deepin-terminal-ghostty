@@ -3218,10 +3218,10 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
 
         stopSelectionAutoScroll();
 
-        if (selectionWasDragged) {
+        if (m_selection.active) {
             QString text = selectedText();
             if (!text.isEmpty())
-                QGuiApplication::clipboard()->setText(text, QClipboard::Selection);
+                setSelectionClipboardText(text);
         }
     }
 
@@ -3435,6 +3435,10 @@ void TerminalWidget::copyToClipboard() {
     QString text = selectedText();
     if (!text.isEmpty())
         QGuiApplication::clipboard()->setText(text);
+}
+
+void TerminalWidget::setSelectionClipboardText(const QString &text) {
+    QGuiApplication::clipboard()->setText(text, QClipboard::Selection);
 }
 
 void TerminalWidget::pasteFromClipboard() {

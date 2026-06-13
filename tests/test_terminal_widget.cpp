@@ -97,6 +97,8 @@ private slots:
     void testDoubleClickStopsAtGlob();
     void testDoubleClickSelectsPath();
     void testSingleClickDoesNotSelectCell();
+    void testDoubleClickSetsSelectionClipboard();
+    void testTripleClickSetsSelectionClipboard();
     void testTripleClickSelectsLine();
     void testDoubleClickDragExtendsByWord();
     void testTripleClickDragExtendsByLine();
@@ -181,6 +183,21 @@ protected:
 
 private:
     int m_paintCount = 0;
+};
+
+class RecordingTerminalWidget : public CountingTerminalWidget {
+    Q_OBJECT
+
+public:
+    using CountingTerminalWidget::CountingTerminalWidget;
+
+    QString capturedSelectionClipboardText() const { return m_capturedSelectionClipboardText; }
+
+protected:
+    void setSelectionClipboardText(const QString &text) override { m_capturedSelectionClipboardText = text; }
+
+private:
+    QString m_capturedSelectionClipboardText;
 };
 
 QByteArray collectedPtyOutput(const QSignalSpy &spy) {
@@ -1936,6 +1953,63 @@ void TestTerminalWidget::testSingleClickDoesNotSelectCell() {
 
     QVERIFY(!widget.debugCellInSelection(0, 1));
     QVERIFY(widget.debugSelectedText().isEmpty());
+}
+
+void TestTerminalWidget::testDoubleClickSetsSelectionClipboard() {
+    RecordingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("hello world test\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const QPoint pos = cellCenterForPos(widget, 6, 0);
+    QMouseEvent press1(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press1);
+    QMouseEvent release1(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release1);
+    QMouseEvent press2(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press2);
+    QMouseEvent release2(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release2);
+    QApplication::processEvents();
+
+    QCOMPARE(widget.capturedSelectionClipboardText(), QStringLiteral("world"));
+}
+
+void TestTerminalWidget::testTripleClickSetsSelectionClipboard() {
+    RecordingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("hello world test\n")));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const QPoint pos = cellCenterForPos(widget, 6, 0);
+    for (int i = 0; i < 3; ++i) {
+        QMouseEvent press(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(&widget, &press);
+        QMouseEvent release(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(&widget, &release);
+    }
+    QApplication::processEvents();
+
+    QVERIFY(!widget.capturedSelectionClipboardText().isEmpty());
+    QVERIFY(widget.capturedSelectionClipboardText().startsWith(QStringLiteral("hello")));
 }
 
 void TestTerminalWidget::testTripleClickSelectsLine() {
