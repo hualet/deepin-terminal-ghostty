@@ -38,6 +38,14 @@ follow-up keeps the cell clip, but fits multi-code-unit narrow graphemes inside
 the single cell before drawing them. That preserves the no-overlap guarantee
 while avoiding a visible half-rendered emoji.
 
+A later startup message exposed the same visual failure for bare `⚠` without an
+emoji variation selector. That glyph is a single codepoint, so it did not enter
+the previous multi-code-unit fitting branch. Its measured advance could still be
+slightly wider than the terminal cell, leaving the right edge clipped. The
+renderer now also fits single-codepoint fallback glyphs when their advance
+exceeds the cell and renders fitted glyphs through a cell-sized image buffer so
+fallback/color glyph painting cannot leak into the next cell.
+
 ## Regression Coverage
 
 Added `TestTerminalWidget::testFallbackGlyphDoesNotOverlapNextCell`. The test
@@ -45,6 +53,9 @@ uses the warning-sign emoji variation sequence, which had a wider Qt advance in
 the local font stack, and verifies that the next terminal cell remains unchanged
 when only the warning glyph is rendered. The follow-up also verifies that the
 glyph is not cut at the right edge of its own cell.
+
+Added `TestTerminalWidget::testSingleCodepointFallbackGlyphDoesNotClip` for the
+bare warning sign used by startup warnings such as `⚠ MCP startup incomplete`.
 
 ## Verification
 

@@ -1636,9 +1636,9 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         QFont drawFont = painter.font();
         QFontMetricsF metrics(drawFont);
         QRectF inkBounds = metrics.tightBoundingRect(text);
-        if (cells == 1 && text.size() > 1
-            && (metrics.horizontalAdvance(text) > m_cellWidth || inkBounds.width() >= m_cellWidth
-                || inkBounds.right() >= m_cellWidth - 1 || inkBounds.left() < 0)) {
+        const bool overflowsCell = metrics.horizontalAdvance(text) > m_cellWidth || inkBounds.width() >= m_cellWidth
+                                   || inkBounds.right() >= m_cellWidth - 1 || inkBounds.left() < 0;
+        if (cells == 1 && overflowsCell && (text.size() > 1 || metrics.horizontalAdvance(text) > m_cellWidth)) {
             const qreal targetWidth = qMax<qreal>(1.0, m_cellWidth - 2.0);
             const qreal targetHeight = qMax<qreal>(1.0, m_cellHeight - 2.0);
             const qreal scale = qMin(targetWidth / qMax<qreal>(1.0, inkBounds.width()),
@@ -1655,7 +1655,27 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
             const qreal fittedX = cellRect.x() + (cellRect.width() - inkBounds.width()) / 2.0 - inkBounds.left();
             const qreal fittedBaseline =
                 cellRect.y() + (cellRect.height() - inkBounds.height()) / 2.0 - inkBounds.top();
-            painter.drawText(QPointF(fittedX, fittedBaseline), text);
+
+            if (text.size() == 1) {
+                const qreal devicePixelRatio = painter.device()->devicePixelRatioF();
+                QImage cellImage(
+                    QSize(qCeil(cellRect.width() * devicePixelRatio), qCeil(cellRect.height() * devicePixelRatio)),
+                    QImage::Format_ARGB32_Premultiplied);
+                cellImage.setDevicePixelRatio(devicePixelRatio);
+                cellImage.fill(Qt::transparent);
+
+                QPainter cellPainter(&cellImage);
+                cellPainter.setFont(drawFont);
+                cellPainter.setPen(painter.pen());
+                cellPainter.setRenderHint(QPainter::TextAntialiasing,
+                                          painter.testRenderHint(QPainter::TextAntialiasing));
+                cellPainter.drawText(QPointF(fittedX - cellRect.x(), fittedBaseline - cellRect.y()), text);
+                cellPainter.end();
+
+                painter.drawImage(cellRect.topLeft(), cellImage);
+            } else {
+                painter.drawText(QPointF(fittedX, fittedBaseline), text);
+            }
         } else {
             painter.drawText(textX, y + m_fontAscent, text);
         }

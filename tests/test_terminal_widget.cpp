@@ -49,6 +49,7 @@ private slots:
     void testFocusOutClearsPreeditText();
     void testRendersWideCharactersAcrossTwoCells();
     void testFallbackGlyphDoesNotOverlapNextCell();
+    void testSingleCodepointFallbackGlyphDoesNotClip();
     void testRendersAnsiForegroundColors();
     void testRendersInverseTextWithDefaultColors();
     void testRendersInlineKittyPngImage();
@@ -764,6 +765,43 @@ void TestTerminalWidget::testFallbackGlyphDoesNotOverlapNextCell() {
     const QRect rightEdgeRect(firstCellRect.right(), firstCellRect.top(), 1, firstCellRect.height());
     QVERIFY2(countChangedPixels(before, after, rightEdgeRect) <= 1,
              "fallback glyph should be fitted inside the cell instead of being cut at the right edge");
+    QCOMPARE(countChangedPixels(before, after, nextCellRect), 0);
+}
+
+void TestTerminalWidget::testSingleCodepointFallbackGlyphDoesNotClip() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    int previousFlushCount = widget.debugPtyFlushCount();
+    bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                             Q_ARG(QByteArray, QByteArray("\033[?25l")));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+
+    QInputMethodQueryEvent queryEvent(Qt::ImCursorRectangle);
+    QApplication::sendEvent(&widget, &queryEvent);
+    const QRect cursorRect = queryEvent.value(Qt::ImCursorRectangle).toRect();
+    QVERIFY(cursorRect.isValid());
+    QVERIFY(cursorRect.width() > 0);
+
+    const QImage before = renderWidgetImage(widget);
+    previousFlushCount = widget.debugPtyFlushCount();
+    const QByteArray output = QStringLiteral("⚠\n").toUtf8();
+    invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, output));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+
+    const QImage after = renderWidgetImage(widget);
+    const QRect firstCellRect(cursorRect.topLeft(), cursorRect.size());
+    const QRect nextCellRect(cursorRect.topLeft() + QPoint(cursorRect.width(), 0), cursorRect.size());
+    const QRect rightEdgeRect(firstCellRect.right(), firstCellRect.top(), 1, firstCellRect.height());
+    QVERIFY2(countChangedPixels(before, after, rightEdgeRect) <= 1,
+             "single-codepoint fallback glyph should be fitted inside the cell instead of being cut");
     QCOMPARE(countChangedPixels(before, after, nextCellRect), 0);
 }
 
