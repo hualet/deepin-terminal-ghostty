@@ -110,7 +110,7 @@ these files:
    Debian revision, e.g. `1.0.1-1`. Follow the rules below.
 3. **`linglong.yaml`** — update `package.version` to the Linglong
    four-segment form derived from the same release, e.g. `1.0.1.0`
-4. Rebuild and verify: `cmake -B build && cmake --build build && cd build && ctest --output-on-failure`
+4. Rebuild and verify: `cmake -B build && cmake --build build && cd build && QT_QPA_PLATFORM=offscreen ctest --output-on-failure`
 
 ### Changelog Rules
 
@@ -123,31 +123,22 @@ these files:
 
 ## Test Commands
 
-Run all tests:
+Widget tests require the Qt **offscreen** platform or they abort
+without a display. Always set `QT_QPA_PLATFORM=offscreen`:
 
 ```bash
 cmake -B build -DBUILD_TESTING=ON
 cmake --build build
-cd build && ctest --output-on-failure
+cd build && QT_QPA_PLATFORM=offscreen ctest --output-on-failure
 ```
 
-Run individual binaries:
+Individual binaries (offscreen still required):
 
 ```bash
-./build/tests/test_pty_session
-./build/tests/test_terminal_widget
-./build/tests/test_main_window
+QT_QPA_PLATFORM=offscreen ./build/tests/test_terminal_widget
 ```
 
-Tests that create widgets must run under the Qt offscreen platform to
-avoid requiring a display. Pass `-platform offscreen` to individual test
-binaries, or set `QT_QPA_PLATFORM=offscreen` when running via `ctest`:
-
-```bash
-QT_QPA_PLATFORM=offscreen ctest --output-on-failure
-```
-
-When changing PTY, input, tab, or window-close behavior, prefer running the most specific affected test binary first, then the full relevant set.
+Prefer the most specific affected binary first, then the full set.
 
 ## Architecture Notes
 
@@ -257,20 +248,46 @@ CI will reject changes that do not match the enforced style.
 ## Git And Commit Rules
 
 - Do not create a commit unless the user asks for one.
-- Before committing, check `git status --short` and avoid including unrelated changes.
-- Ensure all changed C++ files pass `clang-format` validation before committing (see **Code Formatting** above).
-- Commit messages must follow Conventional Commits:
-  `https://www.conventionalcommits.org/en/v1.0.0/`
-- Use standard prefixes such as:
-  - `fix: ...`
-  - `feat: ...`
-  - `refactor: ...`
-  - `test: ...`
-  - `docs: ...`
-  - `chore: ...`
-- Keep the subject line short, imperative, and scoped to the actual change.
-- Wrap commit message body lines at 80 characters.
-- If amending a commit, preserve the same convention-compliant format.
+- Before committing, check `git status --short` and avoid including
+  unrelated changes; ensure changed C++ files pass `clang-format`.
+- Follow Conventional Commits 1.0.0 (`https://www.conventionalcommits.org/`).
+
+### Format
+
+```text
+<type>[scope]: <subject>
+
+<body>
+```
+
+- **type**: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`,
+  `chore`, `ci`.
+- **scope** (optional, lower-case): affected area, e.g.
+  `libqtghostty`, `app`, `root-cause`.
+
+### Subject
+
+- Imperative mood, lowercase, no trailing period.
+- Scope the actual change, not the whole feature. Max 50 chars (72 hard).
+
+### Body
+
+- Required for every non-trivial commit.
+- Explain *why* and *what* — not how (read the diff for that).
+- Wrap at 72 chars; never exceed 80. Blank line after the subject.
+
+### Example
+
+```text
+fix(libqtghostty): copy word/line selections to primary clipboard
+
+Double/triple-click selections were only synced to the selection
+clipboard after a drag. Write whenever a selection is active and
+extract the write path so it is testable without a primary selection.
+```
+
+When amending or squashing, rewrite the final message to follow this
+section rather than concatenating subjects.
 
 ## Useful References
 
