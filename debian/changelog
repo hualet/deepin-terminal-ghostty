@@ -1,3 +1,19 @@
+deepin-terminal-ghostty (1.0.5-1) unstable; urgency=medium
+
+  * Add color emoji rendering so emoji display in full color instead of
+    missing glyphs when the active font lacks emoji coverage.
+  * Add middle-click tab closing so tabs can be dismissed without targeting
+    the close button.
+  * Keep double and triple-click word and line selections on the primary
+    clipboard so they can be middle-pasted immediately.
+  * Align the vertical tab close button so it stays centered within its tab.
+  * Fit bare warning glyphs inside their terminal cell so wide symbols no
+    longer overlap the following column.
+  * Restore CI builds by installing the font rendering libraries that the
+    emoji fallback requires.
+
+ -- Deepin Packages <packages@deepin.org>  Sun, 14 Jun 2026 22:20:38 +0800
+
 deepin-terminal-ghostty (1.0.4-1) unstable; urgency=medium
 
   * Add file drop support so dropped files insert escaped paths at the
