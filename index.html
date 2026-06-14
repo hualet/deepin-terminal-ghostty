@@ -223,6 +223,17 @@ h2.section-title {
 .hero-cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 64px; }
 
 /* ============================================================
+   HERO SHOWCASE SCREENSHOT
+   ============================================================ */
+.showcase-shot {
+  max-width: 940px; margin: 0 auto;
+  border-radius: 14px; overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: 0 30px 80px -20px rgba(0,0,0,0.7), 0 0 60px var(--glow-w);
+}
+.showcase-shot img { width: 100%; height: auto; display: block; }
+
+/* ============================================================
    TERMINAL MOCKUP
    ============================================================ */
 .term-frame {
@@ -476,7 +487,7 @@ h2.section-title {
    INSTALL / GETTING STARTED
    ============================================================ */
 .install-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 40px;
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px;
 }
 .install-card {
   border-radius: var(--radius); padding: 24px;
@@ -611,7 +622,7 @@ h2.section-title {
       <a href="#ai">AI 工作流</a>
       <a href="#showcase">界面</a>
       <a href="#install">使用方式</a>
-      <a href="https://github.com/deepin-terminal/deepin-terminal-ghostty" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/hualet/deepin-terminal-ghostty" target="_blank" rel="noopener">GitHub</a>
       <a href="#install" class="btn btn-primary btn-sm">立即下载</a>
     </div>
   </div>
@@ -622,69 +633,22 @@ h2.section-title {
   <div class="wrap">
     <div class="hero-badge reveal">
       <span class="new-dot"></span>
-      <span>v1.0.4 已发布</span>
+      <span>v1.0.5 已发布</span>
       <span class="tag">· 支持 AI 进程识别</span>
     </div>
     <h1 class="reveal d1">为 <span class="grad-text">AI 时代</span> 而生的<br>下一代 deepin 终端</h1>
     <p class="lead reveal d2">基于 Ghostty VT 引擎重塑，原生 DTK 深度集成。<br>当 Claude、Codex、Gemini 在终端里运行时，一切尽在掌握。</p>
     <div class="hero-cta reveal d3">
       <a href="#install" class="btn btn-primary btn-lg">立即下载</a>
-      <a href="https://github.com/deepin-terminal/deepin-terminal-ghostty" target="_blank" rel="noopener" class="btn btn-ghost btn-lg">
+      <a href="https://github.com/hualet/deepin-terminal-ghostty" target="_blank" rel="noopener" class="btn btn-ghost btn-lg">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.9 1.3 1.9 1.3 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.3.5-2.4 1.3-3.2 0-.4-.6-1.6.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17 4.7 18 5 18 5c.7 1.6.1 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg>
         在 GitHub 上查看
       </a>
     </div>
 
-    <!-- TERMINAL MOCKUP -->
-    <div class="term-frame reveal d4">
-      <div class="term-window">
-        <div class="term-titlebar">
-          <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-          <span class="term-title">~/projects/app — deepin-terminal-ghostty</span>
-        </div>
-        <div class="term-body">
-          <!-- VERTICAL SIDEBAR -->
-          <aside class="term-sidebar">
-            <div class="vtab active">
-              <span class="vtab-icon" style="background:#27272a">C</span>
-              <span>claude</span>
-              <span class="vtab-status run"></span>
-            </div>
-            <div class="vtab">
-              <span class="vtab-icon" style="background:#27272a">AI</span>
-              <span>app</span>
-              <span class="vtab-status ok"></span>
-            </div>
-            <div class="vtab">
-              <span class="vtab-icon" style="background:#27272a">G</span>
-              <span>gemini</span>
-              <span class="vtab-status ok"></span>
-            </div>
-            <div class="vtab">
-              <span class="vtab-icon" style="background:#27272a">⌘</span>
-              <span>build</span>
-              <span class="vtab-status err"></span>
-            </div>
-            <div class="vtab">
-              <span class="vtab-icon" style="background:#27272a">$</span>
-              <span>shell</span>
-            </div>
-          </aside>
-          <!-- MAIN CONTENT -->
-          <div class="term-content">
-<div class="tc-line"><span class="tc-prompt">➜</span> <span class="tc-path">~/projects/app</span> <span class="tc-cmd">claude --resume</span></div>
-<div class="tc-line tc-out">  ✨ Welcome back to Claude Code</div>
-<div class="tc-line tc-out">  </div>
-<div class="tc-line"><span class="tc-amber">  ⏳ Analyzing repository structure...</span></div>
-<div class="tc-line tc-out">  ✔ Read 24 files across src/</div>
-<div class="tc-line tc-out">  ✔ Found 3 refactoring opportunities</div>
-<div class="tc-line tc-out">  </div>
-<div class="tc-line"><span class="tc-ok">  ●</span> <span class="tc-out">Ready. What would you like to work on?</span></div>
-<div class="tc-line"> </div>
-<div class="tc-line"><span class="tc-prompt">➜</span> <span class="tc-path">~/projects/app</span> <span class="cursor"></span></div>
-          </div>
-        </div>
-      </div>
+    <!-- SHOWCASE SCREENSHOT -->
+    <div class="showcase-shot reveal d4">
+      <img src="showcase.png" alt="deepin-terminal-ghostty 实际运行截图" loading="lazy">
     </div>
   </div>
 </header>
@@ -853,13 +817,21 @@ h2.section-title {
 
       <div class="feature-card reveal">
         <div class="icon" style="">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#e4e4e7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+        </div>
+        <h3>彩色 Emoji 渲染</h3>
+        <p>当 Qt 无法正确渲染彩色 emoji 时，自动切换 FreeType + HarfBuzz + fontconfig 回退路径，让 emoji 始终以全彩呈现。</p>
+      </div>
+
+      <div class="feature-card reveal d1">
+        <div class="icon" style="">
           <svg viewBox="0 0 24 24" fill="none" stroke="#e4e4e7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"/></svg>
         </div>
         <h3>Kitty 图片协议</h3>
         <p>支持 Kitty 图片协议，可在终端内直接展示图片，支持多层 z 轴渲染与直接内联存储。</p>
       </div>
 
-      <div class="feature-card reveal d1">
+      <div class="feature-card reveal d2">
         <div class="icon" style="">
           <svg viewBox="0 0 24 24" fill="none" stroke="#e4e4e7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
         </div>
@@ -867,7 +839,7 @@ h2.section-title {
         <p>基于 DTK6 构建，深度融入 deepin 桌面体验——窗口管理、标题栏、设置面板均为原生风格。</p>
       </div>
 
-      <div class="feature-card reveal d2">
+      <div class="feature-card reveal">
         <div class="icon" style="">
           <svg viewBox="0 0 24 24" fill="none" stroke="#e4e4e7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>
         </div>
@@ -961,38 +933,19 @@ h2.section-title {
           Debian / deepin
         </div>
         <h4>下载 .deb 安装包</h4>
-        <div class="code-block"><span class="cmt"># 安装依赖</span>
-<span class="prompt">$</span> sudo apt install cmake qt6-base-dev \
-    build-essential binutils \
-    libdtk6widget-dev libdtk6core-dev \
-    libdtk6gui-dev
-
-<span class="cmt"># 安装 deb 包</span>
-<span class="prompt">$</span> sudo dpkg -i deepin-terminal-ghostty_*.deb</div>
+        <p style="color:var(--text-dim);font-size:14.5px;margin-bottom:18px;">从 GitHub Releases 获取最新版本的 <code style="font-family:var(--mono);color:var(--accent)">.deb</code> 安装包，下载后使用 <code style="font-family:var(--mono);color:var(--accent)">dpkg -i</code> 安装。</p>
+        <a href="https://github.com/hualet/deepin-terminal-ghostty/releases/latest" target="_blank" rel="noopener" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          前往 GitHub Releases
+        </a>
       </div>
 
       <div class="install-card reveal d1">
         <div class="label">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></svg>
-          源码编译
-        </div>
-        <h4>从源码构建</h4>
-        <div class="code-block"><span class="cmt"># 克隆仓库</span>
-<span class="prompt">$</span> git clone &lt;repo-url&gt;
-<span class="prompt">$</span> cd deepin-terminal-ghostty
-
-<span class="cmt"># 构建并运行</span>
-<span class="prompt">$</span> cmake -B build
-<span class="prompt">$</span> cmake --build build
-<span class="prompt">$</span> ./build/deepin-terminal-ghostty</div>
-      </div>
-
-      <div class="install-card reveal d2">
-        <div class="label">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
           玲珑包
         </div>
-        <h4>使用 ll-builder</h4>
+        <h4>使用 ll-builder 构建</h4>
         <div class="code-block"><span class="cmt"># 构建玲珑包</span>
 <span class="prompt">$</span> cd linglong
 <span class="prompt">$</span> ll-builder build
@@ -1000,6 +953,22 @@ h2.section-title {
 <span class="cmt"># 导出安装包</span>
 <span class="prompt">$</span> ll-builder export</div>
       </div>
+    </div>
+
+    <div class="install-card reveal" style="margin-top:20px;">
+      <div class="label">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></svg>
+        源码编译
+      </div>
+      <h4>从源码构建</h4>
+      <div class="code-block"><span class="cmt"># 克隆仓库</span>
+<span class="prompt">$</span> git clone https://github.com/hualet/deepin-terminal-ghostty.git
+<span class="prompt">$</span> cd deepin-terminal-ghostty
+
+<span class="cmt"># 构建并运行</span>
+<span class="prompt">$</span> cmake -B build
+<span class="prompt">$</span> cmake --build build
+<span class="prompt">$</span> ./build/deepin-terminal-ghostty</div>
     </div>
 
     <!-- SHORTCUTS -->
@@ -1045,7 +1014,7 @@ h2.section-title {
       <p>免费、开源，为 deepin 桌面与 AI 编码工作流而设计。</p>
       <div class="hero-cta">
         <a href="#install" class="btn btn-primary btn-lg">立即下载</a>
-        <a href="https://github.com/deepin-terminal/deepin-terminal-ghostty" target="_blank" rel="noopener" class="btn btn-ghost btn-lg">查看源码</a>
+        <a href="https://github.com/hualet/deepin-terminal-ghostty" target="_blank" rel="noopener" class="btn btn-ghost btn-lg">查看源码</a>
       </div>
     </div>
   </div>
@@ -1072,8 +1041,8 @@ h2.section-title {
         </div>
         <div class="footer-col">
           <h5>开发</h5>
-          <a href="https://github.com/deepin-terminal/deepin-terminal-ghostty" target="_blank" rel="noopener">GitHub</a>
-          <a href="https://github.com/deepin-terminal/deepin-terminal-ghostty/issues" target="_blank" rel="noopener">问题反馈</a>
+          <a href="https://github.com/hualet/deepin-terminal-ghostty" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/hualet/deepin-terminal-ghostty/issues" target="_blank" rel="noopener">问题反馈</a>
           <a href="#">dtermctl 文档</a>
           <a href="#">更新日志</a>
         </div>
