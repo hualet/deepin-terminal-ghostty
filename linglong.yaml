@@ -33,4 +33,7 @@ buildext:
     build_depends:
       - libglx-dev
       - libopengl-dev
+      - libfontconfig-dev
+      - libfreetype-dev
+      - libharfbuzz-dev
     depends: []

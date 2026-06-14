@@ -38,6 +38,9 @@ jobs:
             cmake \
             qt6-base-dev \
             qt6-base-dev-tools \
+            libfontconfig-dev \
+            libfreetype-dev \
+            libharfbuzz-dev \
             libdtk6core-dev \
             libdtk6gui-dev \
             libdtk6widget-dev \
