@@ -48,6 +48,15 @@ private slots:
     void testRendersPreeditTextAcrossMultipleCells();
     void testFocusOutClearsPreeditText();
     void testRendersWideCharactersAcrossTwoCells();
+    void testEmojiFallbackRendererCanBeForced();
+    void testEmojiFallbackRendererShapesMultiCodepointEmoji();
+    void testEmojiFallbackRendererShapesKeycapEmoji();
+    void testEmojiFallbackRendererLeavesPlainDigitsAsText();
+    void testEmojiFallbackRendererSizesVariationEmoji();
+    void testEmojiFallbackRendererKeepsNarrowEmojiInOneCell();
+    void testEmojiFallbackClusterPreservesBackgroundColor();
+    void testEmojiFallbackClusterPreservesTextDecorations();
+    void testSetTerminalFontInvalidatesEmojiModeDetection();
     void testFallbackGlyphDoesNotOverlapNextCell();
     void testSingleCodepointFallbackGlyphDoesNotClip();
     void testRendersAnsiForegroundColors();
@@ -731,8 +740,287 @@ void TestTerminalWidget::testRendersWideCharactersAcrossTwoCells() {
              "wide character should visibly paint a meaningful portion of the second terminal cell");
 }
 
-void TestTerminalWidget::testFallbackGlyphDoesNotOverlapNextCell() {
+void TestTerminalWidget::testEmojiFallbackRendererCanBeForced() {
     CountingTerminalWidget widget;
+    widget.debugSetEmojiRenderModeForTesting(TerminalWidget::EmojiRenderMode::CustomFallback);
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    int previousFlushCount = widget.debugPtyFlushCount();
+    bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                             Q_ARG(QByteArray, QByteArray("\033[?25l")));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+
+    QInputMethodQueryEvent queryEvent(Qt::ImCursorRectangle);
+    QApplication::sendEvent(&widget, &queryEvent);
+    const QRect cursorRect = queryEvent.value(Qt::ImCursorRectangle).toRect();
+    QVERIFY(cursorRect.isValid());
+    QVERIFY(cursorRect.width() > 0);
+
+    const QImage before = renderWidgetImage(widget);
+    previousFlushCount = widget.debugPtyFlushCount();
+    invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                        Q_ARG(QByteArray, QStringLiteral("⚠\n").toUtf8()));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+
+    const QImage after = renderWidgetImage(widget);
+    const QRect firstCellRect(cursorRect.topLeft(), cursorRect.size());
+    QVERIFY2(widget.debugLastFrameEmojiFallbackDrawCount() > 0, "forced fallback mode should use emoji fallback draws");
+    QVERIFY2(countChangedPixels(before, after, firstCellRect) > 0, "emoji fallback should paint the emoji cell");
+}
+
+void TestTerminalWidget::testEmojiFallbackRendererShapesMultiCodepointEmoji() {
+    CountingTerminalWidget widget;
+    widget.debugSetEmojiRenderModeForTesting(TerminalWidget::EmojiRenderMode::CustomFallback);
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    int previousFlushCount = widget.debugPtyFlushCount();
+    bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                             Q_ARG(QByteArray, QByteArray("\033[?25l")));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+
+    QInputMethodQueryEvent queryEvent(Qt::ImCursorRectangle);
+    QApplication::sendEvent(&widget, &queryEvent);
+    const QRect cursorRect = queryEvent.value(Qt::ImCursorRectangle).toRect();
+    QVERIFY(cursorRect.isValid());
+    QVERIFY(cursorRect.width() > 0);
+
+    const QImage before = renderWidgetImage(widget);
+    previousFlushCount = widget.debugPtyFlushCount();
+    invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                        Q_ARG(QByteArray, QStringLiteral("🇨🇳\n").toUtf8()));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+
+    const QImage after = renderWidgetImage(widget);
+    const QRect firstCellRect(cursorRect.topLeft(), QSize(cursorRect.width() * 2, cursorRect.height()));
+    QCOMPARE(widget.debugLastFrameEmojiFallbackDrawCount(), 1);
+    QVERIFY2(countChangedPixels(before, after, firstCellRect) > 0, "emoji fallback should paint the shaped emoji cell");
+}
+
+void TestTerminalWidget::testEmojiFallbackRendererShapesKeycapEmoji() {
+    CountingTerminalWidget widget;
+    widget.debugSetEmojiRenderModeForTesting(TerminalWidget::EmojiRenderMode::CustomFallback);
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    int previousFlushCount = widget.debugPtyFlushCount();
+    bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                             Q_ARG(QByteArray, QByteArray("\033[?25l")));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+
+    QInputMethodQueryEvent queryEvent(Qt::ImCursorRectangle);
+    QApplication::sendEvent(&widget, &queryEvent);
+    const QRect cursorRect = queryEvent.value(Qt::ImCursorRectangle).toRect();
+    QVERIFY(cursorRect.isValid());
+
+    const QImage before = renderWidgetImage(widget);
+    previousFlushCount = widget.debugPtyFlushCount();
+    invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                        Q_ARG(QByteArray, QStringLiteral("1️⃣\n").toUtf8()));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+
+    const QImage after = renderWidgetImage(widget);
+    const QRect firstCellRect(cursorRect.topLeft(), QSize(cursorRect.width() * 2, cursorRect.height()));
+    QVERIFY2(widget.debugLastFrameEmojiFallbackDrawCount() > 0, "keycap emoji should use the fallback renderer");
+    QVERIFY2(countChangedPixels(before, after, firstCellRect) > 0, "keycap emoji fallback should paint the cell");
+}
+
+void TestTerminalWidget::testEmojiFallbackRendererLeavesPlainDigitsAsText() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
+    CountingTerminalWidget widget;
+    widget.setStartOptions(options);
+    widget.debugSetEmojiRenderModeForTesting(TerminalWidget::EmojiRenderMode::CustomFallback);
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    int previousFlushCount = widget.debugPtyFlushCount();
+    bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                             Q_ARG(QByteArray, QByteArray("\033[?25l")));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+
+    previousFlushCount = widget.debugPtyFlushCount();
+    invoked = QMetaObject::invokeMethod(
+        &widget, "onPtyDataReceived", Qt::DirectConnection,
+        Q_ARG(QByteArray, QStringLiteral("K2.7 Code is ready higher end-to-end coding task success rates\n").toUtf8()));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+
+    renderWidgetImage(widget);
+    QCOMPARE(widget.visibleText().trimmed(),
+             QStringLiteral("K2.7 Code is ready higher end-to-end coding task success rates"));
+    QCOMPARE(widget.debugLastFrameEmojiFallbackDrawCount(), 0);
+}
+
+void TestTerminalWidget::testEmojiFallbackRendererSizesVariationEmoji() {
+    CountingTerminalWidget widget;
+    widget.debugSetEmojiRenderModeForTesting(TerminalWidget::EmojiRenderMode::CustomFallback);
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    int previousFlushCount = widget.debugPtyFlushCount();
+    bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                             Q_ARG(QByteArray, QByteArray("\033[?25l")));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+
+    QInputMethodQueryEvent queryEvent(Qt::ImCursorRectangle);
+    QApplication::sendEvent(&widget, &queryEvent);
+    const QRect cursorRect = queryEvent.value(Qt::ImCursorRectangle).toRect();
+    QVERIFY(cursorRect.isValid());
+
+    const QImage before = renderWidgetImage(widget);
+    previousFlushCount = widget.debugPtyFlushCount();
+    invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                        Q_ARG(QByteArray, QStringLiteral("✌️\n").toUtf8()));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+
+    const QImage after = renderWidgetImage(widget);
+    QVERIFY2(widget.debugLastFrameEmojiFallbackDrawCount() > 0, "variation emoji should use the fallback renderer");
+    QVERIFY2(countChangedPixels(before, after, cursorRect) > 0,
+             "variation emoji fallback should paint its terminal cell");
+    QVERIFY2(!widget.visibleText().contains(QStringLiteral("<fe0f>"), Qt::CaseInsensitive),
+             "variation selector placeholders should not leak into visible terminal text");
+}
+
+void TestTerminalWidget::testEmojiFallbackRendererKeepsNarrowEmojiInOneCell() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
+    CountingTerminalWidget widget;
+    widget.setStartOptions(options);
+    widget.debugSetEmojiRenderModeForTesting(TerminalWidget::EmojiRenderMode::CustomFallback);
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    int previousFlushCount = widget.debugPtyFlushCount();
+    bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                             Q_ARG(QByteArray, QByteArray("\033[?25l")));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+
+    QInputMethodQueryEvent queryEvent(Qt::ImCursorRectangle);
+    QApplication::sendEvent(&widget, &queryEvent);
+    const QRect cursorRect = queryEvent.value(Qt::ImCursorRectangle).toRect();
+    QVERIFY(cursorRect.isValid());
+
+    const QImage before = renderWidgetImage(widget);
+    previousFlushCount = widget.debugPtyFlushCount();
+    invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                        Q_ARG(QByteArray, QStringLiteral("©️\n").toUtf8()));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+
+    const QImage after = renderWidgetImage(widget);
+    const QRect secondCellRect(cursorRect.topLeft() + QPoint(cursorRect.width(), 0), cursorRect.size());
+    QVERIFY2(widget.debugLastFrameEmojiFallbackDrawCount() > 0, "copyright sign should use emoji fallback");
+    QCOMPARE(countChangedPixels(before, after, secondCellRect), 0);
+}
+
+void TestTerminalWidget::testEmojiFallbackClusterPreservesBackgroundColor() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
+    CountingTerminalWidget widget;
+    widget.setStartOptions(options);
+    widget.debugSetEmojiRenderModeForTesting(TerminalWidget::EmojiRenderMode::CustomFallback);
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    feedTerminalOutput(widget, QByteArray("\033[?25l"));
+    feedTerminalOutput(widget, QStringLiteral("\033[48;2;40;90;160m👨‍👩‍👧‍👦\033[0m\n").toUtf8());
+
+    const QImage frame = renderWidgetImage(widget);
+    const QFontMetrics fm(widget.terminalFont());
+    const QRect firstTwoCells(0, 0, fm.horizontalAdvance('M') * 2, fm.height());
+    const QColor customBackground(40, 90, 160);
+    QVERIFY2(countPixelsNear(frame, firstTwoCells, customBackground, 6) > firstTwoCells.width(),
+             "emoji cluster overlay should preserve the cell background it clears before repainting");
+}
+
+void TestTerminalWidget::testEmojiFallbackClusterPreservesTextDecorations() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
+    CountingTerminalWidget widget;
+    widget.setStartOptions(options);
+    widget.debugSetEmojiRenderModeForTesting(TerminalWidget::EmojiRenderMode::CustomFallback);
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    feedTerminalOutput(widget, QByteArray("\033[?25l"));
+    feedTerminalOutput(widget, QStringLiteral("\033[4;58;2;255;0;0m👨‍👩‍👧‍👦\033[0m\n").toUtf8());
+
+    const QImage frame = renderWidgetImage(widget);
+    const QFontMetrics fm(widget.terminalFont());
+    const QRect underlineBand(0, qMin(fm.height() - 1, fm.ascent() + 1), fm.horizontalAdvance('M') * 2, 3);
+    QVERIFY2(countPixelsNear(frame, underlineBand, QColor(255, 0, 0), 12) > 0,
+             "emoji cluster overlay should redraw underline decorations after clearing cells");
+}
+
+void TestTerminalWidget::testSetTerminalFontInvalidatesEmojiModeDetection() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+    QVERIFY(!widget.debugHasDetectedEmojiRenderMode());
+
+    (void)widget.debugEmojiRenderMode();
+    QVERIFY(widget.debugHasDetectedEmojiRenderMode());
+
+    QFont font = widget.terminalFont();
+    font.setPointSize(font.pointSize() + 1);
+    widget.setTerminalFont(font);
+    QVERIFY(!widget.debugHasDetectedEmojiRenderMode());
+}
+
+void TestTerminalWidget::testFallbackGlyphDoesNotOverlapNextCell() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
+    CountingTerminalWidget widget;
+    widget.setStartOptions(options);
+    widget.debugSetEmojiRenderModeForTesting(TerminalWidget::EmojiRenderMode::QtNative);
     QVERIFY(widget.initialize());
 
     widget.resize(960, 640);
@@ -762,14 +1050,16 @@ void TestTerminalWidget::testFallbackGlyphDoesNotOverlapNextCell() {
     const QImage after = renderWidgetImage(widget);
     const QRect firstCellRect(cursorRect.topLeft(), cursorRect.size());
     const QRect nextCellRect(cursorRect.topLeft() + QPoint(cursorRect.width(), 0), cursorRect.size());
-    const QRect rightEdgeRect(firstCellRect.right(), firstCellRect.top(), 1, firstCellRect.height());
-    QVERIFY2(countChangedPixels(before, after, rightEdgeRect) <= 1,
-             "fallback glyph should be fitted inside the cell instead of being cut at the right edge");
     QCOMPARE(countChangedPixels(before, after, nextCellRect), 0);
 }
 
 void TestTerminalWidget::testSingleCodepointFallbackGlyphDoesNotClip() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
     CountingTerminalWidget widget;
+    widget.setStartOptions(options);
+    widget.debugSetEmojiRenderModeForTesting(TerminalWidget::EmojiRenderMode::QtNative);
     QVERIFY(widget.initialize());
 
     widget.resize(960, 640);

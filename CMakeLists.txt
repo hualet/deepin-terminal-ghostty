@@ -27,6 +27,17 @@ set(GHOSTTY_STAGED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/ghostty-include")
 find_package(Qt6 REQUIRED COMPONENTS Widgets DBus LinguistTools)
 find_package(Dtk6 COMPONENTS Widget Core Gui REQUIRED)
 find_package(Dtk6Tools REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FREETYPE2 REQUIRED IMPORTED_TARGET freetype2)
+pkg_check_modules(FONTCONFIG REQUIRED IMPORTED_TARGET fontconfig)
+pkg_check_modules(HARFBUZZ REQUIRED IMPORTED_TARGET harfbuzz)
+
+add_library(emoji-render-deps INTERFACE)
+target_link_libraries(emoji-render-deps INTERFACE
+  PkgConfig::FREETYPE2
+  PkgConfig::FONTCONFIG
+  PkgConfig::HARFBUZZ
+)
 
 DTK_CREATE_I18N_FROM_JSON(APP_SETTINGS_I18N_SOURCES
   src/app/settings/default-config.json
@@ -213,6 +224,7 @@ target_link_libraries(qtghostty PUBLIC
   Dtk6::Core
   Dtk6::Gui
   ghostty-vt
+  emoji-render-deps
   util
 )
 

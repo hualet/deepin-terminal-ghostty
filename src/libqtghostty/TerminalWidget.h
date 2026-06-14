@@ -8,8 +8,11 @@
 #include <QHash>
 #include <QImage>
 #include <QInputMethodEvent>
+#include <QStringList>
 #include <QTimer>
 #include <QWidget>
+
+#include <optional>
 
 // Qt defines 'emit' as a no-op macro; ghostty headers use 'emit' as a struct
 // member name in formatter.h, so we must undefine it before inclusion.
@@ -24,6 +27,7 @@ class TerminalWidget : public QWidget {
 
 public:
     enum class CommandState { Idle = 0, Running = 1, Succeeded = 2, Failed = 3 };
+    enum class EmojiRenderMode { QtNative = 0, CustomFallback = 1 };
     struct ViewportScrollState {
         int offset = 0;
         int totalRows = 0;
@@ -88,11 +92,14 @@ public:
     bool debugLastFrameWasFullRedraw() const;
     int debugLastFrameTextRunCount() const;
     int debugLastFrameLineDrawCount() const;
+    int debugLastFrameEmojiFallbackDrawCount() const;
     int debugResizeApplyCount() const;
     int debugPtyFlushCount() const;
     int debugPendingPtyDataSize() const;
     int debugBareLinkScanCount() const;
     int debugTextForScreenRowCount() const;
+    EmojiRenderMode debugEmojiRenderMode() const;
+    bool debugHasDetectedEmojiRenderMode() const;
     QString debugTextForScreenRow(int row) const;
     int debugCursorOnlyRepaintCount() const;
     int debugScrollbackLines() const;
@@ -104,6 +111,7 @@ public:
     QColor debugAppliedForeground() const;
     QColor debugAppliedBackground() const;
     void debugSetRawTerminalFont(const QFont &font);
+    void debugSetEmojiRenderModeForTesting(EmojiRenderMode mode);
 #endif
 
 signals:
@@ -156,6 +164,9 @@ private:
     void renderOverlays(QPainter &painter) const;
     enum class RowRenderPass { Background, Text, Full };
     void renderRow(QPainter &painter, int y, const GhosttyRenderStateColors &colors, RowRenderPass pass);
+    QImage emojiFallbackCellImage(QPainter &painter, const QRect &cellRect, const QString &text);
+    bool drawEmojiFallback(QPainter &painter, const QRect &cellRect, const QString &text);
+    EmojiRenderMode emojiRenderMode() const;
     QString hyperlinkUriAtViewportCell(int viewportRow, int col) const;
     QString hyperlinkUriForPoint(GhosttyPoint point) const;
     struct LinkRange {
@@ -256,6 +267,8 @@ private:
     CommandState m_commandState = CommandState::Idle;
     QByteArray m_pendingPtyData;
     QHash<uint32_t, QImage> m_kittyImageCache;
+    QHash<QString, QImage> m_emojiImageCache;
+    QStringList m_emojiImageCacheOrder;
     QTimer *m_renderTimer = nullptr;
     QTimer *m_resizeTimer = nullptr;
     QTimer *m_selectionAutoScrollTimer = nullptr;
@@ -273,6 +286,10 @@ private:
     int m_cellWidth = 0;
     int m_cellHeight = 0;
     int m_fontAscent = 0;
+    mutable std::optional<EmojiRenderMode> m_detectedEmojiRenderMode;
+#ifdef QTGHOSTTY_TESTING
+    std::optional<EmojiRenderMode> m_forcedEmojiRenderMode;
+#endif
 
     // Grid size
     uint16_t m_cols = 80;
@@ -342,6 +359,7 @@ private:
     bool m_debugLastFrameWasFullRedraw = false;
     int m_debugLastFrameTextRunCount = 0;
     int m_debugLastFrameLineDrawCount = 0;
+    int m_debugLastFrameEmojiFallbackDrawCount = 0;
     int m_debugResizeApplyCount = 0;
     int m_debugPtyFlushCount = 0;
     int m_debugCursorOnlyRepaintCount = 0;

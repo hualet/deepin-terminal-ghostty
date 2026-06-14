@@ -46,6 +46,7 @@ The current development branch already includes:
 - terminal scrollbar and scrollback navigation
 - inline terminal content search
 - Kitty image protocol support for inline image placements
+- adaptive color emoji rendering with a custom FreeType/HarfBuzz fallback when Qt cannot render color emoji correctly
 - X11 PRIMARY selection support (copy-on-select, middle-click paste)
 - bracketed paste mode
 - application translations (zh_CN, es)
@@ -114,7 +115,8 @@ Build dependencies on Debian/Ubuntu:
 
 ```bash
 sudo apt install cmake qt6-base-dev build-essential binutils \
-  libdtk6widget-dev libdtk6core-dev libdtk6gui-dev
+  libdtk6widget-dev libdtk6core-dev libdtk6gui-dev \
+  libfontconfig-dev libfreetype-dev libharfbuzz-dev
 ```
 
 Ghostty headers are expected under `lib/include/` in this repository, or can be provided through `GHOSTTY_INCLUDE_DIR`.

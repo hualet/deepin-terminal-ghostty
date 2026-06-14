@@ -78,6 +78,7 @@ target_link_libraries(test_terminal_widget PRIVATE
   Qt6::Test
   Dtk6::Core
   ghostty-vt
+  emoji-render-deps
   util
 )
 
@@ -94,6 +95,36 @@ add_custom_command(TARGET test_terminal_widget POST_BUILD
 )
 
 add_test(NAME TerminalWidget COMMAND test_terminal_widget)
+
+# ---------------------------------------------------------------------------
+# emoji_render_probe
+# ---------------------------------------------------------------------------
+add_executable(emoji_render_probe
+  emoji_render_probe.cpp
+  ${CMAKE_SOURCE_DIR}/src/logging/Logging.cpp
+  ${CMAKE_SOURCE_DIR}/src/libqtghostty/PtySession.cpp
+  ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalTrace.cpp
+  ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalWidget.cpp
+)
+
+target_link_libraries(emoji_render_probe PRIVATE
+  Qt6::Widgets
+  Dtk6::Core
+  ghostty-vt
+  emoji-render-deps
+  util
+)
+
+target_compile_definitions(emoji_render_probe PRIVATE QTGHOSTTY_TESTING)
+
+add_dependencies(emoji_render_probe ghostty-vt-stage ghostty-headers-stage)
+
+add_custom_command(TARGET emoji_render_probe POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${GHOSTTY_STAGED_LIBRARY}"
+          "$<TARGET_FILE_DIR:emoji_render_probe>/${GHOSTTY_SONAME}"
+  VERBATIM
+)
 
 # ---------------------------------------------------------------------------
 # test_main_window
@@ -140,6 +171,7 @@ target_link_libraries(test_main_window PRIVATE
   Dtk6::Core
   Dtk6::Gui
   ghostty-vt
+  emoji-render-deps
   util
 )
 
@@ -212,6 +244,7 @@ target_link_libraries(test_session_manager PRIVATE
   Qt6::Test
   Dtk6::Core
   ghostty-vt
+  emoji-render-deps
   util
 )
 

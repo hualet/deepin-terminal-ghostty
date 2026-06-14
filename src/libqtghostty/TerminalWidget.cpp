@@ -18,6 +18,12 @@
 #include <QUrl>
 #include <QWheelEvent>
 
+#include <fontconfig/fontconfig.h>
+#include <ft2build.h>
+#include <hb-ft.h>
+#include <hb.h>
+#include FT_FREETYPE_H
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -41,6 +47,7 @@ constexpr size_t kKittyApcMaxBytes = 80 * 1024 * 1024;
 constexpr size_t kBytesPerScrollbackLine = 20 * 1000;
 constexpr size_t kMinimumScrollbackBytes = 100 * 1000 * 1000;
 constexpr int kSelectionAutoScrollIntervalMs = 50;
+constexpr char kEmojiFontFamily[] = "Noto Color Emoji";
 
 QColor faintForeground(const QColor &foreground, const QColor &background) {
     return QColor((foreground.red() + background.red()) / 2, (foreground.green() + background.green()) / 2,
@@ -187,6 +194,414 @@ void appendCodepoint(QString &text, uint32_t codepoint) {
     }
 
     text.append(QChar::ReplacementCharacter);
+}
+
+bool isEmojiCodepoint(uint32_t codepoint) {
+    return (codepoint >= 0x1F000 && codepoint <= 0x1FAFF) || (codepoint >= 0x2600 && codepoint <= 0x27BF);
+}
+
+bool isEmojiPresentationBaseCodepoint(uint32_t codepoint) {
+    return isEmojiCodepoint(codepoint) || codepoint == 0x00A9 || codepoint == 0x00AE || codepoint == 0x203C
+           || codepoint == 0x2049 || codepoint == 0x2122 || codepoint == 0x2139
+           || (codepoint >= 0x2194 && codepoint <= 0x21AA) || (codepoint >= 0x231A && codepoint <= 0x23FF)
+           || codepoint == 0x24C2 || (codepoint >= 0x25AA && codepoint <= 0x25AB) || codepoint == 0x25B6
+           || codepoint == 0x25C0 || (codepoint >= 0x25FB && codepoint <= 0x25FE)
+           || (codepoint >= 0x2934 && codepoint <= 0x2935) || codepoint == 0x3030 || codepoint == 0x303D
+           || codepoint == 0x3297 || codepoint == 0x3299;
+}
+
+bool isEmojiKeycapBaseCodepoint(uint32_t codepoint) {
+    return codepoint == 0x23 || codepoint == 0x2A || (codepoint >= 0x30 && codepoint <= 0x39);
+}
+
+bool isEmojiVariationSelector(uint32_t codepoint) {
+    return codepoint == 0xFE0E || codepoint == 0xFE0F;
+}
+
+bool isEmojiSequenceCodepoint(uint32_t codepoint) {
+    return isEmojiPresentationBaseCodepoint(codepoint) || isEmojiKeycapBaseCodepoint(codepoint) || codepoint == 0x200D
+           || codepoint == 0x20E3 || isEmojiVariationSelector(codepoint)
+           || (codepoint >= 0x1F3FB && codepoint <= 0x1F3FF);
+}
+
+bool isRegionalIndicatorCodepoint(uint32_t codepoint) {
+    return codepoint >= 0x1F1E6 && codepoint <= 0x1F1FF;
+}
+
+std::optional<QVector<uint>> emojiCodepoints(QStringView text) {
+    QVector<uint> codepoints = text.toString().toUcs4();
+    bool hasEmoji = false;
+    bool hasKeycapBase = false;
+    bool hasKeycapCombiningMark = false;
+    for (uint codepoint : codepoints) {
+        if (!isEmojiSequenceCodepoint(codepoint))
+            return std::nullopt;
+        if (isEmojiPresentationBaseCodepoint(codepoint))
+            hasEmoji = true;
+        if (isEmojiKeycapBaseCodepoint(codepoint))
+            hasKeycapBase = true;
+        if (codepoint == 0x20E3)
+            hasKeycapCombiningMark = true;
+    }
+    if (hasKeycapBase && hasKeycapCombiningMark)
+        hasEmoji = true;
+    if (!hasEmoji)
+        return std::nullopt;
+    return codepoints;
+}
+
+std::optional<uint32_t> firstEmojiCodepoint(QStringView text) {
+    const std::optional<QVector<uint>> codepoints = emojiCodepoints(text);
+    if (!codepoints)
+        return std::nullopt;
+
+    for (uint codepoint : *codepoints) {
+        if (isEmojiVariationSelector(codepoint))
+            continue;
+        if (!isEmojiPresentationBaseCodepoint(codepoint) && !isEmojiKeycapBaseCodepoint(codepoint))
+            continue;
+        return codepoint;
+    }
+    return std::nullopt;
+}
+
+std::optional<uint32_t> singleEmojiCodepoint(QStringView text) {
+    const std::optional<QVector<uint>> codepoints = emojiCodepoints(text);
+    if (!codepoints)
+        return std::nullopt;
+
+    std::optional<uint32_t> emoji;
+    for (uint codepoint : *codepoints) {
+        if (isEmojiVariationSelector(codepoint))
+            continue;
+        if (!isEmojiPresentationBaseCodepoint(codepoint) && !isEmojiKeycapBaseCodepoint(codepoint))
+            return std::nullopt;
+        if (emoji)
+            return std::nullopt;
+        emoji = codepoint;
+    }
+    return emoji;
+}
+
+bool isRegionalIndicatorText(QStringView text) {
+    const QVector<uint> codepoints = text.toString().toUcs4();
+    return codepoints.size() == 1 && isRegionalIndicatorCodepoint(codepoints.first());
+}
+
+bool isEmojiClusterCodepoint(uint32_t codepoint) {
+    return isEmojiSequenceCodepoint(codepoint) || isRegionalIndicatorCodepoint(codepoint);
+}
+
+QVector<uint> codepointsForText(QStringView text) {
+    return text.toString().toUcs4();
+}
+
+std::optional<uint> emojiVariationSelectorPlaceholderCodepoint(QStringView text) {
+    const QVector<uint> codepoints = codepointsForText(text);
+    if (codepoints.size() == 1 && isEmojiVariationSelector(codepoints.first()))
+        return codepoints.first();
+
+    // Ghostty may expose an otherwise invisible variation selector as this
+    // diagnostic placeholder. Treat it as part of the emoji cluster so the
+    // fallback overlay consumes it instead of painting the literal marker.
+    const QString lower = text.toString().toLower();
+    if (lower == QStringLiteral("<fe0e>"))
+        return 0xFE0E;
+    if (lower == QStringLiteral("<fe0f>"))
+        return 0xFE0F;
+    return std::nullopt;
+}
+
+QVector<uint> emojiOverlayCodepoints(QStringView text) {
+    if (const std::optional<uint> variationSelector = emojiVariationSelectorPlaceholderCodepoint(text))
+        return {*variationSelector};
+    return codepointsForText(text);
+}
+
+QString emojiOverlayText(QStringView text) {
+    if (const std::optional<uint> variationSelector = emojiVariationSelectorPlaceholderCodepoint(text)) {
+        QString result;
+        appendCodepoint(result, *variationSelector);
+        return result;
+    }
+    return text.toString();
+}
+
+bool allEmojiClusterCodepoints(const QVector<uint> &codepoints) {
+    if (codepoints.isEmpty())
+        return false;
+    return std::all_of(codepoints.cbegin(), codepoints.cend(), isEmojiClusterCodepoint);
+}
+
+bool hasEmojiBaseCodepoint(const QVector<uint> &codepoints) {
+    return std::any_of(codepoints.cbegin(), codepoints.cend(), [](uint codepoint) {
+        return isEmojiPresentationBaseCodepoint(codepoint) || isEmojiKeycapBaseCodepoint(codepoint)
+               || isRegionalIndicatorCodepoint(codepoint);
+    });
+}
+
+bool hasEmojiJoinerCodepoint(const QVector<uint> &codepoints) {
+    return std::any_of(codepoints.cbegin(), codepoints.cend(), [](uint codepoint) {
+        return codepoint == 0x200D || codepoint == 0x20E3 || isEmojiVariationSelector(codepoint)
+               || (codepoint >= 0x1F3FB && codepoint <= 0x1F3FF);
+    });
+}
+
+bool endsWithZwJ(const QVector<uint> &codepoints) {
+    return !codepoints.isEmpty() && codepoints.last() == 0x200D;
+}
+
+bool startsWithEmojiJoiner(const QVector<uint> &codepoints) {
+    if (codepoints.isEmpty())
+        return false;
+    const uint codepoint = codepoints.first();
+    return codepoint == 0x200D || codepoint == 0x20E3 || isEmojiVariationSelector(codepoint)
+           || (codepoint >= 0x1F3FB && codepoint <= 0x1F3FF);
+}
+
+int fallbackEmojiCellSpan(bool isWideHead) {
+    return isWideHead ? 2 : 1;
+}
+
+QByteArray emojiFontPath() {
+    static const QByteArray path = []() {
+        if (!FcInit())
+            return QByteArray();
+
+        const QList<QByteArray> families = {QByteArray(kEmojiFontFamily), QByteArrayLiteral("Twemoji"),
+                                            QByteArrayLiteral("EmojiOne Color"), QByteArrayLiteral("Noto Emoji"),
+                                            QByteArrayLiteral("emoji")};
+        for (const QByteArray &family : families) {
+            FcPattern *pattern = FcNameParse(reinterpret_cast<const FcChar8 *>(family.constData()));
+            if (!pattern)
+                continue;
+
+            FcConfigSubstitute(nullptr, pattern, FcMatchPattern);
+            FcDefaultSubstitute(pattern);
+
+            FcResult result = FcResultNoMatch;
+            FcPattern *match = FcFontMatch(nullptr, pattern, &result);
+            FcPatternDestroy(pattern);
+            if (!match)
+                continue;
+
+            FcChar8 *file = nullptr;
+            QByteArray fontPath;
+            if (FcPatternGetString(match, FC_FILE, 0, &file) == FcResultMatch && file)
+                fontPath = QByteArray(reinterpret_cast<const char *>(file));
+            FcPatternDestroy(match);
+            if (!fontPath.isEmpty())
+                return fontPath;
+        }
+        return QByteArray();
+    }();
+    return path;
+}
+
+bool imageHasColorPixels(const QImage &image);
+
+class EmojiFreeTypeRenderer {
+public:
+    static EmojiFreeTypeRenderer &instance() {
+        static EmojiFreeTypeRenderer renderer;
+        return renderer;
+    }
+
+    QImage render(const QVector<uint> &codepoints, int targetHeight) {
+        if (!m_face || targetHeight <= 0)
+            return {};
+
+        if (!selectSize(targetHeight))
+            return {};
+
+        hb_font_t *font = hb_ft_font_create_referenced(m_face);
+        hb_buffer_t *buffer = hb_buffer_create();
+        hb_buffer_add_utf32(buffer, codepoints.constData(), codepoints.size(), 0, codepoints.size());
+        hb_buffer_guess_segment_properties(buffer);
+        hb_shape(font, buffer, nullptr, 0);
+
+        unsigned glyphCount = 0;
+        hb_glyph_info_t *glyphInfo = hb_buffer_get_glyph_infos(buffer, &glyphCount);
+        if (glyphCount == 0 || !glyphInfo) {
+            hb_buffer_destroy(buffer);
+            hb_font_destroy(font);
+            return {};
+        }
+
+        QVector<QImage> glyphImages;
+        glyphImages.reserve(static_cast<qsizetype>(glyphCount));
+        bool missingGlyph = false;
+        for (unsigned i = 0; i < glyphCount; ++i) {
+            QImage glyphImage = renderGlyph(glyphInfo[i].codepoint);
+            if (glyphImage.isNull()) {
+                missingGlyph = true;
+                break;
+            }
+            glyphImages.append(glyphImage);
+        }
+
+        hb_buffer_destroy(buffer);
+        hb_font_destroy(font);
+
+        if (missingGlyph || glyphImages.isEmpty()) {
+            const QImage componentImage = renderComponentEmoji(codepoints);
+            if (!componentImage.isNull())
+                return componentImage;
+            return {};
+        }
+        QImage image = composeGlyphImages(glyphImages);
+        if (!imageHasColorPixels(image) && codepoints.size() > 1) {
+            const QImage componentImage = renderComponentEmoji(codepoints);
+            if (!componentImage.isNull())
+                image = componentImage;
+        }
+        return image;
+    }
+
+private:
+    static QImage composeGlyphImages(const QVector<QImage> &glyphImages) {
+        if (glyphImages.isEmpty())
+            return {};
+        if (glyphImages.size() == 1)
+            return glyphImages.first();
+
+        int width = 0;
+        int height = 0;
+        for (const QImage &glyphImage : glyphImages) {
+            width += glyphImage.width();
+            height = qMax(height, glyphImage.height());
+        }
+
+        QImage image(width, height, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+        QPainter painter(&image);
+        int x = 0;
+        for (const QImage &glyphImage : glyphImages) {
+            painter.drawImage(x, (height - glyphImage.height()) / 2, glyphImage);
+            x += glyphImage.width();
+        }
+        painter.end();
+        return image;
+    }
+
+    QImage renderComponentEmoji(const QVector<uint> &codepoints) {
+        QVector<QImage> glyphImages;
+        for (uint codepoint : codepoints) {
+            if (!isEmojiPresentationBaseCodepoint(codepoint) && !isEmojiKeycapBaseCodepoint(codepoint)
+                && !isRegionalIndicatorCodepoint(codepoint)) {
+                continue;
+            }
+
+            const QImage glyphImage = renderGlyph(FT_Get_Char_Index(m_face, codepoint));
+            if (!glyphImage.isNull() && imageHasColorPixels(glyphImage))
+                glyphImages.append(glyphImage);
+        }
+        return composeGlyphImages(glyphImages);
+    }
+
+    QImage renderGlyph(FT_UInt glyphIndex) {
+        if (glyphIndex == 0 || FT_Load_Glyph(m_face, glyphIndex, FT_LOAD_COLOR | FT_LOAD_RENDER) != 0)
+            return {};
+        const FT_Bitmap &bitmap = m_face->glyph->bitmap;
+        if (bitmap.width == 0 || bitmap.rows == 0 || !bitmap.buffer)
+            return {};
+
+        QImage image(static_cast<int>(bitmap.width), static_cast<int>(bitmap.rows), QImage::Format_ARGB32);
+        image.fill(Qt::transparent);
+
+        if (bitmap.pixel_mode == FT_PIXEL_MODE_BGRA) {
+            for (uint y = 0; y < bitmap.rows; ++y) {
+                const uchar *src = bitmap.buffer + y * bitmap.pitch;
+                std::memcpy(image.scanLine(static_cast<int>(y)), src, static_cast<size_t>(bitmap.width) * 4);
+            }
+            return image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+        }
+
+        if (bitmap.pixel_mode == FT_PIXEL_MODE_GRAY) {
+            for (uint y = 0; y < bitmap.rows; ++y) {
+                const uchar *src = bitmap.buffer + y * bitmap.pitch;
+                auto *dst = reinterpret_cast<QRgb *>(image.scanLine(static_cast<int>(y)));
+                for (uint x = 0; x < bitmap.width; ++x)
+                    dst[x] = qRgba(255, 255, 255, src[x]);
+            }
+            return image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+        }
+
+        return {};
+    }
+
+    EmojiFreeTypeRenderer() {
+        if (FT_Init_FreeType(&m_library) != 0)
+            return;
+
+        const QByteArray path = emojiFontPath();
+        if (path.isEmpty() || FT_New_Face(m_library, path.constData(), 0, &m_face) != 0)
+            m_face = nullptr;
+    }
+
+    ~EmojiFreeTypeRenderer() {
+        if (m_face)
+            FT_Done_Face(m_face);
+        if (m_library)
+            FT_Done_FreeType(m_library);
+    }
+
+    bool selectSize(int targetHeight) {
+        if (!m_face)
+            return false;
+
+        if (m_face->num_fixed_sizes > 0) {
+            int bestIndex = 0;
+            int bestDistance = std::numeric_limits<int>::max();
+            for (int i = 0; i < m_face->num_fixed_sizes; ++i) {
+                const int distance = std::abs((m_face->available_sizes[i].y_ppem / 64) - targetHeight);
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestIndex = i;
+                }
+            }
+            return FT_Select_Size(m_face, bestIndex) == 0;
+        }
+
+        return FT_Set_Pixel_Sizes(m_face, 0, static_cast<FT_UInt>(targetHeight)) == 0;
+    }
+
+    FT_Library m_library = nullptr;
+    FT_Face m_face = nullptr;
+};
+
+bool imageHasColorPixels(const QImage &image) {
+    const QImage argbImage =
+        image.format() == QImage::Format_ARGB32 ? image : image.convertToFormat(QImage::Format_ARGB32);
+    for (int y = 0; y < argbImage.height(); ++y) {
+        const auto *scanLine = reinterpret_cast<const QRgb *>(argbImage.constScanLine(y));
+        for (int x = 0; x < argbImage.width(); ++x) {
+            const QRgb pixel = scanLine[x];
+            const int red = qRed(pixel);
+            const int green = qGreen(pixel);
+            const int blue = qBlue(pixel);
+            const int maxChannel = std::max(red, std::max(green, blue));
+            const int minChannel = std::min(red, std::min(green, blue));
+            if (qAlpha(pixel) > 20 && maxChannel - minChannel > 20) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool qtCanRenderColorEmoji(const QFont &terminalFont) {
+    QImage image(QSize(64, 64), QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+
+    QPainter painter(&image);
+    QFont font(terminalFont);
+    font.setPixelSize(48);
+    painter.setFont(font);
+    painter.drawText(image.rect(), Qt::AlignCenter, QStringLiteral("🙂🇨🇳1️⃣"));
+    painter.end();
+
+    return imageHasColorPixels(image);
 }
 
 QString textFromRenderCellGraphemes(GhosttyRenderStateRowCells cells, uint32_t graphemeLen) {
@@ -842,6 +1257,10 @@ int TerminalWidget::debugLastFrameLineDrawCount() const {
     return m_debugLastFrameLineDrawCount;
 }
 
+int TerminalWidget::debugLastFrameEmojiFallbackDrawCount() const {
+    return m_debugLastFrameEmojiFallbackDrawCount;
+}
+
 int TerminalWidget::debugResizeApplyCount() const {
     return m_debugResizeApplyCount;
 }
@@ -860,6 +1279,14 @@ int TerminalWidget::debugBareLinkScanCount() const {
 
 int TerminalWidget::debugTextForScreenRowCount() const {
     return m_debugTextForScreenRowCount;
+}
+
+TerminalWidget::EmojiRenderMode TerminalWidget::debugEmojiRenderMode() const {
+    return emojiRenderMode();
+}
+
+bool TerminalWidget::debugHasDetectedEmojiRenderMode() const {
+    return m_detectedEmojiRenderMode.has_value();
 }
 
 QString TerminalWidget::debugTextForScreenRow(int row) const {
@@ -1349,6 +1776,7 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     m_debugLastFrameWasFullRedraw = fullRedraw;
     m_debugLastFrameTextRunCount = 0;
     m_debugLastFrameLineDrawCount = 0;
+    m_debugLastFrameEmojiFallbackDrawCount = 0;
 #endif
 
     renderKittyGraphicsLayer(backPainter, GHOSTTY_KITTY_PLACEMENT_LAYER_BELOW_BG);
@@ -1559,6 +1987,90 @@ QImage TerminalWidget::imageForKittyImage(GhosttyKittyGraphicsImage image) {
     return qtImage;
 }
 
+TerminalWidget::EmojiRenderMode TerminalWidget::emojiRenderMode() const {
+#ifdef QTGHOSTTY_TESTING
+    if (m_forcedEmojiRenderMode)
+        return *m_forcedEmojiRenderMode;
+#endif
+
+    if (!m_detectedEmojiRenderMode) {
+        m_detectedEmojiRenderMode =
+            qtCanRenderColorEmoji(m_font) ? EmojiRenderMode::QtNative : EmojiRenderMode::CustomFallback;
+    }
+    return *m_detectedEmojiRenderMode;
+}
+
+QImage TerminalWidget::emojiFallbackCellImage(QPainter &painter, const QRect &cellRect, const QString &text) {
+    const std::optional<QVector<uint>> codepoints = emojiCodepoints(QStringView(text));
+    if (!codepoints)
+        return {};
+
+    const qreal devicePixelRatio = painter.device()->devicePixelRatioF();
+    QStringList cacheCodepoints;
+    cacheCodepoints.reserve(codepoints->size());
+    for (uint codepoint : *codepoints)
+        cacheCodepoints.append(QString::number(codepoint, 16));
+    const QString cacheKey = QStringLiteral("%1:%2x%3@%4")
+                                 .arg(cacheCodepoints.join(QLatin1Char('-')), QString::number(cellRect.width()),
+                                      QString::number(cellRect.height()), QString::number(devicePixelRatio, 'f', 2));
+
+    QImage emojiImage = m_emojiImageCache.value(cacheKey);
+    if (!emojiImage.isNull()) {
+        m_emojiImageCacheOrder.removeAll(cacheKey);
+        m_emojiImageCacheOrder.append(cacheKey);
+    }
+    if (emojiImage.isNull()) {
+        emojiImage =
+            EmojiFreeTypeRenderer::instance().render(*codepoints, qRound(cellRect.height() * devicePixelRatio));
+        if (emojiImage.isNull())
+            return {};
+
+        emojiImage.setDevicePixelRatio(devicePixelRatio);
+        const QSizeF logicalSize = emojiImage.size() / devicePixelRatio;
+        const QSizeF targetSize(qMax<qreal>(1.0, cellRect.width() - 2.0), qMax<qreal>(1.0, cellRect.height() - 2.0));
+        if (logicalSize.width() > targetSize.width() || logicalSize.height() > targetSize.height()) {
+            const QSize scaledDeviceSize =
+                (logicalSize.scaled(targetSize, Qt::KeepAspectRatio) * devicePixelRatio).toSize();
+            emojiImage = emojiImage.scaled(scaledDeviceSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            emojiImage.setDevicePixelRatio(devicePixelRatio);
+        }
+
+        m_emojiImageCache.insert(cacheKey, emojiImage);
+        m_emojiImageCacheOrder.append(cacheKey);
+        constexpr qsizetype kMaxEmojiCacheEntries = 256;
+        while (m_emojiImageCacheOrder.size() > kMaxEmojiCacheEntries) {
+            const QString oldestKey = m_emojiImageCacheOrder.takeFirst();
+            m_emojiImageCache.remove(oldestKey);
+        }
+    }
+
+    QImage cellImage(QSize(qCeil(cellRect.width() * devicePixelRatio), qCeil(cellRect.height() * devicePixelRatio)),
+                     QImage::Format_ARGB32_Premultiplied);
+    cellImage.setDevicePixelRatio(devicePixelRatio);
+    cellImage.fill(Qt::transparent);
+
+    QPainter cellPainter(&cellImage);
+    const QSizeF logicalSize = emojiImage.size() / emojiImage.devicePixelRatio();
+    const QPointF topLeft((cellRect.width() - logicalSize.width()) / 2.0,
+                          (cellRect.height() - logicalSize.height()) / 2.0);
+    cellPainter.drawImage(topLeft, emojiImage);
+    cellPainter.end();
+
+    return cellImage;
+}
+
+bool TerminalWidget::drawEmojiFallback(QPainter &painter, const QRect &cellRect, const QString &text) {
+    const QImage cellImage = emojiFallbackCellImage(painter, cellRect, text);
+    if (cellImage.isNull())
+        return false;
+
+    painter.drawImage(QRectF(cellRect), cellImage);
+#ifdef QTGHOSTTY_TESTING
+    ++m_debugLastFrameEmojiFallbackDrawCount;
+#endif
+    return true;
+}
+
 void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStateColors &colors, RowRenderPass pass) {
     if (ghostty_render_state_row_get(m_rowIter, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &m_rowCells) != GHOSTTY_SUCCESS)
         return;
@@ -1593,6 +2105,27 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         int underline = GHOSTTY_SGR_UNDERLINE_NONE;
         bool strikethrough = false;
         bool overline = false;
+    };
+    struct EmojiOverlayCell {
+        QString text;
+        QColor background;
+        QColor decorationColor;
+        int underline = GHOSTTY_SGR_UNDERLINE_NONE;
+        bool strikethrough = false;
+        bool overline = false;
+        int x = 0;
+        int cells = 1;
+    };
+    QVector<EmojiOverlayCell> emojiOverlayCells;
+    const auto appendEmojiOverlayCell = [&](const QString &text, int cellX, int cells, const QColor &background,
+                                            const QColor &decorationColor, int underline, bool strikethrough,
+                                            bool overline) {
+        if (emojiRenderMode() != EmojiRenderMode::CustomFallback)
+            return;
+        const QVector<uint> codepoints = emojiOverlayCodepoints(QStringView(text));
+        if (allEmojiClusterCodepoints(codepoints))
+            emojiOverlayCells.push_back(
+                {text, background, decorationColor, underline, strikethrough, overline, cellX, cells});
     };
     const auto drawTextDecorations = [&](int x, int cells, const QColor &color, int underline, bool strikethrough,
                                          bool overline) {
@@ -1630,16 +2163,30 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
     };
     const auto drawClippedCellText = [&](int textX, int cells, const QString &text) {
         painter.save();
-        const QRect cellRect(textX, y, cells * m_cellWidth, m_cellHeight);
+        const std::optional<uint32_t> emojiCodepoint = firstEmojiCodepoint(QStringView(text));
+        const int visibleCells = emojiRenderMode() == EmojiRenderMode::CustomFallback && emojiCodepoint
+                                     ? fallbackEmojiCellSpan(cells > 1)
+                                     : cells;
+        const QRect cellRect(textX, y, visibleCells * m_cellWidth, m_cellHeight);
         painter.setClipRect(cellRect, Qt::IntersectClip);
+        if (emojiVariationSelectorPlaceholderCodepoint(QStringView(text))) {
+            painter.restore();
+            return;
+        }
+        if (emojiRenderMode() == EmojiRenderMode::CustomFallback && emojiCodepoint
+            && drawEmojiFallback(painter, cellRect, text)) {
+            painter.restore();
+            return;
+        }
 
         QFont drawFont = painter.font();
         QFontMetricsF metrics(drawFont);
         QRectF inkBounds = metrics.tightBoundingRect(text);
+        const bool isEmojiText = singleEmojiCodepoint(QStringView(text)).has_value();
         const bool overflowsCell = metrics.horizontalAdvance(text) > m_cellWidth || inkBounds.width() >= m_cellWidth
-                                   || inkBounds.right() >= m_cellWidth - 1 || inkBounds.left() < 0;
+                                   || inkBounds.right() >= m_cellWidth - 1 || inkBounds.left() < 0 || isEmojiText;
         if (cells == 1 && overflowsCell && (text.size() > 1 || metrics.horizontalAdvance(text) > m_cellWidth)) {
-            const qreal targetWidth = qMax<qreal>(1.0, m_cellWidth - 2.0);
+            const qreal targetWidth = qMax<qreal>(1.0, cellRect.width() - 2.0);
             const qreal targetHeight = qMax<qreal>(1.0, m_cellHeight - 2.0);
             const qreal scale = qMin(targetWidth / qMax<qreal>(1.0, inkBounds.width()),
                                      targetHeight / qMax<qreal>(1.0, inkBounds.height()));
@@ -1656,26 +2203,21 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
             const qreal fittedBaseline =
                 cellRect.y() + (cellRect.height() - inkBounds.height()) / 2.0 - inkBounds.top();
 
-            if (text.size() == 1) {
-                const qreal devicePixelRatio = painter.device()->devicePixelRatioF();
-                QImage cellImage(
-                    QSize(qCeil(cellRect.width() * devicePixelRatio), qCeil(cellRect.height() * devicePixelRatio)),
-                    QImage::Format_ARGB32_Premultiplied);
-                cellImage.setDevicePixelRatio(devicePixelRatio);
-                cellImage.fill(Qt::transparent);
+            const qreal devicePixelRatio = painter.device()->devicePixelRatioF();
+            QImage cellImage(
+                QSize(qCeil(cellRect.width() * devicePixelRatio), qCeil(cellRect.height() * devicePixelRatio)),
+                QImage::Format_ARGB32_Premultiplied);
+            cellImage.setDevicePixelRatio(devicePixelRatio);
+            cellImage.fill(Qt::transparent);
 
-                QPainter cellPainter(&cellImage);
-                cellPainter.setFont(drawFont);
-                cellPainter.setPen(painter.pen());
-                cellPainter.setRenderHint(QPainter::TextAntialiasing,
-                                          painter.testRenderHint(QPainter::TextAntialiasing));
-                cellPainter.drawText(QPointF(fittedX - cellRect.x(), fittedBaseline - cellRect.y()), text);
-                cellPainter.end();
+            QPainter cellPainter(&cellImage);
+            cellPainter.setFont(drawFont);
+            cellPainter.setPen(painter.pen());
+            cellPainter.setRenderHint(QPainter::TextAntialiasing, painter.testRenderHint(QPainter::TextAntialiasing));
+            cellPainter.drawText(QPointF(fittedX - cellRect.x(), fittedBaseline - cellRect.y()), text);
+            cellPainter.end();
 
-                painter.drawImage(cellRect.topLeft(), cellImage);
-            } else {
-                painter.drawText(QPointF(fittedX, fittedBaseline), text);
-            }
+            painter.drawImage(QRectF(cellRect), cellImage);
         } else {
             painter.drawText(textX, y + m_fontAscent, text);
         }
@@ -1704,7 +2246,18 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
 
         painter.setLayoutDirection(Qt::LeftToRight);
         int cellX = textRun.x;
-        for (const QString &cellText : textRun.cellTexts) {
+        for (int i = 0; i < textRun.cellTexts.size(); ++i) {
+            const QString &cellText = textRun.cellTexts.at(i);
+            if (emojiRenderMode() == EmojiRenderMode::CustomFallback && i + 1 < textRun.cellTexts.size()
+                && isRegionalIndicatorText(QStringView(cellText))
+                && isRegionalIndicatorText(QStringView(textRun.cellTexts.at(i + 1)))) {
+                const QString flagText = cellText + textRun.cellTexts.at(i + 1);
+                if (drawEmojiFallback(painter, QRect(cellX, y, m_cellWidth * 2, m_cellHeight), flagText)) {
+                    cellX += m_cellWidth * 2;
+                    ++i;
+                    continue;
+                }
+            }
             drawClippedCellText(cellX, 1, cellText);
             cellX += m_cellWidth;
         }
@@ -1756,9 +2309,94 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
 
         QString cellText;
         appendCodepoint(cellText, codepoint);
+        appendEmojiOverlayCell(cellText, runX, 1, defaultBackground, decorationColor, underline, strikethrough,
+                               overline);
+        if (emojiVariationSelectorPlaceholderCodepoint(QStringView(cellText)))
+            return;
         appendCodepoint(textRun.text, codepoint);
         textRun.cellTexts.append(cellText);
         ++textRun.cells;
+    };
+    struct PendingRegionalIndicator {
+        QString text;
+        int x = 0;
+        QColor decorationColor;
+        int underline = GHOSTTY_SGR_UNDERLINE_NONE;
+        bool strikethrough = false;
+        bool overline = false;
+        bool active = false;
+    };
+    PendingRegionalIndicator pendingRegionalIndicator;
+    const auto flushPendingRegionalIndicator = [&]() {
+        if (!pendingRegionalIndicator.active)
+            return;
+
+        if (drawEmojiFallback(painter, QRect(pendingRegionalIndicator.x, y, m_cellWidth, m_cellHeight),
+                              pendingRegionalIndicator.text)) {
+            drawTextDecorations(pendingRegionalIndicator.x, 1, pendingRegionalIndicator.decorationColor,
+                                pendingRegionalIndicator.underline, pendingRegionalIndicator.strikethrough,
+                                pendingRegionalIndicator.overline);
+        }
+        pendingRegionalIndicator = {};
+    };
+    const auto drawEmojiClusterOverlays = [&]() {
+        for (int i = 0; i < emojiOverlayCells.size(); ++i) {
+            const EmojiOverlayCell &startCell = emojiOverlayCells.at(i);
+            QVector<uint> clusterCodepoints = emojiOverlayCodepoints(QStringView(startCell.text));
+            if (!hasEmojiBaseCodepoint(clusterCodepoints))
+                continue;
+
+            QString clusterText = emojiOverlayText(QStringView(startCell.text));
+            int clusterRight = startCell.x + startCell.cells * m_cellWidth;
+            bool clusterHasJoiner = hasEmojiJoinerCodepoint(clusterCodepoints);
+            QVector<uint> previousCodepoints = clusterCodepoints;
+            int j = i + 1;
+            while (j < emojiOverlayCells.size()) {
+                const EmojiOverlayCell &nextCell = emojiOverlayCells.at(j);
+                const QVector<uint> nextCodepoints = emojiOverlayCodepoints(QStringView(nextCell.text));
+                if (!allEmojiClusterCodepoints(nextCodepoints))
+                    break;
+
+                const bool shouldJoin = endsWithZwJ(previousCodepoints) || startsWithEmojiJoiner(nextCodepoints)
+                                        || (clusterHasJoiner && hasEmojiBaseCodepoint(nextCodepoints));
+                if (!shouldJoin)
+                    break;
+
+                clusterText.append(emojiOverlayText(QStringView(nextCell.text)));
+                clusterRight = nextCell.x + nextCell.cells * m_cellWidth;
+                clusterHasJoiner = clusterHasJoiner || hasEmojiJoinerCodepoint(nextCodepoints);
+                previousCodepoints = nextCodepoints;
+                ++j;
+            }
+
+            if (!clusterHasJoiner)
+                continue;
+
+            const int clusterWidth = qMax(m_cellWidth, clusterRight - startCell.x);
+            const QRect clusterRect(startCell.x, y, clusterWidth, m_cellHeight);
+            const QImage emojiImage = emojiFallbackCellImage(painter, clusterRect, clusterText);
+            if (emojiImage.isNull())
+                continue;
+
+            painter.save();
+            painter.setCompositionMode(QPainter::CompositionMode_Source);
+            for (int cellIndex = i; cellIndex < j; ++cellIndex) {
+                const EmojiOverlayCell &cell = emojiOverlayCells.at(cellIndex);
+                painter.fillRect(QRect(cell.x, y, cell.cells * m_cellWidth, m_cellHeight), cell.background);
+            }
+            painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+            painter.drawImage(QRectF(clusterRect), emojiImage);
+            for (int cellIndex = i; cellIndex < j; ++cellIndex) {
+                const EmojiOverlayCell &cell = emojiOverlayCells.at(cellIndex);
+                drawTextDecorations(cell.x, cell.cells, cell.decorationColor, cell.underline, cell.strikethrough,
+                                    cell.overline);
+            }
+            painter.restore();
+#ifdef QTGHOSTTY_TESTING
+            ++m_debugLastFrameEmojiFallbackDrawCount;
+#endif
+            i = j - 1;
+        }
     };
 
     int x = 0;
@@ -1821,6 +2459,8 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
             const GhosttyColorRgb color = style.underline_color.value.rgb;
             decorationColor = QColor(color.r, color.g, color.b);
         }
+        const QColor cellBackground =
+            (style.inverse || hasBg) ? QColor(bgColor.r, bgColor.g, bgColor.b) : defaultBackground;
 
         if (!isWideHead && !isWideTail) {
             if (graphemeLen == 0) {
@@ -1862,6 +2502,12 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
             } else {
                 cellText = textFromRenderCellGraphemes(m_rowCells, graphemeLen);
             }
+            appendEmojiOverlayCell(cellText, x, 1, cellBackground, decorationColor, style.underline,
+                                   style.strikethrough, style.overline);
+            if (emojiVariationSelectorPlaceholderCodepoint(QStringView(cellText))) {
+                x += m_cellWidth;
+                continue;
+            }
 
             if (style.inverse || hasBg) {
                 if (!style.invisible) {
@@ -1893,6 +2539,50 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         flushTextRun();
         if (graphemeLen > 0 && !isWideTail && !style.invisible) {
             const QString text = textFromRenderCellGraphemes(m_rowCells, graphemeLen);
+            appendEmojiOverlayCell(text, x, isWideHead ? 2 : 1, cellBackground, decorationColor, style.underline,
+                                   style.strikethrough, style.overline);
+            if (emojiVariationSelectorPlaceholderCodepoint(QStringView(text))) {
+                x += m_cellWidth;
+                continue;
+            }
+            if (emojiRenderMode() == EmojiRenderMode::CustomFallback && isRegionalIndicatorText(QStringView(text))) {
+                if (pendingRegionalIndicator.active) {
+                    const QString flagText = pendingRegionalIndicator.text + text;
+                    if (drawEmojiFallback(painter, QRect(pendingRegionalIndicator.x, y, m_cellWidth * 2, m_cellHeight),
+                                          flagText)) {
+                        drawTextDecorations(pendingRegionalIndicator.x, 2, pendingRegionalIndicator.decorationColor,
+                                            pendingRegionalIndicator.underline, pendingRegionalIndicator.strikethrough,
+                                            pendingRegionalIndicator.overline);
+                        pendingRegionalIndicator = {};
+                        x += m_cellWidth;
+                        continue;
+                    }
+                    flushPendingRegionalIndicator();
+                }
+
+                pendingRegionalIndicator.text = text;
+                pendingRegionalIndicator.x = x;
+                pendingRegionalIndicator.decorationColor = decorationColor;
+                pendingRegionalIndicator.underline = style.underline;
+                pendingRegionalIndicator.strikethrough = style.strikethrough;
+                pendingRegionalIndicator.overline = style.overline;
+                pendingRegionalIndicator.active = true;
+                x += m_cellWidth;
+                continue;
+            }
+            flushPendingRegionalIndicator();
+            const std::optional<uint32_t> emojiCodepoint = firstEmojiCodepoint(QStringView(text));
+            const int visibleCells = emojiCodepoint ? fallbackEmojiCellSpan(isWideHead) : (isWideHead ? 2 : 1);
+            if (emojiCodepoint && emojiRenderMode() == EmojiRenderMode::CustomFallback) {
+                if (drawEmojiFallback(painter, QRect(x, y, visibleCells * m_cellWidth, m_cellHeight), text)) {
+                    drawTextDecorations(x, visibleCells, decorationColor, style.underline, style.strikethrough,
+                                        style.overline);
+                    activeFont = nullptr;
+                    activeForeground = QColor();
+                    x += m_cellWidth;
+                    continue;
+                }
+            }
 
             QFont cellFont = *cachedFont;
             cellFont.setFixedPitch(false);
@@ -1900,16 +2590,17 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
             painter.setFont(cellFont);
             painter.setPen(cellForeground);
             painter.setLayoutDirection(Qt::LeftToRight);
-            drawClippedCenteredCellText(x, isWideHead ? 2 : 1, text);
-            drawTextDecorations(x, isWideHead ? 2 : 1, decorationColor, style.underline, style.strikethrough,
-                                style.overline);
+            drawClippedCenteredCellText(x, visibleCells, text);
+            drawTextDecorations(x, visibleCells, decorationColor, style.underline, style.strikethrough, style.overline);
             activeFont = nullptr;
             activeForeground = QColor();
         }
 
         x += m_cellWidth;
     }
+    flushPendingRegionalIndicator();
     flushTextRun();
+    drawEmojiClusterOverlays();
 }
 
 void TerminalWidget::renderOverlays(QPainter &painter) const {
@@ -2381,6 +3072,9 @@ void TerminalWidget::setTerminalFont(const QFont &font) {
     m_cellHeight = fm.height();
     m_fontAscent = fm.ascent();
     updateCachedFonts();
+    m_detectedEmojiRenderMode.reset();
+    m_emojiImageCache.clear();
+    m_emojiImageCacheOrder.clear();
 
     updateGridSize();
     update();
@@ -3920,8 +4614,18 @@ void TerminalWidget::debugSetRawTerminalFont(const QFont &font) {
     m_cellHeight = fm.height();
     m_fontAscent = fm.ascent();
     updateCachedFonts();
+    m_detectedEmojiRenderMode.reset();
+    m_emojiImageCache.clear();
+    m_emojiImageCacheOrder.clear();
 
     updateGridSize();
+    update();
+}
+
+void TerminalWidget::debugSetEmojiRenderModeForTesting(EmojiRenderMode mode) {
+    m_forcedEmojiRenderMode = mode;
+    m_emojiImageCache.clear();
+    m_emojiImageCacheOrder.clear();
     update();
 }
 #endif
