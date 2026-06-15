@@ -1,0 +1,9 @@
+# Override DTK6 runtime dependency versions to the feature version (6.7)
+# instead of the full build version pinned by the DTK6 shlibs files.
+# Without this, dpkg-shlibs propagates the exact build-machine version
+# (e.g. >= 6.7.42) into ${shlibs:Depends}, breaking installation on
+# systems with an older 6.7.x patch release.
+libdtk6core   6 libdtk6core   (>= 6.7)
+libdtk6gui    6 libdtk6gui    (>= 6.7)
+libdtk6widget 6 libdtk6widget (>= 6.7)
+libdtk6log    0 libdtk6log    (>= 6.7)

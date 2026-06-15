@@ -8,10 +8,10 @@ Build-Depends: cmake (>= 3.16),
                libfontconfig-dev,
                libfreetype-dev,
                libharfbuzz-dev,
-               libdtk6widget-dev,
-               libdtk6core-dev,
-               libdtk6gui-dev,
-               libdtk6core-bin
+               libdtk6widget-dev (>= 6.7),
+               libdtk6core-dev (>= 6.7),
+               libdtk6gui-dev (>= 6.7),
+               libdtk6core-bin (>= 6.7)
 Standards-Version: 4.6.2
 Homepage: https://github.com/linuxdeepin/deepin-terminal-ghostty
 

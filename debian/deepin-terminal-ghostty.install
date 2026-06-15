@@ -1,5 +1,4 @@
 usr/bin/*
-usr/lib/*/libghostty-vt.so.0*
 usr/share/deepin-terminal-ghostty/translations/*
 usr/share/applications/deepin-terminal-ghostty.desktop
 usr/share/icons/hicolor/1024x1024/apps/deepin-terminal-ghostty.png
