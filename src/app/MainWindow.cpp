@@ -972,11 +972,12 @@ void MainWindow::rebuildCentralLayout() {
                 QStringLiteral("QSplitter::handle { background-color: rgba(128,128,128,0.25); }"));
             m_mainSplitter->setObjectName(QStringLiteral("verticalTabsSplitter"));
         }
+        bool sidebarJustAdded = (m_mainSplitter->indexOf(m_verticalSidebar) < 0);
         if (m_verticalSidebar->parentWidget() != m_mainSplitter)
             m_verticalSidebar->setParent(m_mainSplitter);
         if (m_stackWidget->parentWidget() != m_mainSplitter)
             m_stackWidget->setParent(m_mainSplitter);
-        if (m_mainSplitter->indexOf(m_verticalSidebar) < 0)
+        if (sidebarJustAdded)
             m_mainSplitter->insertWidget(0, m_verticalSidebar);
         if (m_mainSplitter->indexOf(m_stackWidget) < 0)
             m_mainSplitter->addWidget(m_stackWidget);
@@ -984,9 +985,8 @@ void MainWindow::rebuildCentralLayout() {
         m_mainSplitter->setStretchFactor(1, 1);
         m_verticalSidebar->setMinimumWidth(150);
         m_verticalSidebar->setMaximumWidth(width() / 2);
-        bool sidebarJustAdded = (m_mainSplitter->indexOf(m_verticalSidebar) < 0);
         if (sidebarJustAdded) {
-            int sw = qMin(360, width() / 2);
+            int sw = qMin(300, width() / 2);
             m_mainSplitter->setSizes({sw, width() - sw});
         }
         layout->addWidget(m_mainSplitter);
