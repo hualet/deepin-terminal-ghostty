@@ -102,6 +102,8 @@ private slots:
     void testVerticalSidebarSmallPressMovementStillSwitchesTab();
     void testVerticalSidebarPressedMoveDoesNotPropagateAsWindowDrag();
     void testVerticalSidebarTabClickRecoversFromStaleTabData();
+    void testVerticalSidebarTabButtonDragReordersTabs();
+    void testVerticalSidebarInactiveTabButtonDragKeepsCurrentTab();
     void testVerticalSidebarDragReordersTabs();
     void testVerticalSidebarIncludesDecorativeHierarchyElements();
     void testVerticalSidebarElidesLabelsWhenNarrow();
@@ -203,6 +205,13 @@ QWidget *verticalTabSection(VerticalTabSidebar *sidebar, int tabId) {
             return section;
     }
     return nullptr;
+}
+
+QAbstractButton *verticalTabButton(VerticalTabSidebar *sidebar, int tabId) {
+    auto *section = verticalTabSection(sidebar, tabId);
+    if (!section)
+        return nullptr;
+    return section->findChild<QAbstractButton *>(QStringLiteral("verticalTabButton"));
 }
 
 DTitlebar *titlebar(MainWindow &window) {
@@ -1451,6 +1460,150 @@ void TestMainWindow::testVerticalSidebarTabClickRecoversFromStaleTabData() {
 
     QTRY_COMPARE(tabs->currentIndex(), 1);
     QTRY_COMPARE(stack->currentIndex(), 1);
+}
+
+void TestMainWindow::testVerticalSidebarTabButtonDragReordersTabs() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.resize(900, 600);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    auto *pane = currentPane(window);
+    QVERIFY(pane);
+    pane->setCustomTitle(QStringLiteral("One"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+    pane = currentPane(window);
+    QVERIFY(pane);
+    pane->setCustomTitle(QStringLiteral("Two"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 3));
+    pane = currentPane(window);
+    QVERIFY(pane);
+    pane->setCustomTitle(QStringLiteral("Three"));
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+    QTRY_COMPARE(verticalSidebar->items().size(), 3);
+
+    const int firstTabId = verticalSidebar->items().at(0).id;
+    const int lastTabId = verticalSidebar->items().at(2).id;
+    auto *button = verticalTabButton(verticalSidebar, firstTabId);
+    auto *lastSection = verticalTabSection(verticalSidebar, lastTabId);
+    QVERIFY(button);
+    QVERIFY(lastSection);
+
+    const QPoint startPos = button->rect().center();
+    const QPoint dragGlobal = lastSection->mapToGlobal(lastSection->rect().bottomLeft() + QPoint(10, 8));
+    const QPoint dragPos = button->mapFromGlobal(dragGlobal);
+    const QPoint startGlobal = button->mapToGlobal(startPos);
+
+    QMouseEvent pressEvent(QEvent::MouseButtonPress, startPos, startPos, startGlobal, Qt::LeftButton, Qt::LeftButton,
+                           Qt::NoModifier);
+    QApplication::sendEvent(button, &pressEvent);
+    QVERIFY(pressEvent.isAccepted());
+
+    QMouseEvent moveEvent(QEvent::MouseMove, dragPos, dragPos, dragGlobal, Qt::NoButton, Qt::LeftButton,
+                          Qt::NoModifier);
+    QApplication::sendEvent(button, &moveEvent);
+    QVERIFY(moveEvent.isAccepted());
+
+    auto *dragProxy = verticalSidebar->findChild<QWidget *>(QStringLiteral("verticalTabDragProxy"));
+    QVERIFY(dragProxy);
+    QVERIFY(dragProxy->isVisibleTo(verticalSidebar));
+    QVERIFY(verticalSidebar->items().at(0).title != QStringLiteral("One"));
+
+    QMouseEvent releaseEvent(QEvent::MouseButtonRelease, dragPos, dragPos, dragGlobal, Qt::LeftButton, Qt::NoButton,
+                             Qt::NoModifier);
+    QApplication::sendEvent(button, &releaseEvent);
+
+    QTRY_COMPARE(verticalSidebar->items().at(2).title, QStringLiteral("One"));
+    QCOMPARE(tabs->tabText(0), QStringLiteral("Two"));
+    QCOMPARE(tabs->tabText(1), QStringLiteral("Three"));
+    QCOMPARE(tabs->tabText(2), QStringLiteral("One"));
+}
+
+void TestMainWindow::testVerticalSidebarInactiveTabButtonDragKeepsCurrentTab() {
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.resize(900, 600);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    auto *pane = currentPane(window);
+    QVERIFY(pane);
+    pane->setCustomTitle(QStringLiteral("One"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+    pane = currentPane(window);
+    QVERIFY(pane);
+    pane->setCustomTitle(QStringLiteral("Two"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 3));
+    pane = currentPane(window);
+    QVERIFY(pane);
+    pane->setCustomTitle(QStringLiteral("Three"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 4));
+    pane = currentPane(window);
+    QVERIFY(pane);
+    pane->setCustomTitle(QStringLiteral("Four"));
+
+    tabs->setCurrentIndex(0);
+    QTRY_COMPARE(tabs->currentIndex(), 0);
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+    QTRY_COMPARE(verticalSidebar->items().size(), 4);
+
+    const int draggedTabId = verticalSidebar->items().at(2).id;
+    const int firstTabId = verticalSidebar->items().at(0).id;
+    auto *button = verticalTabButton(verticalSidebar, draggedTabId);
+    auto *firstSection = verticalTabSection(verticalSidebar, firstTabId);
+    QVERIFY(button);
+    QVERIFY(firstSection);
+
+    const QPoint startPos = button->rect().center();
+    const QPoint dragGlobal = firstSection->mapToGlobal(firstSection->rect().topLeft() + QPoint(10, 2));
+    const QPoint dragPos = button->mapFromGlobal(dragGlobal);
+    const QPoint startGlobal = button->mapToGlobal(startPos);
+
+    QMouseEvent pressEvent(QEvent::MouseButtonPress, startPos, startPos, startGlobal, Qt::LeftButton, Qt::LeftButton,
+                           Qt::NoModifier);
+    QApplication::sendEvent(button, &pressEvent);
+    QVERIFY(pressEvent.isAccepted());
+
+    QMouseEvent moveEvent(QEvent::MouseMove, dragPos, dragPos, dragGlobal, Qt::NoButton, Qt::LeftButton,
+                          Qt::NoModifier);
+    QApplication::sendEvent(button, &moveEvent);
+    QVERIFY(moveEvent.isAccepted());
+    QVERIFY(verticalSidebar->findChild<QWidget *>(QStringLiteral("verticalTabDragProxy")));
+
+    QMouseEvent releaseEvent(QEvent::MouseButtonRelease, dragPos, dragPos, dragGlobal, Qt::LeftButton, Qt::NoButton,
+                             Qt::NoModifier);
+    QApplication::sendEvent(button, &releaseEvent);
+
+    QTRY_COMPARE(tabs->tabText(0), QStringLiteral("One"));
+    QCOMPARE(tabs->tabText(1), QStringLiteral("Three"));
+    QCOMPARE(tabs->tabText(2), QStringLiteral("Two"));
+    QCOMPARE(tabs->tabText(3), QStringLiteral("Four"));
+    QCOMPARE(tabs->currentIndex(), 0);
 }
 
 void TestMainWindow::testVerticalSidebarDragReordersTabs() {

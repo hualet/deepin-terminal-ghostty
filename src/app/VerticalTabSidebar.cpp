@@ -204,6 +204,42 @@ QLabel *createCommandStatusDot(QWidget *parent, TerminalWidget::CommandState sta
 
 } // namespace
 
+bool ClickableSection::eventFilter(QObject *watched, QEvent *event) {
+    auto *widget = qobject_cast<QWidget *>(watched);
+    if (!widget)
+        return QFrame::eventFilter(watched, event);
+
+    switch (event->type()) {
+        case QEvent::MouseButtonPress:
+        case QEvent::MouseMove:
+        case QEvent::MouseButtonRelease: {
+            auto *mouseEvent = static_cast<QMouseEvent *>(event);
+            const QPoint globalPos = mouseEvent->globalPosition().toPoint();
+            const QPoint localPos = mapFromGlobal(globalPos);
+            QMouseEvent forwarded(event->type(), localPos, localPos, globalPos, mouseEvent->button(),
+                                  mouseEvent->buttons(), mouseEvent->modifiers());
+            switch (event->type()) {
+                case QEvent::MouseButtonPress:
+                    mousePressEvent(&forwarded);
+                    break;
+                case QEvent::MouseMove:
+                    mouseMoveEvent(&forwarded);
+                    break;
+                case QEvent::MouseButtonRelease:
+                    mouseReleaseEvent(&forwarded);
+                    break;
+                default:
+                    break;
+            }
+            return forwarded.isAccepted();
+        }
+        default:
+            break;
+    }
+
+    return QFrame::eventFilter(watched, event);
+}
+
 void ClickableSection::mousePressEvent(QMouseEvent *event) {
     if (event->button() == Qt::LeftButton && sidebar) {
         m_dragStartPos = event->pos();
@@ -577,7 +613,7 @@ bool VerticalTabSidebar::finishTabDrag(int tabId, const QPoint &globalPos) {
     if (m_dragTabId != tabId)
         beginTabDrag(tabId, globalPos, sectionForTabId(tabId) ? sectionForTabId(tabId)->rect().center() : QPoint());
 
-    moveDragProxy(globalPos);
+    previewTabMove(tabId, globalPos);
 
     const int finalIndex = indexOfItemId(tabId);
     const int originalIndex = m_dragOriginalIndex;
@@ -785,6 +821,7 @@ ClickableSection *buildSection(VerticalTabSidebar *sidebar, const VerticalTabSid
     header->setAccessibleName(VerticalTabSidebar::tr("Terminal tab header: %1").arg(tab.title));
     header->setProperty("tabId", tab.id);
     allowHorizontalShrink(header);
+    header->installEventFilter(section);
 
     auto *headerLayout = new QHBoxLayout(header);
     headerLayout->setContentsMargins(6, 4, 6, 4);
@@ -830,6 +867,7 @@ ClickableSection *buildSection(VerticalTabSidebar *sidebar, const VerticalTabSid
     tabButton->setChecked(tab.isCurrent);
     tabButton->setProperty("tabId", tab.id);
     tabButton->setProperty("active", tab.isCurrent);
+    tabButton->installEventFilter(section);
     QObject::connect(tabButton, &QPushButton::clicked, sidebar,
                      [sidebar, tab]() { Q_EMIT sidebar->tabActivated(tab.id); });
 

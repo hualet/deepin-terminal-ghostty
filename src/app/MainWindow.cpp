@@ -32,6 +32,7 @@
 #include <QMenu>
 #include <QProcess>
 #include <QShortcut>
+#include <QSignalBlocker>
 #include <QSplitter>
 #include <QStackedWidget>
 
@@ -820,11 +821,19 @@ void MainWindow::moveTabById(int tabId, int targetIndex) {
 
     TabRecord record = m_tabs.takeAt(sourceIndex);
     m_tabs.insert(targetIndex, record);
-    syncTabWidgetsFromRecords();
 
     const int restoredCurrentIndex = indexOfTabId(currentTabId);
-    if (restoredCurrentIndex >= 0 && m_tabBar && m_tabBar->currentIndex() != restoredCurrentIndex)
-        m_tabBar->setCurrentIndex(restoredCurrentIndex);
+    if (m_tabBar) {
+        const QSignalBlocker blocker(m_tabBar);
+        syncTabWidgetsFromRecords();
+        if (restoredCurrentIndex >= 0 && m_tabBar->currentIndex() != restoredCurrentIndex)
+            m_tabBar->setCurrentIndex(restoredCurrentIndex);
+    } else {
+        syncTabWidgetsFromRecords();
+    }
+
+    if (restoredCurrentIndex >= 0)
+        onTabCurrentChanged(restoredCurrentIndex);
 }
 
 MainWindow::TabRecord *MainWindow::tabRecordForPane(TermPane *pane) {

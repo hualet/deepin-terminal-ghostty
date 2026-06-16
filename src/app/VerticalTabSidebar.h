@@ -10,6 +10,7 @@
 
 class QVBoxLayout;
 class QLabel;
+class QEvent;
 
 class VerticalTabSidebar;
 
@@ -23,6 +24,7 @@ public:
     VerticalTabSidebar *sidebar = nullptr;
 
 protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
