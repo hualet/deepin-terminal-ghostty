@@ -3,7 +3,7 @@ version: "1"
 package:
   id: org.deepin.terminal-ghostty
   name: deepin-terminal-ghostty
-  version: 1.0.5.0
+  version: 1.0.6.0
   kind: app
   description: |
     Terminal emulator for deepin, powered by Ghostty's VT engine.

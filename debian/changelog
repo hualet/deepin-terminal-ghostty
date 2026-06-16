@@ -1,3 +1,17 @@
+deepin-terminal-ghostty (1.0.6-1) unstable; urgency=medium
+
+  * Fix DTK6 packaging so packages built on one version remain
+    installable on systems with older DTK6 builds, and break the
+    circular dependency between the app and libqtghostty0.
+  * Keep vertical tab reordering stable when dragging from a single
+    pane's title button.
+  * Apply the configured sidebar default width on first show instead
+    of always collapsing it.
+  * Refresh the project website with the real screenshot, emoji
+    feature card, and corrected download links.
+
+ -- Deepin Packages <packages@deepin.org>  Tue, 16 Jun 2026 23:23:08 +0800
+
 deepin-terminal-ghostty (1.0.5-1) unstable; urgency=medium
 
   * Add color emoji rendering so emoji display in full color instead of
