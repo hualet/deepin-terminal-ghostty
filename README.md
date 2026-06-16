@@ -4,8 +4,14 @@
 
 It keeps the Deepin desktop integration and DTK-native experience of `deepin-terminal`, while replacing the terminal core with Ghostty's VT engine to build a faster, cleaner, and more modern foundation for future terminal features.
 
+Vertical Tabs:
 ![Show Case](./resources/showcase.png)
+
+Emoji Support:
 ![Show Case Emoji](./resources/showcase_emoji.png)
+
+Builtin Themes:
+![Show Case Themes](./resources/showcase_themes.png)
 
 ## Overview
 
