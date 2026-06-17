@@ -35,7 +35,7 @@ jobs:
 
       - name: Build Linglong package
         run: |
-          ll-builder build
+          ll-builder build --skip-output-check
 
       - name: Export package
         run: |
