@@ -354,10 +354,6 @@ install(FILES resources/logo_96x96.png
   DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/96x96/apps
   RENAME deepin-terminal-ghostty.png
 )
-install(FILES resources/logo_48x48.png
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/48x48/apps
-  RENAME deepin-terminal-ghostty.png
-)
 
 # ---------------------------------------------------------------------------
 # Tests
