@@ -342,16 +342,20 @@ install(FILES resources/deepin-terminal-ghostty.desktop
   DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
 )
 
-install(FILES resources/logo_1024x1024.png
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/1024x1024/apps
-  RENAME deepin-terminal-ghostty.png
-)
 install(FILES resources/logo_256x256.png
   DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
   RENAME deepin-terminal-ghostty.png
 )
 install(FILES resources/logo_128x128.png
   DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/128x128/apps
+  RENAME deepin-terminal-ghostty.png
+)
+install(FILES resources/logo_96x96.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/96x96/apps
+  RENAME deepin-terminal-ghostty.png
+)
+install(FILES resources/logo_48x48.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/48x48/apps
   RENAME deepin-terminal-ghostty.png
 )
 
