@@ -5,5 +5,13 @@ export DH_VERBOSE = 1
 %:
 	dh $@
 
+override_dh_auto_install:
+	dh_auto_install
+	# No libqtghostty / -dev packages are produced; the app ships the
+	# runtime libraries only. Drop the development symlink and headers
+	# installed by CMake so they are not shipped in the binary package.
+	rm -f debian/deepin-terminal-ghostty/usr/lib/*/libqtghostty.so
+	rm -rf debian/deepin-terminal-ghostty/usr/include
+
 override_dh_dwz:
 	dh_dwz --exclude=libghostty-vt.so.0

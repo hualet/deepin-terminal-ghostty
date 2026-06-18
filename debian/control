@@ -15,28 +15,14 @@ Build-Depends: cmake (>= 3.16),
 Standards-Version: 4.6.2
 Homepage: https://github.com/linuxdeepin/deepin-terminal-ghostty
 
-Package: libqtghostty0
-Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: Qt wrapper library for Ghostty terminal emulator
- libqtghostty is a reusable Qt wrapper around libghostty-vt.
- It provides PTY session management and terminal widget rendering
- for Qt6-based applications.
-
-Package: libqtghostty-dev
-Architecture: any
-Section: libdevel
-Depends: libqtghostty0 (= ${binary:Version}), ${misc:Depends}
-Description: Development files for libqtghostty
- This package contains the headers and development symlink
- for the libqtghostty shared library.
-
 Package: deepin-terminal-ghostty
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, libqtghostty0 (= ${binary:Version})
+Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: Deepin terminal emulator based on Ghostty
  deepin-terminal-ghostty is a Linux terminal emulator built with
  C++20, Qt6 Widgets, DTK6, and libghostty-vt.
  .
  It provides a tabbed terminal interface with deepin-style UI
- integration.
+ integration. This single package ships the application binary
+ together with the bundled libqtghostty runtime and the Ghostty
+ VT engine; no separate library or development package is produced.
