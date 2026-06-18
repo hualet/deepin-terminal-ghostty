@@ -1,6 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=Deepin Terminal
+Name=Deepin Terminal Ghostty
+Name[zh_CN]=深度终端（幽灵版）
 GenericName=Terminal Emulator
 Comment=Terminal emulator based on Ghostty
 Exec=deepin-terminal-ghostty
