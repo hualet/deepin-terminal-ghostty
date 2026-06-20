@@ -101,6 +101,8 @@ public:
     EmojiRenderMode debugEmojiRenderMode() const;
     bool debugHasDetectedEmojiRenderMode() const;
     QString debugTextForScreenRow(int row) const;
+    int debugHoverLinkStartCol() const;
+    int debugHoverLinkEndCol() const;
     int debugCursorOnlyRepaintCount() const;
     int debugScrollbackLines() const;
     size_t debugScrollbackByteBudget() const;
@@ -179,13 +181,14 @@ private:
     };
     struct LinkScanCacheEntry {
         QString text;
+        QVector<int> cellOfChar;
         QVector<LinkRange> ranges;
         quint64 generation = 0;
     };
     LinkRange hyperlinkRangeAtPosition(const QPoint &pos) const;
     LinkRange linkRangeAtPosition(const QPoint &pos) const;
     LinkRange bareLinkRangeAtCell(int screenRow, int col) const;
-    QVector<LinkRange> scanBareLinksInRow(int screenRow, const QString &text) const;
+    QVector<LinkRange> scanBareLinksInRow(int screenRow, const QString &text, const QVector<int> &cellOfChar) const;
     void touchLinkScanCacheRow(int screenRow) const;
     void clearLinkScanCache();
     void invalidateLinkScanCache();
@@ -221,6 +224,7 @@ private:
     void updateSearchHighlight();
     void scrollToSearchMatch();
     QString textForScreenRow(int row) const;
+    QString textForScreenRowWithCellMap(int row, QVector<int> &cellOfChar) const;
     QString selectedText() const;
 
     bool isWordBoundary(uint32_t codepoint) const;

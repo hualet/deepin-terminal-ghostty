@@ -165,6 +165,8 @@ private slots:
     void testBareLinkHoverWorksWithoutMouseButton();
     void testBareLinkCachedRowDoesNotRefetchText();
     void testBareLinkHoverClearsOnScroll();
+    void testBareLinkUnderlineAlignsWithLinkAfterWideCharacters();
+    void testBareLinkUnderlinePixelsFollowLinkAfterWideCharacters();
     void testSelectionDragAcrossBareLinkSelectsText();
     void testLinkUriAtPositionPrefersOsc8OverBareText();
     void testHyperlinkHoverDetection();
@@ -3399,6 +3401,70 @@ void TestTerminalWidget::testBareLinkHoverClearsOnScroll() {
     QApplication::processEvents();
     QTRY_VERIFY(hoverSpy.count() > 1);
     QCOMPARE(hoverSpy.last().first().toString(), QString());
+}
+
+void TestTerminalWidget::testBareLinkUnderlineAlignsWithLinkAfterWideCharacters() {
+    // Each CJK glyph occupies two terminal cells, so a bare link that follows
+    // such glyphs starts at a cell column greater than its string index. The
+    // hovered link range must be reported in cell columns, otherwise the
+    // rendered underline shifts left under the preceding wide glyphs.
+    TerminalWidget widget;
+    widget.resize(640, 300);
+    QVERIFY(widget.initialize());
+    widget.setMouseTracking(true);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    // "中文" = two wide glyphs -> cells 0..3, space at cell 4, URL at cells 5..
+    widget.importVtContent(QStringLiteral("中文 https://example.com\n").toUtf8());
+    QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+
+    QSignalSpy hoverSpy(&widget, &TerminalWidget::linkHovered);
+    QVERIFY(hoverSpy.isValid());
+
+    QMouseEvent moveEvent = mouseMoveEventFor(widget, cellCenterForPos(widget, 10, 0));
+    QApplication::sendEvent(&widget, &moveEvent);
+    QApplication::processEvents();
+    QTRY_VERIFY(hoverSpy.count() > 0);
+    QCOMPARE(hoverSpy.last().first().toString(), QStringLiteral("https://example.com"));
+
+    QCOMPARE(widget.debugHoverLinkStartCol(), 5);
+    QCOMPARE(widget.debugHoverLinkEndCol(), 24);
+}
+
+void TestTerminalWidget::testBareLinkUnderlinePixelsFollowLinkAfterWideCharacters() {
+    TerminalWidget widget;
+    widget.resize(640, 300);
+    QVERIFY(widget.initialize());
+    widget.setMouseTracking(true);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    widget.importVtContent(QStringLiteral("中文 https://example.com\n").toUtf8());
+    QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+
+    const QImage before = renderWidgetImage(widget);
+
+    QMouseEvent moveEvent = mouseMoveEventFor(widget, cellCenterForPos(widget, 10, 0));
+    QApplication::sendEvent(&widget, &moveEvent);
+    QApplication::processEvents();
+
+    const QImage after = renderWidgetImage(widget);
+    const QRect diff = changedBounds(before, after);
+    QVERIFY2(diff.isValid(), "hovering a bare link should draw an underline");
+
+    const QFontMetrics fm(widget.terminalFont());
+    const int cellWidth = fm.horizontalAdvance('M');
+    const int urlStartX = 5 * cellWidth;
+    const int urlEndX = 24 * cellWidth;
+    QVERIFY2(diff.left() >= urlStartX - 1, "underline must start under the URL, not under the preceding wide glyphs");
+    QVERIFY2(diff.right() <= urlEndX, "underline must not extend past the URL");
 }
 
 void TestTerminalWidget::testSelectionDragAcrossBareLinkSelectsText() {

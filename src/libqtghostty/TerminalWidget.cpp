@@ -1281,6 +1281,14 @@ int TerminalWidget::debugTextForScreenRowCount() const {
     return m_debugTextForScreenRowCount;
 }
 
+int TerminalWidget::debugHoverLinkStartCol() const {
+    return m_hoverLink.startCol;
+}
+
+int TerminalWidget::debugHoverLinkEndCol() const {
+    return m_hoverLink.endCol;
+}
+
 TerminalWidget::EmojiRenderMode TerminalWidget::debugEmojiRenderMode() const {
     return emojiRenderMode();
 }
@@ -1537,13 +1545,15 @@ TerminalWidget::LinkRange TerminalWidget::linkRangeAtPosition(const QPoint &pos)
 TerminalWidget::LinkRange TerminalWidget::bareLinkRangeAtCell(int screenRow, int col) const {
     auto cached = m_linkScanCache.constFind(screenRow);
     if (cached == m_linkScanCache.constEnd() || cached.value().generation != m_linkScanGeneration) {
-        const QString text = textForScreenRow(screenRow);
+        QVector<int> cellOfChar;
+        const QString text = textForScreenRowWithCellMap(screenRow, cellOfChar);
 #ifdef QTGHOSTTY_TESTING
         ++m_debugBareLinkScanCount;
 #endif
         LinkScanCacheEntry entry;
         entry.text = text;
-        entry.ranges = scanBareLinksInRow(screenRow, text);
+        entry.cellOfChar = cellOfChar;
+        entry.ranges = scanBareLinksInRow(screenRow, text, cellOfChar);
         entry.generation = m_linkScanGeneration;
         m_linkScanCache.insert(screenRow, entry);
     }
@@ -1560,8 +1570,20 @@ TerminalWidget::LinkRange TerminalWidget::bareLinkRangeAtCell(int screenRow, int
     return {};
 }
 
-QVector<TerminalWidget::LinkRange> TerminalWidget::scanBareLinksInRow(int screenRow, const QString &text) const {
+QVector<TerminalWidget::LinkRange> TerminalWidget::scanBareLinksInRow(int screenRow, const QString &text,
+                                                                      const QVector<int> &cellOfChar) const {
     QVector<LinkRange> ranges;
+
+    // Map a string index to its terminal cell column. Bare-link detection
+    // works on the concatenated row text, where wide characters (CJK, emoji)
+    // and supplementary-plane codepoints make the string index diverge from
+    // the cell column. Render and hit-test code treat LinkRange columns as
+    // cell columns, so translate here. Fall back to the identity mapping when
+    // no cell information is available to preserve prior behavior.
+    const auto cellOf = [&cellOfChar](int idx) -> int {
+        return (idx >= 0 && idx < cellOfChar.size()) ? cellOfChar.at(idx) : idx;
+    };
+
     for (int colon = text.indexOf(QLatin1Char(':')); colon >= 0; colon = text.indexOf(QLatin1Char(':'), colon + 1)) {
         int schemeStart = colon - 1;
         while (schemeStart >= 0 && isSchemeChar(text.at(schemeStart)))
@@ -1595,7 +1617,14 @@ QVector<TerminalWidget::LinkRange> TerminalWidget::scanBareLinksInRow(int screen
         if (!bareLinkHasRequiredPayload(QStringView(uri), QStringView(scheme)))
             continue;
 
-        ranges.push_back(LinkRange{uri, screenRow, schemeStart, end, false});
+        const int startCell = cellOf(schemeStart);
+        // Bare-link payloads are ASCII (one cell per character), so the cell
+        // span equals the character span anchored at the first cell. Use the
+        // cell of the character following the link when available to stay
+        // correct for any non-ASCII tail.
+        const int endCell = (end < cellOfChar.size()) ? cellOfChar.at(end) : startCell + (end - schemeStart);
+
+        ranges.push_back(LinkRange{uri, screenRow, startCell, endCell, false});
     }
     return ranges;
 }
@@ -3668,6 +3697,12 @@ void TerminalWidget::renderPreeditText(QPainter &painter) {
 // ---------------------------------------------------------------------------
 
 QString TerminalWidget::textForScreenRow(int row) const {
+    QVector<int> unused;
+    return textForScreenRowWithCellMap(row, unused);
+}
+
+QString TerminalWidget::textForScreenRowWithCellMap(int row, QVector<int> &cellOfChar) const {
+    cellOfChar.clear();
     if (!m_terminal)
         return QString();
 
@@ -3687,8 +3722,11 @@ QString TerminalWidget::textForScreenRow(int row) const {
         uint32_t graphemes[16];
         size_t len = 0;
         if (ghostty_grid_ref_graphemes(&ref, graphemes, 16, &len) == GHOSTTY_SUCCESS && len > 0) {
+            const int before = result.size();
             for (size_t i = 0; i < len; ++i)
                 appendCodepoint(result, graphemes[i]);
+            for (int j = before; j < result.size(); ++j)
+                cellOfChar.append(col);
         }
     }
     return result;
