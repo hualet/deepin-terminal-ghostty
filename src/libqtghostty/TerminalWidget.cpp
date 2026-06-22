@@ -2056,7 +2056,10 @@ QImage TerminalWidget::emojiFallbackCellImage(QPainter &painter, const QRect &ce
 
         emojiImage.setDevicePixelRatio(devicePixelRatio);
         const QSizeF logicalSize = emojiImage.size() / devicePixelRatio;
-        const QSizeF targetSize(qMax<qreal>(1.0, cellRect.width() - 2.0), qMax<qreal>(1.0, cellRect.height() - 2.0));
+        constexpr qreal kEmojiHorizontalInset = 4.0;
+        constexpr qreal kEmojiVerticalInset = 2.0;
+        const QSizeF targetSize(qMax<qreal>(1.0, cellRect.width() - kEmojiHorizontalInset * 2.0),
+                                qMax<qreal>(1.0, cellRect.height() - kEmojiVerticalInset * 2.0));
         if (logicalSize.width() > targetSize.width() || logicalSize.height() > targetSize.height()) {
             const QSize scaledDeviceSize =
                 (logicalSize.scaled(targetSize, Qt::KeepAspectRatio) * devicePixelRatio).toSize();

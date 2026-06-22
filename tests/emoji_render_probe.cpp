@@ -67,23 +67,12 @@ bool renderProbe(const QString &name, std::optional<TerminalWidget::EmojiRenderM
     for (int i = 0; i < 20; ++i)
         QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
 
-    const QString sample = QStringLiteral("01 👋 wave\r\n"
-                                          "02 🤚 raised-back-hand\r\n"
-                                          "03 🖐 hand-splayed\r\n"
-                                          "04 ✋ raised-hand\r\n"
-                                          "05 🖖 vulcan\r\n"
-                                          "06 👌 ok\r\n"
-                                          "07 🤌 pinched-fingers\r\n"
-                                          "08 🤏 pinching-hand\r\n"
-                                          "09 ✌️ victory\r\n"
-                                          "10 🤞 crossed-fingers\r\n"
-                                          "11 🫰 finger-heart\r\n"
-                                          "12 🤟 love-you\r\n"
-                                          "13 🤘 horns\r\n"
-                                          "14 🤙 call-me\r\n"
-                                          "15 🫵 point-at-viewer\r\n"
-                                          "16 🫱 rightwards-hand\r\n"
-                                          "17 🫲 leftwards-hand\r\n");
+    const QString sample = QStringLiteral("1  今天是个好日子 ☀️，早上喝了杯咖啡 ☕，\r\n"
+                                          "2  然后开始写代码 💻。中午和朋友约了饭 🍜，\r\n"
+                                          "3  聊了很多有趣的话题 🗣️。下午去公园散步 🌳，\r\n"
+                                          "4  看到一只可爱的狗狗 🐕，心情瞬间变好了 ❤️。\r\n"
+                                          "5  晚上准备看部电影 🎬，再早点睡觉 🌙。\r\n"
+                                          "6  记得明天要带伞 🌂，天气预报说有雨 🌧️。\r\n");
     if (!feedTerminalOutput(widget, QByteArray("\033[?25l")))
         return false;
     if (!feedTerminalOutput(widget, sample.toUtf8()))

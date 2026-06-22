@@ -54,6 +54,7 @@ private slots:
     void testEmojiFallbackRendererLeavesPlainDigitsAsText();
     void testEmojiFallbackRendererSizesVariationEmoji();
     void testEmojiFallbackRendererKeepsNarrowEmojiInOneCell();
+    void testEmojiFallbackDoesNotOverlapFollowingCjkText();
     void testEmojiFallbackClusterPreservesBackgroundColor();
     void testEmojiFallbackClusterPreservesTextDecorations();
     void testSetTerminalFontInvalidatesEmojiModeDetection();
@@ -358,6 +359,22 @@ int countPixelsNear(const QImage &image, const QRect &rect, const QColor &target
     return count;
 }
 
+int countColorfulPixels(const QImage &image, const QRect &rect) {
+    int count = 0;
+    const QRect bounded = rect.intersected(image.rect());
+    for (int y = bounded.top(); y <= bounded.bottom(); ++y) {
+        for (int x = bounded.left(); x <= bounded.right(); ++x) {
+            const QColor color = QColor::fromRgba(image.pixel(x, y));
+            const int maxChannel = qMax(color.red(), qMax(color.green(), color.blue()));
+            const int minChannel = qMin(color.red(), qMin(color.green(), color.blue()));
+            if (color.alpha() > 20 && maxChannel - minChannel > 30)
+                ++count;
+        }
+    }
+
+    return count;
+}
+
 int firstPaintedColumnInCell(const QImage &image, const QRect &cellRect, const QColor &background) {
     const QRect bounded = cellRect.intersected(image.rect());
     for (int x = bounded.left(); x <= bounded.right(); ++x) {
@@ -382,6 +399,21 @@ int lastPaintedColumn(const QImage &image, const QRect &rect, const QColor &back
                 || qAbs(pixel.blue() - background.blue()) > 8) {
                 return x;
             }
+        }
+    }
+
+    return -1;
+}
+
+int lastColorfulColumn(const QImage &image, const QRect &rect) {
+    const QRect bounded = rect.intersected(image.rect());
+    for (int x = bounded.right(); x >= bounded.left(); --x) {
+        for (int y = bounded.top(); y <= bounded.bottom(); ++y) {
+            const QColor color = QColor::fromRgba(image.pixel(x, y));
+            const int maxChannel = qMax(color.red(), qMax(color.green(), color.blue()));
+            const int minChannel = qMin(color.red(), qMin(color.green(), color.blue()));
+            if (color.alpha() > 20 && maxChannel - minChannel > 30)
+                return x;
         }
     }
 
@@ -951,6 +983,45 @@ void TestTerminalWidget::testEmojiFallbackRendererKeepsNarrowEmojiInOneCell() {
     const QRect secondCellRect(cursorRect.topLeft() + QPoint(cursorRect.width(), 0), cursorRect.size());
     QVERIFY2(widget.debugLastFrameEmojiFallbackDrawCount() > 0, "copyright sign should use emoji fallback");
     QCOMPARE(countChangedPixels(before, after, secondCellRect), 0);
+}
+
+void TestTerminalWidget::testEmojiFallbackDoesNotOverlapFollowingCjkText() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
+    CountingTerminalWidget widget;
+    widget.setStartOptions(options);
+    widget.debugSetEmojiRenderModeForTesting(TerminalWidget::EmojiRenderMode::CustomFallback);
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    feedTerminalOutput(widget, QByteArray("\033[?25l"));
+    feedTerminalOutput(widget, QStringLiteral("今天是个好日子 ☀️，早上喝了杯咖啡 ☕，\n"
+                                              "然后开始写代码 💻。中午和朋友约了饭 🍜，\n"
+                                              "聊了很多有趣的话题 🗣️。下午去公园散步 🌳，\n")
+                                   .toUtf8());
+
+    const QImage frame = renderWidgetImage(widget);
+    const QColor background = widget.debugAppliedBackground();
+    const QFontMetrics fm(widget.terminalFont());
+    const int expectedFirstLineCjkCell = 16;
+    const int expectedFirstLineEmojiCell = 15;
+    const QRect emojiCells(expectedFirstLineEmojiCell * fm.horizontalAdvance('M'), 0, fm.horizontalAdvance('M'),
+                           fm.height());
+    const QRect followingCjkCell(expectedFirstLineCjkCell * fm.horizontalAdvance('M'), 0, fm.horizontalAdvance('M'),
+                                 fm.height());
+
+    QCOMPARE(countColorfulPixels(frame, followingCjkCell), 0);
+    const int emojiRight = lastColorfulColumn(frame, emojiCells);
+    QVERIFY2(emojiRight <= followingCjkCell.left() - 2,
+             qPrintable(QStringLiteral("emoji fallback should leave a gap before following Chinese punctuation; "
+                                       "right=%1 limit=%2")
+                            .arg(emojiRight)
+                            .arg(followingCjkCell.left() - 2)));
 }
 
 void TestTerminalWidget::testEmojiFallbackClusterPreservesBackgroundColor() {
