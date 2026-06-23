@@ -6,6 +6,7 @@
 #include "TerminalScrollContainer.h"
 #include "TerminalWidget.h"
 #include "ThemeLoader.h"
+#include "logging/Logging.h"
 #include "remote/ServerConfig.h"
 
 #include <DGuiApplicationHelper>
@@ -421,11 +422,14 @@ void TermPane::removeTerminal(TerminalWidget *term) {
     QWidget *termWidget = layoutWidgetForTerminal(term);
     auto *splitter = splitterContainingWidget(m_rootWidget, termWidget);
     if (!splitter) {
-        // This is the only terminal in the pane
+        if (m_rootWidget != termWidget) {
+            qCInfo(appLog) << "Ignoring removeTerminal for terminal not in pane widget tree";
+            return;
+        }
+
         if (removedTermWasCurrent)
             m_currentTerm = nullptr;
-        if (m_rootWidget == termWidget)
-            m_rootWidget = nullptr;
+        m_rootWidget = nullptr;
         m_layout->removeWidget(termWidget);
         termWidget->deleteLater();
         Q_EMIT sessionClosed();
@@ -1042,6 +1046,7 @@ QList<QPair<QString, TerminalWidget *>> TermPane::restoreFromSplitTree(const Spl
         old->deleteLater();
         m_rootWidget = nullptr;
         m_currentTerm = nullptr;
+        m_startupTerminal = nullptr;
     }
 
     if (node.type == SplitNode::Type::Terminal) {

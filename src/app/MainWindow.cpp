@@ -481,7 +481,7 @@ void MainWindow::connectPaneSignals(TermPane *pane) {
 }
 
 void MainWindow::adoptDetachedTab(TabRecord record, bool activate) {
-    auto *pane = record.pane;
+    auto *pane = record.pane.data();
     if (!pane)
         return;
 
@@ -527,7 +527,7 @@ void MainWindow::detachTabToNewWindow(int index) {
         return;
 
     TabRecord record = m_tabs.takeAt(index);
-    auto *pane = record.pane;
+    auto *pane = record.pane.data();
     if (!pane) {
         syncTabWidgetsFromRecords();
         return;
@@ -634,7 +634,7 @@ void MainWindow::onTabCurrentChanged(int index) {
         return;
     }
 
-    auto *pane = m_tabs.at(index).pane;
+    auto *pane = m_tabs.at(index).pane.data();
     const int stackIndex = m_stackWidget->indexOf(pane);
     if (!pane || stackIndex < 0) {
         qCWarning(appLog) << "Ignoring tab activation for pane outside stack" << index;

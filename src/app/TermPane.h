@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QList>
 #include <QPair>
+#include <QPointer>
 #include <QUuid>
 #include <QWidget>
 
@@ -94,10 +95,10 @@ private:
 
     QVBoxLayout *m_layout = nullptr;
     QWidget *m_rootWidget = nullptr;
-    TerminalWidget *m_currentTerm = nullptr;
+    QPointer<TerminalWidget> m_currentTerm;
     PageSearchBar *m_searchBar = nullptr;
     std::optional<PtySession::StartOptions> m_initialSessionOptions;
-    TerminalWidget *m_startupTerminal = nullptr;
+    QPointer<TerminalWidget> m_startupTerminal;
     bool m_deferPaneStructureChanged = false;
     bool m_pendingPaneStructureChanged = false;
 };

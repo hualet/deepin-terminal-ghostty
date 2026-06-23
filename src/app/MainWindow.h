@@ -66,7 +66,7 @@ private slots:
 private:
     struct TabRecord {
         int id = 0;
-        TermPane *pane = nullptr;
+        QPointer<TermPane> pane;
         QString title;
         bool expanded = true;
         bool hasPendingCommandResult = false;

@@ -147,6 +147,9 @@ private slots:
     void testManualBehaviorOpensBlankWindow();
     void testRestoreSessionMenuActionDisabledWithoutSnapshot();
     void testRestoreSessionMenuActionEnabledWithSnapshot();
+    void testRestoreSessionSwitchTabDoesNotCrash();
+    void testRestoreSessionWithSplitsSwitchTabDoesNotCrash();
+    void testRestoreFromSplitTreeDoesNotClosePaneWhenOldTerminalExits();
     void testControlServiceListsWindowTabsPanesAndContent();
     void testControlServiceCreatesTabAndSplit();
     void testControlServiceSendsTextAndExecutesCommand();
@@ -2799,6 +2802,122 @@ void TestMainWindow::testRestoreSessionMenuActionEnabledWithSnapshot() {
     QVERIFY(action->isEnabled());
 
     SessionManager::instance().clearSnapshot();
+}
+
+void TestMainWindow::testRestoreSessionSwitchTabDoesNotCrash() {
+    auto *settings = AppSettings::instance();
+    settings->dsettings()->setOption("advanced.session.sessionRestore", true);
+    settings->dsettings()->setOption("advanced.session.sessionRestoreBehavior", QStringLiteral("auto"));
+
+    SessionManager::instance().clearSnapshot();
+
+    WindowSnapshot snap;
+    snap.width = 800;
+    snap.height = 600;
+    snap.tabs.append({1, QStringLiteral("Tab A"), SplitNode::terminal("aaa-aaa", "/tmp", "sh")});
+    snap.tabs.append({2, QStringLiteral("Tab B"), SplitNode::terminal("bbb-bbb", "/tmp", "sh")});
+    snap.tabs.append({3, QStringLiteral("Tab C"), SplitNode::terminal("ccc-ccc", "/tmp", "sh")});
+    QList<QPair<QString, TerminalWidget *>> noTerminals;
+    SessionManager::instance().save(snap, noTerminals);
+    QVERIFY(SessionManager::instance().hasSnapshot());
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 3);
+
+    QTest::qWait(500);
+
+    for (int i = 0; i < tabs->count(); ++i) {
+        tabs->setCurrentIndex(i);
+        QTest::qWait(50);
+    }
+    for (int i = tabs->count() - 1; i >= 0; --i) {
+        tabs->setCurrentIndex(i);
+        QTest::qWait(50);
+    }
+
+    auto *term = currentTerminal(window);
+    QVERIFY(term);
+
+    SessionManager::instance().clearSnapshot();
+}
+
+void TestMainWindow::testRestoreSessionWithSplitsSwitchTabDoesNotCrash() {
+    auto *settings = AppSettings::instance();
+    settings->dsettings()->setOption("advanced.session.sessionRestore", true);
+    settings->dsettings()->setOption("advanced.session.sessionRestoreBehavior", QStringLiteral("auto"));
+
+    SessionManager::instance().clearSnapshot();
+
+    WindowSnapshot snap;
+    snap.width = 800;
+    snap.height = 600;
+    snap.tabs.append({1, QStringLiteral("Single"), SplitNode::terminal("s1-s1s1", "/tmp", "sh")});
+    snap.tabs.append({2, QStringLiteral("Split"),
+                      SplitNode::split(Qt::Horizontal, {400, 400},
+                                       {SplitNode::terminal("sp1-sp1", "/tmp", "sh"),
+                                        SplitNode::terminal("sp2-sp2", "/tmp", "sh")})});
+    snap.tabs.append(
+        {3, QStringLiteral("Triple"),
+         SplitNode::split(Qt::Vertical, {300, 300, 300},
+                          {SplitNode::terminal("t1-t1t1", "/tmp", "sh"), SplitNode::terminal("t2-t2t2", "/tmp", "sh"),
+                           SplitNode::terminal("t3-t3t3", "/tmp", "sh")})});
+    QList<QPair<QString, TerminalWidget *>> noTerminals;
+    SessionManager::instance().save(snap, noTerminals);
+    QVERIFY(SessionManager::instance().hasSnapshot());
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 3);
+
+    QTest::qWait(500);
+
+    for (int i = 0; i < tabs->count(); ++i) {
+        tabs->setCurrentIndex(i);
+        QTest::qWait(50);
+    }
+    for (int i = tabs->count() - 1; i >= 0; --i) {
+        tabs->setCurrentIndex(i);
+        QTest::qWait(50);
+    }
+
+    auto *term = currentTerminal(window);
+    QVERIFY(term);
+
+    SessionManager::instance().clearSnapshot();
+}
+
+void TestMainWindow::testRestoreFromSplitTreeDoesNotClosePaneWhenOldTerminalExits() {
+    ExposedTermPane pane;
+    pane.resize(1200, 800);
+    pane.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&pane));
+
+    TerminalWidget *initialTerm = pane.currentTerminal();
+    QVERIFY(initialTerm);
+
+    QSignalSpy sessionClosedSpy(&pane, &TermPane::sessionClosed);
+    QVERIFY(sessionClosedSpy.isValid());
+
+    pane.restoreFromSplitTree(SplitNode::terminal("restored-uuid", "/tmp", "restored"));
+
+    QCOMPARE(pane.paneInfos().size(), 1);
+    QVERIFY(pane.currentTerminal() != initialTerm);
+    QVERIFY(pane.currentTerminal() != nullptr);
+
+    QVERIFY(QMetaObject::invokeMethod(initialTerm, "sessionClosed", Qt::DirectConnection));
+
+    QCOMPARE(sessionClosedSpy.count(), 0);
+    QCOMPARE(pane.paneInfos().size(), 1);
+    QVERIFY(pane.currentTerminal() != nullptr);
 }
 
 void TestMainWindow::testControlServiceListsWindowTabsPanesAndContent() {
