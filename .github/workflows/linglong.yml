@@ -17,45 +17,30 @@ env:
 
 jobs:
   build-linglong:
-    runs-on: ubuntu-latest
-    container:
-      image: docker.io/hualet/deepin:25.1-builder
-      options: --privileged
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install build dependencies
-        run: |
-          apt-get update
-          apt-get install -y \
-          linglong-builder
-
-      - name: Build Linglong package
-        run: |
-          ll-builder build --skip-output-check
-
-      - name: Export package
-        run: |
-          ll-builder export
-          mkdir -p "${GITHUB_WORKSPACE}/output"
-          find . -maxdepth 1 -type f \( -name '*.layer' -o -name '*.uab' \) \
-            -exec cp {} "${GITHUB_WORKSPACE}/output/" \;
+      - name: ll-builder-build
+        uses: myml/linglong-builder-action@main
+        with:
+          format: uab
 
       - name: Upload Linglong package
         uses: actions/upload-artifact@v4
         with:
           name: linglong-package
-          path: output/*.uab
+          path: ./*.uab
 
       - name: Publish release assets
         if: github.event_name == 'push' || github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          files: output/*.uab
+          files: ./*.uab
           generate_release_notes: ${{ github.event_name == 'push' }}
           overwrite_files: true
         env:
