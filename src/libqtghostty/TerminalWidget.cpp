@@ -859,6 +859,126 @@ bool bareLinkHasRequiredPayload(QStringView uri, QStringView scheme) {
     return hostEnd > 0;
 }
 
+bool isIPv4Octet(QStringView octet) {
+    if (octet.isEmpty() || octet.size() > 3)
+        return false;
+    if (octet.size() > 1 && octet.at(0).toLatin1() == '0')
+        return false;
+    int val = 0;
+    for (QChar c : octet) {
+        const auto ch = c.toLatin1();
+        if (ch < '0' || ch > '9')
+            return false;
+        val = val * 10 + (ch - '0');
+    }
+    return val <= 255;
+}
+
+bool isValidIPv4(QStringView s) {
+    int octets = 0;
+    int segStart = 0;
+    for (int i = 0; i <= s.size(); ++i) {
+        if (i == s.size() || s.at(i) == QLatin1Char('.')) {
+            if (!isIPv4Octet(s.mid(segStart, i - segStart)))
+                return false;
+            ++octets;
+            segStart = i + 1;
+        }
+    }
+    return octets == 4;
+}
+
+bool isIPv6HexGroup(QStringView g) {
+    if (g.isEmpty() || g.size() > 4)
+        return false;
+    for (QChar c : g) {
+        const auto ch = c.toLatin1();
+        if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')))
+            return false;
+    }
+    return true;
+}
+
+bool isValidIPv6(QStringView s) {
+    if (s.isEmpty())
+        return false;
+
+    bool hasColon = false;
+    for (QChar c : s) {
+        if (c == QLatin1Char(':')) {
+            hasColon = true;
+            break;
+        }
+    }
+    if (!hasColon)
+        return false;
+
+    // "::" may appear at most once; "::::" / ":::" are rejected below.
+    int doubleColon = -1;
+    for (int i = 0; i + 1 < s.size(); ++i) {
+        if (s.at(i) == QLatin1Char(':') && s.at(i + 1) == QLatin1Char(':')) {
+            if (doubleColon != -1)
+                return false;
+            doubleColon = i;
+        }
+    }
+
+    QVector<QStringView> groups;
+    int segStart = 0;
+    for (int i = 0; i <= s.size(); ++i) {
+        if (i == s.size() || s.at(i) == QLatin1Char(':')) {
+            groups.append(s.mid(segStart, i - segStart));
+            segStart = i + 1;
+        }
+    }
+
+    int groupCount = 0;
+    bool sawEmpty = false;
+    for (int i = 0; i < groups.size(); ++i) {
+        const QStringView g = groups[i];
+        if (g.isEmpty()) {
+            sawEmpty = true;
+            continue;
+        }
+        // A dotted-quad suffix is allowed only as the final group and counts
+        // as two groups (an embedded IPv4 address).
+        if (g.contains(QLatin1Char('.'))) {
+            if (i != groups.size() - 1)
+                return false;
+            if (!isValidIPv4(g))
+                return false;
+            groupCount += 2;
+        } else {
+            if (!isIPv6HexGroup(g))
+                return false;
+            ++groupCount;
+        }
+    }
+
+    if (doubleColon != -1) {
+        // Empty groups must form one contiguous run (the '::' elision). A
+        // stray single colon at an edge (e.g. "::1:") produces a second,
+        // disjoint empty group and is not a valid address.
+        int firstEmpty = -1;
+        int lastEmpty = -1;
+        int emptyCount = 0;
+        for (int i = 0; i < groups.size(); ++i) {
+            if (groups[i].isEmpty()) {
+                if (firstEmpty == -1)
+                    firstEmpty = i;
+                lastEmpty = i;
+                ++emptyCount;
+            }
+        }
+        if (emptyCount > 0 && (lastEmpty - firstEmpty + 1) != emptyCount)
+            return false;
+        return groupCount <= 7;
+    }
+    if (sawEmpty)
+        return false;
+    return groupCount == 8;
+}
+
 std::optional<QString> shellCommandFromOscPayload(const QByteArray &payload) {
     const std::optional<QString> qtGhosttyCommand = commandFromQtGhosttyShellCommand(payload);
     if (qtGhosttyCommand.has_value())
@@ -1626,6 +1746,86 @@ QVector<TerminalWidget::LinkRange> TerminalWidget::scanBareLinksInRow(int screen
 
         ranges.push_back(LinkRange{uri, screenRow, startCell, endCell, false});
     }
+
+    // Detect bare IPv4 / IPv6 addresses that are not already part of a
+    // scheme-based URL above (e.g. 192.168.1.1, ::1, fe80::1, ::ffff:1.2.3.4).
+    const QStringView textView(text);
+    const auto overlapsExisting = [&ranges](int startCell, int endCell) {
+        for (const LinkRange &r : ranges) {
+            if (startCell < r.endCol && endCell > r.startCol)
+                return true;
+        }
+        return false;
+    };
+    const auto addIpRange = [&](int start, int end) {
+        if (end - start < 3)
+            return;
+        if (start > 0 && text.at(start - 1).isLetterOrNumber())
+            return;
+        if (end < text.size() && text.at(end).isLetterOrNumber())
+            return;
+
+        // Trim terminal punctuation absorbed by the scanner. A trailing '.' is
+        // never part of a valid IPv4/IPv6 address, and a single trailing ':'
+        // (not a '::' compression) is IPv6 punctuation, e.g. "192.168.1.1." or
+        // "::1:" in prose. Valid addresses never end with these.
+        while (end > start && text.at(end - 1) == QLatin1Char('.'))
+            --end;
+        while (end - start > 2 && text.at(end - 1) == QLatin1Char(':')
+               && (end - 2 < start || text.at(end - 2) != QLatin1Char(':')))
+            --end;
+
+        if (end - start < 3)
+            return;
+        const QStringView candidate = textView.mid(start, end - start);
+        const bool valid = candidate.contains(QLatin1Char(':')) ? isValidIPv6(candidate) : isValidIPv4(candidate);
+        if (!valid)
+            return;
+        const int startCell = cellOf(start);
+        const int endCell = (end < cellOfChar.size()) ? cellOfChar.at(end) : startCell + (end - start);
+        if (overlapsExisting(startCell, endCell))
+            return;
+        ranges.push_back(LinkRange{text.mid(start, end - start), screenRow, startCell, endCell, false});
+    };
+
+    // Broad pass: hex digits, colons and dots (dots allow an embedded IPv4
+    // suffix in addresses such as ::ffff:192.168.1.1).
+    const auto isIPv6Char = [](QChar c) {
+        const auto ch = c.toLatin1();
+        return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F') || ch == ':'
+               || ch == '.';
+    };
+    for (int i = 0; i < text.size();) {
+        if (!isIPv6Char(text.at(i))) {
+            ++i;
+            continue;
+        }
+        const int start = i;
+        while (i < text.size() && isIPv6Char(text.at(i)))
+            ++i;
+        addIpRange(start, i);
+    }
+
+    // Narrow pass: digits and dots only. This picks up the host of a
+    // "host:port" run (e.g. 192.168.1.1:8080) that the broad pass rejected as
+    // an invalid IPv6 address.
+    for (int i = 0; i < text.size();) {
+        const QChar c = text.at(i);
+        const auto ch = c.toLatin1();
+        if (!((ch >= '0' && ch <= '9') || ch == '.')) {
+            ++i;
+            continue;
+        }
+        const int start = i;
+        while (i < text.size()) {
+            const auto d = text.at(i).toLatin1();
+            if (!((d >= '0' && d <= '9') || d == '.'))
+                break;
+            ++i;
+        }
+        addIpRange(start, i);
+    }
+
     return ranges;
 }
 

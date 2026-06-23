@@ -169,6 +169,10 @@ private slots:
     void testBareLinkUnderlineAlignsWithLinkAfterWideCharacters();
     void testBareLinkUnderlinePixelsFollowLinkAfterWideCharacters();
     void testSelectionDragAcrossBareLinkSelectsText();
+    void testBareLinkDetectsIpAddresses_data();
+    void testBareLinkDetectsIpAddresses();
+    void testBareLinkDoesNotDetectNumbersOrVersionsAsIp();
+    void testBareLinkIpInsideSchemeUrlIsNotSplit();
     void testLinkUriAtPositionPrefersOsc8OverBareText();
     void testHyperlinkHoverDetection();
     void testHyperlinkCtrlClick();
@@ -3562,6 +3566,82 @@ void TestTerminalWidget::testSelectionDragAcrossBareLinkSelectsText() {
     QApplication::processEvents();
 
     QVERIFY(widget.debugSelectedText().contains(QStringLiteral("https://example.com")));
+}
+
+void TestTerminalWidget::testBareLinkDetectsIpAddresses_data() {
+    QTest::addColumn<QByteArray>("content");
+    QTest::addColumn<int>("col");
+    QTest::addColumn<QString>("expected");
+
+    QTest::newRow("ipv4") << QByteArray("x 192.168.1.1\n") << 7 << QStringLiteral("192.168.1.1");
+    QTest::newRow("ipv4-edge-octets") << QByteArray("x 10.0.0.255\n") << 5 << QStringLiteral("10.0.0.255");
+    QTest::newRow("ipv4-at-line-start") << QByteArray("192.168.1.1 up\n") << 5 << QStringLiteral("192.168.1.1");
+    QTest::newRow("ipv4-host-port") << QByteArray("x 192.168.1.1:8080\n") << 7 << QStringLiteral("192.168.1.1");
+    QTest::newRow("ipv6-loopback") << QByteArray("x ::1\n") << 3 << QStringLiteral("::1");
+    QTest::newRow("ipv6-link-local") << QByteArray("x fe80::1\n") << 5 << QStringLiteral("fe80::1");
+    QTest::newRow("ipv6-full-compressed") << QByteArray("x 2001:db8::1\n") << 6 << QStringLiteral("2001:db8::1");
+    QTest::newRow("ipv6-embedded-v4") << QByteArray("x ::ffff:192.168.1.1\n") << 10
+                                      << QStringLiteral("::ffff:192.168.1.1");
+    QTest::newRow("ipv4-trailing-dot") << QByteArray("x 192.168.1.1.\n") << 7 << QStringLiteral("192.168.1.1");
+    QTest::newRow("ipv6-trailing-colon") << QByteArray("x ::1:\n") << 3 << QStringLiteral("::1");
+    QTest::newRow("ipv6-trailing-dot") << QByteArray("x ::ffff:1.2.3.4.\n") << 8 << QStringLiteral("::ffff:1.2.3.4");
+}
+
+void TestTerminalWidget::testBareLinkDetectsIpAddresses() {
+    QFETCH(QByteArray, content);
+    QFETCH(int, col);
+    QFETCH(QString, expected);
+
+    TerminalWidget widget;
+    widget.resize(640, 300);
+    QVERIFY(widget.initialize());
+    widget.importVtContent(content);
+    QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+
+    QCOMPARE(widget.linkUriAtPosition(cellCenterForPos(widget, col, 0)), expected);
+}
+
+void TestTerminalWidget::testBareLinkDoesNotDetectNumbersOrVersionsAsIp() {
+    struct Case {
+        QByteArray content;
+        int col;
+    };
+    const Case cases[] = {
+        {QByteArray("x 1.2.3\n"), 4},     // too few octets
+        {QByteArray("x 256.1.1.1\n"), 4}, // octet out of range
+        {QByteArray("x 8080\n"), 3},      // bare number
+        {QByteArray("v1.2.3.4\n"), 4},    // preceded by a letter
+        {QByteArray("x 12:34:56\n"), 4},  // looks like time, not IPv6
+        {QByteArray("x 1.2.3.4.5\n"), 4}, // too many octets
+    };
+
+    for (const Case &c : cases) {
+        TerminalWidget widget;
+        widget.resize(640, 300);
+        QVERIFY(widget.initialize());
+        widget.importVtContent(c.content);
+        QApplication::processEvents();
+        widget.scrollViewportToOffset(0);
+        QApplication::processEvents();
+
+        QCOMPARE(widget.linkUriAtPosition(cellCenterForPos(widget, c.col, 0)), QString());
+    }
+}
+
+void TestTerminalWidget::testBareLinkIpInsideSchemeUrlIsNotSplit() {
+    TerminalWidget widget;
+    widget.resize(640, 300);
+    QVERIFY(widget.initialize());
+    widget.importVtContent(QByteArray("x http://192.168.1.1/\n"));
+    QApplication::processEvents();
+    widget.scrollViewportToOffset(0);
+    QApplication::processEvents();
+
+    // Clicking on the IPv4 octets must return the full scheme URL, not a
+    // standalone IP range carved out of the URL.
+    QCOMPARE(widget.linkUriAtPosition(cellCenterForPos(widget, 10, 0)), QStringLiteral("http://192.168.1.1/"));
 }
 
 void TestTerminalWidget::testLinkUriAtPositionPrefersOsc8OverBareText() {
