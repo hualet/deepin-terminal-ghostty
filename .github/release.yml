@@ -1,0 +1,42 @@
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+      - duplicate
+      - invalid
+      - question
+    authors:
+      - github-actions[bot]
+      - dependabot[bot]
+  categories:
+    - title: Breaking Changes
+      labels:
+        - breaking-change
+        - semver-major
+    - title: Features
+      labels:
+        - enhancement
+        - feature
+        - feat
+    - title: Bug Fixes
+      labels:
+        - bug
+        - fix
+    - title: Performance
+      labels:
+        - performance
+        - perf
+    - title: Documentation
+      labels:
+        - documentation
+        - docs
+    - title: CI and Packaging
+      labels:
+        - ci
+        - build
+        - packaging
+        - debian
+        - linglong
+    - title: Other Changes
+      labels:
+        - "*"
