@@ -255,6 +255,12 @@ void ClickableSection::mousePressEvent(QMouseEvent *event) {
         return;
     }
 
+    if (event->button() == Qt::RightButton && sidebar) {
+        sidebar->requestTabMenu(tabId);
+        event->accept();
+        return;
+    }
+
     QFrame::mousePressEvent(event);
 }
 
@@ -516,6 +522,10 @@ void VerticalTabSidebar::requestTabMove(int tabId, const QPoint &globalPos) {
 
 void VerticalTabSidebar::requestTabClose(int tabId) {
     Q_EMIT tabCloseRequested(tabId);
+}
+
+void VerticalTabSidebar::requestTabMenu(int tabId) {
+    Q_EMIT tabMenuRequested(tabId);
 }
 
 void VerticalTabSidebar::beginTabDrag(int tabId, const QPoint &globalPos, const QPoint &hotSpot) {

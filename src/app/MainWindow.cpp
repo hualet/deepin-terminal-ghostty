@@ -19,9 +19,11 @@
 #include <DApplication>
 #include <DDialog>
 #include <DGuiApplicationHelper>
+#include <DLineEdit>
 #include <DTitlebar>
 #include <DWindowManagerHelper>
 #include <QActionGroup>
+#include <QCursor>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QInputDialog>
@@ -224,6 +226,7 @@ DTabBar *MainWindow::ensureTabBar() {
     connect(m_tabBar, &DTabBar::currentChanged, this, &MainWindow::onTabCurrentChanged);
     connect(m_tabBar, &DTabBar::tabMoved, this, &MainWindow::onTabMoved);
     connect(m_tabBar, &DTabBar::tabReleaseRequested, this, &MainWindow::onTabReleaseRequested);
+    connect(static_cast<TabBar *>(m_tabBar.data()), &TabBar::tabMenuRequested, this, &MainWindow::showTabContextMenu);
 
     return m_tabBar;
 }
@@ -679,6 +682,35 @@ void MainWindow::onTabReleaseRequested(int index) {
     detachTabToNewWindow(index);
 }
 
+void MainWindow::showTabContextMenu(int index) {
+    if (index < 0 || index >= m_tabBar->count() || index >= m_tabs.size())
+        return;
+
+    const int tabId = m_tabs.at(index).id;
+
+    QMenu menu(this);
+    menu.addAction(tr("Close tab"), this, [this, tabId]() {
+        const int idx = indexOfTabId(tabId);
+        if (idx >= 0)
+            onTabCloseRequested(idx);
+    });
+
+    auto *closeOtherAction = menu.addAction(tr("Close other tabs"), this, [this, tabId]() {
+        const int idx = indexOfTabId(tabId);
+        if (idx >= 0)
+            closeOtherTabs(idx);
+    });
+    closeOtherAction->setEnabled(m_tabBar->count() >= 2);
+
+    menu.addAction(tr("Rename title"), this, [this, tabId]() {
+        const int idx = indexOfTabId(tabId);
+        if (idx >= 0)
+            renameTabTitle(idx);
+    });
+
+    menu.exec(QCursor::pos());
+}
+
 void MainWindow::onTerminalTitleChanged(const QString &title) {
     auto *pane = qobject_cast<TermPane *>(sender());
     if (!pane)
@@ -972,6 +1004,11 @@ void MainWindow::rebuildCentralLayout() {
                 if (index >= 0)
                     onTabCloseRequested(index, false);
             });
+            connect(m_verticalSidebar, &VerticalTabSidebar::tabMenuRequested, this, [this](int tabId) {
+                const int index = indexOfTabId(tabId);
+                if (index >= 0)
+                    showTabContextMenu(index);
+            });
         }
         if (!m_mainSplitter) {
             m_mainSplitter = new QSplitter(Qt::Horizontal, this);
@@ -1044,7 +1081,7 @@ void MainWindow::setupShortcuts() {
         if (idx >= 0)
             onTabCloseRequested(idx);
     });
-    createOnce(m_scCloseOtherTabs, &MainWindow::closeOtherTabs);
+    createOnce(m_scCloseOtherTabs, static_cast<void (MainWindow::*)()>(&MainWindow::closeOtherTabs));
     createOnce(m_scPrevTab, [this]() {
         int idx = m_tabBar->currentIndex();
         if (m_tabBar->count() > 1)
@@ -1168,12 +1205,26 @@ void MainWindow::updateShortcut(QShortcut *shortcut, const QString &name) {
 }
 
 void MainWindow::closeOtherTabs() {
-    int current = m_tabBar->currentIndex();
-    if (current < 0)
+    closeOtherTabs(m_tabBar->currentIndex());
+}
+
+void MainWindow::closeOtherTabs(int keepIndex) {
+    if (keepIndex < 0 || keepIndex >= m_tabs.size())
         return;
+
+    auto *keepPane = qobject_cast<TermPane *>(m_tabs.at(keepIndex).pane.data());
+    if (!keepPane)
+        return;
+
+    if (m_tabBar->currentIndex() != keepIndex)
+        m_tabBar->setCurrentIndex(keepIndex);
+
     for (int i = m_tabBar->count() - 1; i >= 0; --i) {
-        if (i != current)
-            onTabCloseRequested(i);
+        int stackIndex = m_tabBar->tabData(i).toInt();
+        QWidget *page = m_stackWidget->widget(stackIndex);
+        if (page == keepPane)
+            continue;
+        onTabCloseRequested(i);
     }
 }
 
@@ -1183,19 +1234,33 @@ void MainWindow::gotoTab(int index) {
 }
 
 void MainWindow::onShortcutRenameTitle() {
-    auto *pane = currentPane();
+    renameTabTitle(m_tabBar->currentIndex());
+}
+
+void MainWindow::renameTabTitle(int index) {
+    if (index < 0 || index >= m_tabs.size())
+        return;
+    auto *pane = qobject_cast<TermPane *>(m_tabs.at(index).pane.data());
     if (!pane)
         return;
-    auto *term = pane->currentTerminal();
-    if (!term)
-        return;
 
-    bool ok = false;
-    QString currentText = m_tabBar->tabText(m_tabBar->currentIndex());
-    QString text =
-        QInputDialog::getText(this, tr("Rename title"), tr("New title:"), QLineEdit::Normal, currentText, &ok);
-    if (ok && !text.isEmpty())
-        pane->setCustomTitle(text);
+    QString currentText = m_tabBar->tabText(index);
+
+    DDialog dlg(tr("Rename title"), QString(), this);
+    auto *edit = new DLineEdit(&dlg);
+    edit->setText(currentText);
+    edit->setMinimumWidth(280);
+    dlg.addSpacing(8);
+    dlg.addContent(edit);
+    dlg.addSpacing(8);
+    dlg.addButton(tr("Cancel", "button"), false, DDialog::ButtonNormal);
+    dlg.addButton(tr("Confirm", "button"), true, DDialog::ButtonRecommend);
+
+    if (dlg.exec() == QDialog::Accepted) {
+        QString text = edit->text();
+        if (!text.isEmpty())
+            pane->setCustomTitle(text);
+    }
 }
 
 void MainWindow::onShortcutDisplayShortcuts() {

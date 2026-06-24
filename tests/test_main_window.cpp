@@ -137,6 +137,9 @@ private slots:
     void testVerticalSidebarCloseButtonMatchesTabStyleAndClosesTab();
     void testHorizontalTabBarMiddleClickClosesTab();
     void testVerticalSidebarMiddleClickClosesTab();
+    void testTabBarRightClickRequestsMenu();
+    void testTabContextMenuCloseOtherTabsKeepsClickedTab();
+    void testVerticalSidebarRightClickRequestsMenu();
     void testCommandStatusDotNotShownAfterSwitchingFromTabWhereCommandRan();
     void testCommandStatusDotShownWhenCommandFinishesInBackgroundTab();
     void testCommandStatusDotNotShownForInactivePaneInCurrentTab();
@@ -2536,6 +2539,84 @@ void TestMainWindow::testVerticalSidebarMiddleClickClosesTab() {
     QCOMPARE(closeSpy.count(), 1);
     QCOMPARE(closeSpy.first().first().toInt(), currentItem->id);
     QVERIFY(waitForTabCount(tabs, 1));
+}
+
+void TestMainWindow::testTabBarRightClickRequestsMenu() {
+    TabBar bar;
+    bar.resize(400, 36);
+    bar.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&bar));
+    bar.addTab(QStringLiteral("One"));
+    bar.addTab(QStringLiteral("Two"));
+    QCOMPARE(bar.count(), 2);
+
+    QSignalSpy menuSpy(&bar, &TabBar::tabMenuRequested);
+    QVERIFY(menuSpy.isValid());
+
+    QTest::mousePress(&bar, Qt::RightButton, Qt::NoModifier, bar.tabRect(0).center());
+    QCOMPARE(menuSpy.count(), 1);
+    QCOMPARE(menuSpy.first().first().toInt(), 0);
+
+    menuSpy.clear();
+    QTest::mousePress(&bar, Qt::RightButton, Qt::NoModifier, bar.tabRect(1).center());
+    QCOMPARE(menuSpy.count(), 1);
+    QCOMPARE(menuSpy.first().first().toInt(), 1);
+}
+
+void TestMainWindow::testTabContextMenuCloseOtherTabsKeepsClickedTab() {
+    AppSettings::instance()->setVerticalTabsEnabled(false);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    auto *firstPane = currentPane(window);
+    QVERIFY(firstPane);
+    firstPane->setCustomTitle(QStringLiteral("One"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+    currentPane(window)->setCustomTitle(QStringLiteral("Two"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 3));
+    currentPane(window)->setCustomTitle(QStringLiteral("Three"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "closeOtherTabs", Qt::DirectConnection, Q_ARG(int, 0)));
+    QVERIFY(waitForTabCount(tabs, 1));
+    QCOMPARE(tabs->tabText(0), QStringLiteral("One"));
+    QCOMPARE(currentPane(window), firstPane);
+}
+
+void TestMainWindow::testVerticalSidebarRightClickRequestsMenu() {
+    VerticalTabSidebar sidebar;
+    QList<VerticalTabSidebar::TabItem> items;
+    VerticalTabSidebar::TabItem item1;
+    item1.id = 1;
+    item1.title = QStringLiteral("One");
+    items << item1;
+    VerticalTabSidebar::TabItem item2;
+    item2.id = 2;
+    item2.title = QStringLiteral("Two");
+    items << item2;
+    sidebar.setItems(items);
+    sidebar.resize(220, 600);
+    sidebar.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&sidebar));
+
+    QWidget *section = verticalTabSection(&sidebar, 2);
+    QVERIFY(section);
+
+    QSignalSpy menuSpy(&sidebar, &VerticalTabSidebar::tabMenuRequested);
+    QVERIFY(menuSpy.isValid());
+
+    QTest::mousePress(section, Qt::RightButton, Qt::NoModifier, section->rect().center());
+    QCOMPARE(menuSpy.count(), 1);
+    QCOMPARE(menuSpy.first().first().toInt(), 2);
 }
 
 void triggerCommandSucceeded(TerminalWidget *terminal) {

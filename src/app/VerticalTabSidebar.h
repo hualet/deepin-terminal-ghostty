@@ -58,6 +58,7 @@ public:
     bool isTabDragActive() const;
     void requestTabMove(int tabId, const QPoint &globalPos);
     void requestTabClose(int tabId);
+    void requestTabMenu(int tabId);
     void beginTabDrag(int tabId, const QPoint &globalPos, const QPoint &hotSpot);
     void previewTabMove(int tabId, const QPoint &globalPos);
     bool finishTabDrag(int tabId, const QPoint &globalPos);
@@ -69,6 +70,7 @@ signals:
     void tabDragFinished();
     void addTabRequested();
     void tabCloseRequested(int tabId);
+    void tabMenuRequested(int tabId);
 
 protected:
     void resizeEvent(QResizeEvent *event) override;

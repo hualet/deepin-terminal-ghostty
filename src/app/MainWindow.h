@@ -62,6 +62,8 @@ private slots:
     void onTerminalSessionClosed();
     void onPaneTerminalChanged(TerminalWidget *term);
     void onSettingsTriggered();
+    void showTabContextMenu(int index);
+    void closeOtherTabs(int keepIndex);
 
 private:
     struct TabRecord {
@@ -100,6 +102,7 @@ private:
     void closeOtherTabs();
     void gotoTab(int index);
     void onShortcutRenameTitle();
+    void renameTabTitle(int index);
     void onShortcutDisplayShortcuts();
     void onShortcutCustomCommand();
     void onShortcutRemoteManagement();

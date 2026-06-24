@@ -13,6 +13,8 @@ bool TabBar::eventFilter(QObject *watched, QEvent *event) {
         auto *mouseEvent = static_cast<QMouseEvent *>(event);
         if (mouseEvent->button() == Qt::MiddleButton)
             handleMiddleButtonClick(mouseEvent);
+        else if (mouseEvent->button() == Qt::RightButton && handleRightButtonClick(mouseEvent))
+            return true;
     }
 
     return false;
@@ -27,4 +29,17 @@ void TabBar::handleMiddleButtonClick(QMouseEvent *mouseEvent) {
             break;
         }
     }
+}
+
+bool TabBar::handleRightButtonClick(QMouseEvent *mouseEvent) {
+    const QPoint position = mouseEvent->pos();
+
+    for (int i = 0; i < count(); ++i) {
+        if (tabRect(i).contains(position)) {
+            Q_EMIT tabMenuRequested(i);
+            return true;
+        }
+    }
+
+    return false;
 }
