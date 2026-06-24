@@ -55,6 +55,7 @@ private slots:
     void testEmojiFallbackRendererSizesVariationEmoji();
     void testEmojiFallbackRendererKeepsNarrowEmojiInOneCell();
     void testEmojiFallbackDoesNotOverlapFollowingCjkText();
+    void testWarningEmojiVariationDoesNotAddExtraGapBeforeText();
     void testEmojiFallbackClusterPreservesBackgroundColor();
     void testEmojiFallbackClusterPreservesTextDecorations();
     void testSetTerminalFontInvalidatesEmojiModeDetection();
@@ -1026,6 +1027,48 @@ void TestTerminalWidget::testEmojiFallbackDoesNotOverlapFollowingCjkText() {
                                        "right=%1 limit=%2")
                             .arg(emojiRight)
                             .arg(followingCjkCell.left() - 2)));
+}
+
+void TestTerminalWidget::testWarningEmojiVariationDoesNotAddExtraGapBeforeText() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
+    CountingTerminalWidget widget;
+    widget.setStartOptions(options);
+    widget.debugSetEmojiRenderModeForTesting(TerminalWidget::EmojiRenderMode::CustomFallback);
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    feedTerminalOutput(widget, QByteArray("\033[?25l"));
+    QInputMethodQueryEvent queryEvent(Qt::ImCursorRectangle);
+    QApplication::sendEvent(&widget, &queryEvent);
+    const QRect cursorRect = queryEvent.value(Qt::ImCursorRectangle).toRect();
+    QVERIFY(cursorRect.isValid());
+
+    feedTerminalOutput(widget, QStringLiteral("⚠️ 需要 agent 各自写 tool 定义（mem0 SDK 减量但不包扩展）\n").toUtf8());
+
+    const QImage frame = renderWidgetImage(widget);
+    const QColor background = widget.debugAppliedBackground();
+    const QFontMetrics fm(widget.terminalFont());
+    const int cellWidth = fm.horizontalAdvance('M');
+    const int cellHeight = fm.height();
+    const QRect warningCell(cursorRect.topLeft(), QSize(cellWidth, cellHeight));
+    const QRect followingSpaceCell(cursorRect.topLeft() + QPoint(cellWidth, 0), QSize(cellWidth, cellHeight));
+    const QRect firstChineseCell(cursorRect.topLeft() + QPoint(2 * cellWidth, 0), QSize(cellWidth, cellHeight));
+
+    QVERIFY2(countColorfulPixels(frame, warningCell) > 0,
+             "warning emoji variation fallback must remain a color emoji in the first terminal cell");
+    QVERIFY2(countColorfulPixels(frame, followingSpaceCell) > 0,
+             "warning emoji variation fallback should use the explicit following blank cell for normal size");
+    QCOMPARE(countColorfulPixels(frame, firstChineseCell), 0);
+    QVERIFY2(firstPaintedColumnInCell(frame, firstChineseCell, background) >= 0,
+             "variation selector fallback must not create an extra blank cell before following text");
+    QCOMPARE(widget.debugTextForScreenRow(0),
+             QStringLiteral("⚠️ 需要 agent 各自写 tool 定义（mem0 SDK 减量但不包扩展）"));
 }
 
 void TestTerminalWidget::testEmojiFallbackClusterPreservesBackgroundColor() {

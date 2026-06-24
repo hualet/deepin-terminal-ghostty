@@ -15,6 +15,7 @@
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QSet>
 #include <QUrl>
 #include <QWheelEvent>
 
@@ -361,6 +362,10 @@ bool startsWithEmojiJoiner(const QVector<uint> &codepoints) {
 
 int fallbackEmojiCellSpan(bool isWideHead) {
     return isWideHead ? 2 : 1;
+}
+
+bool isWarningSignEmoji(const QVector<uint> &codepoints) {
+    return std::find(codepoints.cbegin(), codepoints.cend(), 0x26A0) != codepoints.cend();
 }
 
 QByteArray emojiFontPath() {
@@ -2256,8 +2261,9 @@ QImage TerminalWidget::emojiFallbackCellImage(QPainter &painter, const QRect &ce
 
         emojiImage.setDevicePixelRatio(devicePixelRatio);
         const QSizeF logicalSize = emojiImage.size() / devicePixelRatio;
-        constexpr qreal kEmojiHorizontalInset = 4.0;
-        constexpr qreal kEmojiVerticalInset = 2.0;
+        const bool warningSign = isWarningSignEmoji(*codepoints);
+        const qreal kEmojiHorizontalInset = warningSign ? 1.0 : 4.0;
+        const qreal kEmojiVerticalInset = warningSign ? 1.0 : 2.0;
         const QSizeF targetSize(qMax<qreal>(1.0, cellRect.width() - kEmojiHorizontalInset * 2.0),
                                 qMax<qreal>(1.0, cellRect.height() - kEmojiVerticalInset * 2.0));
         if (logicalSize.width() > targetSize.width() || logicalSize.height() > targetSize.height()) {
@@ -2349,6 +2355,7 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         int cells = 1;
     };
     QVector<EmojiOverlayCell> emojiOverlayCells;
+    QSet<int> emptyCellXs;
     const auto appendEmojiOverlayCell = [&](const QString &text, int cellX, int cells, const QColor &background,
                                             const QColor &decorationColor, int underline, bool strikethrough,
                                             bool overline) {
@@ -2543,6 +2550,8 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         appendCodepoint(cellText, codepoint);
         appendEmojiOverlayCell(cellText, runX, 1, defaultBackground, decorationColor, underline, strikethrough,
                                overline);
+        if (codepoint == 0x20)
+            emptyCellXs.insert(runX);
         if (emojiVariationSelectorPlaceholderCodepoint(QStringView(cellText)))
             return;
         appendCodepoint(textRun.text, codepoint);
@@ -2585,6 +2594,9 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
             int j = i + 1;
             while (j < emojiOverlayCells.size()) {
                 const EmojiOverlayCell &nextCell = emojiOverlayCells.at(j);
+                if (nextCell.x != clusterRight)
+                    break;
+
                 const QVector<uint> nextCodepoints = emojiOverlayCodepoints(QStringView(nextCell.text));
                 if (!allEmojiClusterCodepoints(nextCodepoints))
                     break;
@@ -2603,6 +2615,11 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
 
             if (!clusterHasJoiner)
                 continue;
+
+            const bool useFollowingBlankForWarning =
+                j == i + 1 && isWarningSignEmoji(clusterCodepoints) && emptyCellXs.contains(clusterRight);
+            if (useFollowingBlankForWarning)
+                clusterRight += m_cellWidth;
 
             const int clusterWidth = qMax(m_cellWidth, clusterRight - startCell.x);
             const QRect clusterRect(startCell.x, y, clusterWidth, m_cellHeight);
@@ -2696,6 +2713,7 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
 
         if (!isWideHead && !isWideTail) {
             if (graphemeLen == 0) {
+                emptyCellXs.insert(x);
                 x += m_cellWidth;
                 continue;
             }
