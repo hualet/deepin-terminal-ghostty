@@ -498,8 +498,20 @@ QSplitter *TermPane::createPaneSplitter(Qt::Orientation orientation) {
     auto *splitter = new QSplitter(orientation, this);
     splitter->setChildrenCollapsible(false);
     splitter->setHandleWidth(1);
-    splitter->setStyleSheet(QStringLiteral("QSplitter::handle { background-color: rgba(128,128,128,0.25); }"));
+    const bool isDark = DGuiApplicationHelper::instance()->themeType() == DGuiApplicationHelper::DarkType;
+    splitter->setStyleSheet(splitterHandleStyleSheet(isDark));
     return splitter;
+}
+
+QString TermPane::splitterHandleStyleSheet(bool isDark) {
+    return isDark ? QStringLiteral("QSplitter::handle { background-color: rgba(255,255,255,0.08); }")
+                  : QStringLiteral("QSplitter::handle { background-color: rgba(0,0,0,0.08); }");
+}
+
+void TermPane::refreshDividerStyles(bool isDark) {
+    const QString sheet = splitterHandleStyleSheet(isDark);
+    for (auto *splitter : findChildren<QSplitter *>())
+        splitter->setStyleSheet(sheet);
 }
 
 QList<TerminalWidget *> TermPane::terminalsInVisualOrder() const {

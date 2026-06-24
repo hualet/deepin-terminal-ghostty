@@ -40,6 +40,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSignalSpy>
+#include <QSplitter>
 #include <QStackedWidget>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -153,6 +154,7 @@ private slots:
     void testControlServiceListsWindowTabsPanesAndContent();
     void testControlServiceCreatesTabAndSplit();
     void testControlServiceSendsTextAndExecutesCommand();
+    void testPaneDividerColorsFollowTheme();
 
 private:
     DGuiApplicationHelper::ColorType m_originalPaletteType;
@@ -629,6 +631,31 @@ void TestMainWindow::testTermPaneReportsPaneSnapshotsAfterSplit() {
     pane.closeCurrentSplit();
     QCOMPARE(pane.paneInfos().size(), 0);
     QVERIFY(pane.activePaneId().isNull());
+}
+
+void TestMainWindow::testPaneDividerColorsFollowTheme() {
+    QCOMPARE(TermPane::splitterHandleStyleSheet(true),
+             QStringLiteral("QSplitter::handle { background-color: rgba(255,255,255,0.08); }"));
+    QCOMPARE(TermPane::splitterHandleStyleSheet(false),
+             QStringLiteral("QSplitter::handle { background-color: rgba(0,0,0,0.08); }"));
+
+    ExposedTermPane pane;
+    pane.resize(1200, 800);
+    pane.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&pane));
+    pane.splitCurrent(Qt::Vertical);
+    QCoreApplication::processEvents();
+
+    const auto splitters = pane.findChildren<QSplitter *>();
+    QVERIFY(!splitters.isEmpty());
+
+    pane.refreshDividerStyles(true);
+    for (auto *splitter : splitters)
+        QVERIFY(splitter->styleSheet().contains(QLatin1String("rgba(255,255,255,0.08)")));
+
+    pane.refreshDividerStyles(false);
+    for (auto *splitter : splitters)
+        QVERIFY(splitter->styleSheet().contains(QLatin1String("rgba(0,0,0,0.08)")));
 }
 
 void TestMainWindow::testSplitSuppressesIntermediateRepaintWhileReparenting() {

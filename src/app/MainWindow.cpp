@@ -977,8 +977,8 @@ void MainWindow::rebuildCentralLayout() {
             m_mainSplitter = new QSplitter(Qt::Horizontal, this);
             m_mainSplitter->setChildrenCollapsible(false);
             m_mainSplitter->setHandleWidth(1);
-            m_mainSplitter->setStyleSheet(
-                QStringLiteral("QSplitter::handle { background-color: rgba(128,128,128,0.25); }"));
+            const bool isDark = DGuiApplicationHelper::instance()->themeType() == DGuiApplicationHelper::DarkType;
+            m_mainSplitter->setStyleSheet(TermPane::splitterHandleStyleSheet(isDark));
             m_mainSplitter->setObjectName(QStringLiteral("verticalTabsSplitter"));
         }
         bool sidebarJustAdded = (m_mainSplitter->indexOf(m_verticalSidebar) < 0);
@@ -1391,6 +1391,14 @@ void MainWindow::applyThemeToAll() {
         helper->setPaletteType(DGuiApplicationHelper::UnknownType);
     else
         helper->setPaletteType(theme.isDark ? DGuiApplicationHelper::DarkType : DGuiApplicationHelper::LightType);
+
+    const QString dividerSheet = TermPane::splitterHandleStyleSheet(theme.isDark);
+    if (m_mainSplitter)
+        m_mainSplitter->setStyleSheet(dividerSheet);
+    for (int i = 0; i < m_stackWidget->count(); ++i) {
+        if (auto *pane = qobject_cast<TermPane *>(m_stackWidget->widget(i)))
+            pane->refreshDividerStyles(theme.isDark);
+    }
 }
 
 void MainWindow::previewThemeScheme(const QString &scheme) {

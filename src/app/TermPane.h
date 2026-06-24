@@ -56,6 +56,9 @@ public:
     SplitNode buildSplitTree() const;
     QList<QPair<QString, TerminalWidget *>> restoreFromSplitTree(const SplitNode &node);
 
+    static QString splitterHandleStyleSheet(bool isDark);
+    void refreshDividerStyles(bool isDark);
+
 protected:
     void resizeEvent(QResizeEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
