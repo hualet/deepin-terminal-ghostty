@@ -320,15 +320,15 @@ VerticalTabSidebar::VerticalTabSidebar(QWidget *parent) : QWidget(parent) {
     scrollArea->setWidget(content);
     outerLayout->addWidget(scrollArea);
 
-    auto *addTabButton = new QPushButton(this);
-    addTabButton->setObjectName(QStringLiteral("verticalAddTabButton"));
-    addTabButton->setAccessibleName(tr("New tab"));
-    addTabButton->setAccessibleDescription(tr("Create a new terminal tab."));
-    addTabButton->setText(QStringLiteral("+"));
-    addTabButton->setFlat(true);
-    addTabButton->setFixedHeight(32);
-    connect(addTabButton, &QPushButton::clicked, this, &VerticalTabSidebar::addTabRequested);
-    outerLayout->addWidget(addTabButton);
+    m_addTabButton = new QPushButton(this);
+    m_addTabButton->setObjectName(QStringLiteral("verticalAddTabButton"));
+    m_addTabButton->setAccessibleName(tr("New tab"));
+    m_addTabButton->setAccessibleDescription(tr("Create a new terminal tab."));
+    m_addTabButton->setText(QStringLiteral("+"));
+    m_addTabButton->setFlat(true);
+    m_addTabButton->setFixedHeight(32);
+    connect(m_addTabButton, &QPushButton::clicked, this, &VerticalTabSidebar::addTabRequested);
+    outerLayout->addWidget(m_addTabButton);
 
     applyStylesheet();
     connect(DGuiApplicationHelper::instance(), &DGuiApplicationHelper::paletteTypeChanged, this,
@@ -720,9 +720,26 @@ void VerticalTabSidebar::updateButtonElisions() {
     }
 }
 
+void VerticalTabSidebar::syncAddTabButtonHeight() {
+    if (!m_addTabButton)
+        return;
+
+    for (auto *section : findChildren<ClickableSection *>(QString(), Qt::FindChildrenRecursively)) {
+        auto *header = section->findChild<QWidget *>(QStringLiteral("verticalTabHeader"), Qt::FindDirectChildrenOnly);
+        if (!header || header->height() <= 0)
+            continue;
+        // Section vertical overhead: layout margins (2+2) + stylesheet border (1+1) = 6
+        m_addTabButton->setFixedHeight(header->height() + 6);
+        return;
+    }
+}
+
 void VerticalTabSidebar::resizeEvent(QResizeEvent *event) {
     QWidget::resizeEvent(event);
-    QTimer::singleShot(0, this, &VerticalTabSidebar::updateButtonElisions);
+    QTimer::singleShot(0, this, [this]() {
+        syncAddTabButtonHeight();
+        updateButtonElisions();
+    });
 }
 
 void removeOldPaneList(ClickableSection *section) {
@@ -1061,7 +1078,10 @@ void VerticalTabSidebar::rebuild() {
     if (!hasStretch)
         m_layout->addStretch(1);
 
-    QTimer::singleShot(0, this, &VerticalTabSidebar::updateButtonElisions);
+    QTimer::singleShot(0, this, [this]() {
+        syncAddTabButtonHeight();
+        updateButtonElisions();
+    });
 }
 
 void VerticalTabSidebar::setOpacity(qreal opacity) {

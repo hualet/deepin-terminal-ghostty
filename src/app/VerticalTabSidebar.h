@@ -10,6 +10,7 @@
 
 class QVBoxLayout;
 class QLabel;
+class QPushButton;
 class QEvent;
 
 class VerticalTabSidebar;
@@ -76,6 +77,7 @@ protected:
 private:
     void rebuild();
     void updateButtonElisions();
+    void syncAddTabButtonHeight();
     void applyStylesheet();
     int indexOfItemId(int tabId) const;
     int targetIndexForPosition(int tabId, const QPoint &globalPos) const;
@@ -85,6 +87,7 @@ private:
 
     QList<TabItem> m_items;
     QVBoxLayout *m_layout = nullptr;
+    QPushButton *m_addTabButton = nullptr;
     QPointer<QLabel> m_dragProxy;
     qreal m_opacity = 1.0;
     int m_dragTabId = 0;
