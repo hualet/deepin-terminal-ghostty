@@ -1,3 +1,10 @@
+deepin-terminal-ghostty (1.0.8-1) unstable; urgency=medium
+
+  * Refresh Chinese and Spanish translation catalogs so newly added tab and
+    rename-dialog strings are included in generated language packs.
+
+ -- Deepin Packages <packages@deepin.org>  Thu, 25 Jun 2026 15:04:09 +0800
+
 deepin-terminal-ghostty (1.0.7-1) unstable; urgency=medium
 
   * Add tab context menus and a persistent vertical-sidebar new-tab button so
