@@ -1,3 +1,18 @@
+deepin-terminal-ghostty (1.0.7-1) unstable; urgency=medium
+
+  * Add tab context menus and a persistent vertical-sidebar new-tab button so
+    tab management is easier in both tab layouts.
+  * Improve pane divider styling and sidebar defaults so split and tab UI
+    better follows the active theme.
+  * Recognize bare IPv4 and IPv6 addresses as terminal links, and keep link
+    underlines aligned after wide glyphs.
+  * Fix restored-session crashes and warning emoji placement so terminal
+    content remains stable after restore and in mixed Chinese/emoji text.
+  * Add generated GitHub release note configuration so release changelogs are
+    grouped consistently on the release page.
+
+ -- Deepin Packages <packages@deepin.org>  Thu, 25 Jun 2026 00:49:58 +0800
+
 deepin-terminal-ghostty (1.0.6-1) unstable; urgency=medium
 
   * Fix DTK6 packaging so packages built on one version remain
