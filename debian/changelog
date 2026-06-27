@@ -1,3 +1,11 @@
+deepin-terminal-ghostty (1.0.9-1) unstable; urgency=medium
+
+  * Keep zoomed ASCII glyphs and color emoji at their correct cell size so
+    terminal text stays proportional when the font is enlarged.
+  * Refresh the Linglong build configuration.
+
+ -- Deepin Packages <packages@deepin.org>  Sat, 27 Jun 2026 11:42:30 +0800
+
 deepin-terminal-ghostty (1.0.8-1) unstable; urgency=medium
 
   * Refresh Chinese and Spanish translation catalogs so newly added tab and
