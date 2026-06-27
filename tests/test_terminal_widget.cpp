@@ -54,6 +54,7 @@ private slots:
     void testEmojiFallbackRendererLeavesPlainDigitsAsText();
     void testEmojiFallbackRendererSizesVariationEmoji();
     void testEmojiFallbackRendererKeepsNarrowEmojiInOneCell();
+    void testEmojiFallbackRendererSizedRelativeToCell();
     void testEmojiFallbackDoesNotOverlapFollowingCjkText();
     void testWarningEmojiVariationDoesNotAddExtraGapBeforeText();
     void testEmojiFallbackClusterPreservesBackgroundColor();
@@ -61,6 +62,7 @@ private slots:
     void testSetTerminalFontInvalidatesEmojiModeDetection();
     void testFallbackGlyphDoesNotOverlapNextCell();
     void testSingleCodepointFallbackGlyphDoesNotClip();
+    void testZoomedAsciiNotReshapedPerCharacter();
     void testRendersAnsiForegroundColors();
     void testRendersInverseTextWithDefaultColors();
     void testRendersInlineKittyPngImage();
@@ -990,6 +992,70 @@ void TestTerminalWidget::testEmojiFallbackRendererKeepsNarrowEmojiInOneCell() {
     QCOMPARE(countChangedPixels(before, after, secondCellRect), 0);
 }
 
+void TestTerminalWidget::testEmojiFallbackRendererSizedRelativeToCell() {
+    // Regression test: a 4px horizontal inset used to shrink single-cell custom-fallback
+    // emoji to a small fraction of the cell width (e.g. 3px in an 11px cell at 14pt), so
+    // every emoji looked far smaller than the surrounding text. The fallback bitmap must
+    // keep a reasonable size relative to its terminal cell.
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
+    CountingTerminalWidget widget;
+    widget.setStartOptions(options);
+    widget.debugSetEmojiRenderModeForTesting(TerminalWidget::EmojiRenderMode::CustomFallback);
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    feedTerminalOutput(widget, QByteArray("\033[?25l"));
+
+    QInputMethodQueryEvent queryEvent(Qt::ImCursorRectangle);
+    QApplication::sendEvent(&widget, &queryEvent);
+    const QRect cursorRect = queryEvent.value(Qt::ImCursorRectangle).toRect();
+    QVERIFY(cursorRect.isValid());
+
+    const QImage before = renderWidgetImage(widget);
+    feedTerminalOutput(widget, QStringLiteral("☀️\n").toUtf8());
+    const QImage after = renderWidgetImage(widget);
+
+    QVERIFY2(widget.debugLastFrameEmojiFallbackDrawCount() > 0, "sun emoji should use the fallback renderer");
+    QVERIFY2(countColorfulPixels(after, cursorRect) > 0, "fallback emoji should paint color pixels in its cell");
+
+    const QRect cellRect(cursorRect.topLeft(), cursorRect.size());
+    int firstColorful = -1;
+    int lastColorful = -1;
+    for (int x = cellRect.left(); x <= cellRect.right(); ++x) {
+        for (int yy = cellRect.top(); yy <= cellRect.bottom(); ++yy) {
+            const QColor color = QColor::fromRgba(after.pixel(x, yy));
+            const int maxChannel = qMax(color.red(), qMax(color.green(), color.blue()));
+            const int minChannel = qMin(color.red(), qMin(color.green(), color.blue()));
+            if (color.alpha() > 20 && maxChannel - minChannel > 30) {
+                if (firstColorful < 0)
+                    firstColorful = x;
+                lastColorful = x;
+                break;
+            }
+        }
+    }
+    QVERIFY2(firstColorful >= 0 && lastColorful >= 0, "fallback emoji should leave a colorful footprint in its cell");
+
+    const int renderedWidth = lastColorful - firstColorful + 1;
+    const int cellWidth = cursorRect.width();
+    // Before the fix the sun emoji rendered ~3px wide in an 11px cell (27%). A 2px
+    // horizontal inset makes it fill the cell minus the 2px CJK boundary, i.e. roughly
+    // cellWidth - 4. Require at least 40% so the test is stable yet catches the old
+    // over-shrink.
+    QVERIFY2(renderedWidth * 100 >= cellWidth * 40,
+             qPrintable(QStringLiteral("fallback emoji rendered %1px wide in a %2px cell (cellWidth=%3); "
+                                       "it should fill most of the cell, not a small fraction")
+                            .arg(renderedWidth)
+                            .arg(cellWidth)
+                            .arg(cellWidth)));
+}
+
 void TestTerminalWidget::testEmojiFallbackDoesNotOverlapFollowingCjkText() {
     PtySession::StartOptions options;
     options.command = QStringLiteral("sleep 5");
@@ -1213,6 +1279,65 @@ void TestTerminalWidget::testSingleCodepointFallbackGlyphDoesNotClip() {
     QVERIFY2(countChangedPixels(before, after, rightEdgeRect) <= 1,
              "single-codepoint fallback glyph should be fitted inside the cell instead of being cut");
     QCOMPARE(countChangedPixels(before, after, nextCellRect), 0);
+}
+
+void TestTerminalWidget::testZoomedAsciiNotReshapedPerCharacter() {
+    // Regression test: a too-wide cell-fit predicate used to pull plain ASCII into the
+    // per-character rescale branch, so a zoomed (non-default) line was drawn with each
+    // letter at a different pointSize and looked distorted. This reproduces that by
+    // zooming the font and checking that each rendered glyph keeps its native ink width
+    // instead of an arbitrary per-character rescale.
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
+    CountingTerminalWidget widget;
+    widget.setStartOptions(options);
+    // A non-default point size mirrors what zoomIn/zoomOut produces. 13pt is known to
+    // trip the old subpixel-overflow predicate for most of these ASCII glyphs.
+    QFont zoomed(QStringLiteral("DejaVu Sans Mono"));
+    zoomed.setStyleHint(QFont::Monospace);
+    zoomed.setFixedPitch(true);
+    zoomed.setPointSize(13);
+    widget.debugSetRawTerminalFont(zoomed);
+    QVERIFY(widget.initialize());
+    widget.resize(480, 120);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const QFontMetrics fm(widget.terminalFont());
+    const int cellWidth = fm.horizontalAdvance(QLatin1Char('M'));
+    const int cellHeight = fm.height();
+    const QColor background = widget.debugAppliedBackground();
+
+    // Characters known to trigger the old predicate at this size, including narrow ink
+    // glyphs that the old branch would have *enlarged* (scale > 1, e.g. '.', '!').
+    const QString line = QStringLiteral("W.H!");
+    feedTerminalOutput(widget, QByteArray("\r\033[2K") + line.toUtf8());
+    const QImage frame = renderWidgetImage(widget);
+
+    for (int i = 0; i < line.size(); ++i) {
+        const QRect cellRect(cellWidth * i, 0, cellWidth, cellHeight);
+        const QRectF nativeInk = fm.tightBoundingRect(line.at(i));
+        const int nativeInkWidth = qRound(nativeInk.width());
+
+        const int left = firstPaintedColumnInCell(frame, cellRect, background);
+        const int right = lastPaintedColumn(frame, cellRect, background);
+        QVERIFY2(left >= 0, "each zoomed character should paint in its own cell");
+        QVERIFY2(right >= 0, "each zoomed character should paint in its own cell");
+
+        const int renderedInkWidth = right - left + 1;
+        // With the fix, glyphs are drawn at their native size (only the cellRect clip
+        // guards overflow), so the rendered ink width tracks the native metrics. The
+        // old rescale path shrank wide glyphs and enlarged narrow ones far outside this
+        // tolerance.
+        QVERIFY2(qAbs(renderedInkWidth - nativeInkWidth) <= 2,
+                 qPrintable(QStringLiteral("zoomed '%1' ink width %2 diverged from native %3; "
+                                           "glyph was reshaped instead of drawn at native size")
+                                .arg(line.at(i))
+                                .arg(renderedInkWidth)
+                                .arg(nativeInkWidth)));
+    }
 }
 
 void TestTerminalWidget::testRendersAnsiForegroundColors() {

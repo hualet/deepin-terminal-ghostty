@@ -2261,8 +2261,17 @@ QImage TerminalWidget::emojiFallbackCellImage(QPainter &painter, const QRect &ce
 
         emojiImage.setDevicePixelRatio(devicePixelRatio);
         const QSizeF logicalSize = emojiImage.size() / devicePixelRatio;
+        // The warning sign uses a tighter inset and is allowed to borrow the following
+        // blank cell, so it stays close to its natural size. Other emoji are confined to a
+        // single narrow cell. A 4px horizontal inset previously shrank those single-cell
+        // emoji to a small fraction of the cell width (e.g. 3px in an 11px cell at 14pt),
+        // which made every emoji look far smaller than the surrounding text. A 2px
+        // horizontal inset keeps the emoji bitmap as large as the 2px boundary that the
+        // CJK overlap regression test requires (the centered bitmap's right edge lands at
+        // cellLeft + cellWidth - 2), while still leaving that visual gap before adjacent
+        // punctuation.
         const bool warningSign = isWarningSignEmoji(*codepoints);
-        const qreal kEmojiHorizontalInset = warningSign ? 1.0 : 4.0;
+        const qreal kEmojiHorizontalInset = warningSign ? 1.0 : 2.0;
         const qreal kEmojiVerticalInset = warningSign ? 1.0 : 2.0;
         const QSizeF targetSize(qMax<qreal>(1.0, cellRect.width() - kEmojiHorizontalInset * 2.0),
                                 qMax<qreal>(1.0, cellRect.height() - kEmojiVerticalInset * 2.0));
@@ -2422,9 +2431,18 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         QFontMetricsF metrics(drawFont);
         QRectF inkBounds = metrics.tightBoundingRect(text);
         const bool isEmojiText = singleEmojiCodepoint(QStringView(text)).has_value();
-        const bool overflowsCell = metrics.horizontalAdvance(text) > m_cellWidth || inkBounds.width() >= m_cellWidth
-                                   || inkBounds.right() >= m_cellWidth - 1 || inkBounds.left() < 0 || isEmojiText;
-        if (cells == 1 && overflowsCell && (text.size() > 1 || metrics.horizontalAdvance(text) > m_cellWidth)) {
+        // Only fit glyphs whose advance or ink genuinely exceeds the cell. The earlier
+        // predicate (inkBounds.right() >= m_cellWidth - 1, inkBounds.left() < 0, ...) fired
+        // for almost every ASCII glyph once the font was zoomed, because m_cellWidth is a
+        // rounded integer while tightBoundingRect() returns subpixel floats. That pulled
+        // plain text into the per-character rescale branch below, where each letter was
+        // drawn at a different pointSize and a line of text looked distorted. Emoji
+        // presentation bases and truly overflowing multi-code-unit graphemes still need
+        // fitting; everything else keeps the native advance with the cellRect clip above
+        // guarding against overflow into the next cell.
+        const bool overflowsCell = metrics.horizontalAdvance(text) > m_cellWidth || inkBounds.width() > m_cellWidth;
+        const bool needsFit = isEmojiText || (text.size() > 1 && overflowsCell);
+        if (cells == 1 && needsFit) {
             const qreal targetWidth = qMax<qreal>(1.0, cellRect.width() - 2.0);
             const qreal targetHeight = qMax<qreal>(1.0, m_cellHeight - 2.0);
             const qreal scale = qMin(targetWidth / qMax<qreal>(1.0, inkBounds.width()),
