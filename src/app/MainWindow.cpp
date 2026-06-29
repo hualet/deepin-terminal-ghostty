@@ -33,12 +33,26 @@
 #include <QKeyEvent>
 #include <QMenu>
 #include <QProcess>
+#include <QScreen>
 #include <QShortcut>
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QStackedWidget>
 
 #include <algorithm>
+
+namespace {
+
+void limitMenuHeightToScreen(QMenu *menu) {
+    if (!menu)
+        return;
+    if (QScreen *screen = menu->screen()) {
+        const int maxHeight = static_cast<int>(screen->availableGeometry().height() * 0.8);
+        menu->setMaximumHeight(maxHeight);
+    }
+}
+
+} // namespace
 
 MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent)
     : MainWindow(startupOptions, parent, true) {}
@@ -325,6 +339,8 @@ void MainWindow::setupTitleBar() {
     auto *themeMenu = menu->addMenu(tr("Theme"));
     auto themes = ThemeLoader::loadThemes();
     QString currentScheme = AppSettings::instance()->colorScheme();
+
+    connect(themeMenu, &QMenu::aboutToShow, this, [this, themeMenu]() { limitMenuHeightToScreen(themeMenu); });
 
     auto *themeGroup = new QActionGroup(themeMenu);
     themeGroup->setExclusive(true);

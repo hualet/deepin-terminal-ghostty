@@ -25,6 +25,7 @@
 #include <QProcess>
 #include <QRandomGenerator>
 #include <QResizeEvent>
+#include <QScreen>
 #include <QSplitter>
 #include <QStandardPaths>
 #include <QUrl>
@@ -237,6 +238,15 @@ SplitNode buildSplitTreeFromWidget(QWidget *widget) {
         return SplitNode::split(splitter->orientation(), splitter->sizes(), children);
     }
     return SplitNode::terminal({}, {}, {});
+}
+
+void limitMenuHeightToScreen(QMenu *menu) {
+    if (!menu)
+        return;
+    if (QScreen *screen = menu->screen()) {
+        const int maxHeight = static_cast<int>(screen->availableGeometry().height() * 0.8);
+        menu->setMaximumHeight(maxHeight);
+    }
 }
 
 } // namespace
@@ -718,6 +728,8 @@ void TermPane::showTerminalContextMenu(TerminalWidget *term, const QPoint &globa
 
     auto *themeMenu = menu.addMenu(tr("Theme"));
     QString currentScheme = AppSettings::instance()->colorScheme();
+
+    connect(themeMenu, &QMenu::aboutToShow, this, [this, themeMenu]() { limitMenuHeightToScreen(themeMenu); });
 
     auto *themeGroup = new QActionGroup(themeMenu);
     themeGroup->setExclusive(true);
