@@ -95,6 +95,7 @@ public:
     int debugLastFrameEmojiFallbackDrawCount() const;
     int debugResizeApplyCount() const;
     int debugPtyFlushCount() const;
+    int debugRenderStateUpdateCount() const;
     int debugPendingPtyDataSize() const;
     int debugBareLinkScanCount() const;
     int debugTextForScreenRowCount() const;
@@ -274,6 +275,7 @@ private:
     QHash<QString, QImage> m_emojiImageCache;
     QStringList m_emojiImageCacheOrder;
     QTimer *m_renderTimer = nullptr;
+    QTimer *m_synchronizedOutputTimeoutTimer = nullptr;
     QTimer *m_resizeTimer = nullptr;
     QTimer *m_selectionAutoScrollTimer = nullptr;
     QElapsedTimer m_lastRenderTime;
@@ -366,6 +368,7 @@ private:
     int m_debugLastFrameEmojiFallbackDrawCount = 0;
     int m_debugResizeApplyCount = 0;
     int m_debugPtyFlushCount = 0;
+    mutable int m_debugRenderStateUpdateCount = 0;
     int m_debugCursorOnlyRepaintCount = 0;
     mutable int m_debugBareLinkScanCount = 0;
     mutable int m_debugTextForScreenRowCount = 0;

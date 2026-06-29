@@ -40,6 +40,7 @@ namespace {
 constexpr int kInitialPtyCoalesceIntervalMs = 1;
 constexpr int kBurstRenderIntervalMs = 8;
 constexpr int kResizeCoalesceIntervalMs = 8;
+constexpr int kSynchronizedOutputTimeoutMs = 1000;
 constexpr int kImmediatePtyFlushBytes = 32 * 1024;
 constexpr int kMaxOscScanBufferBytes = 16 * 1024;
 constexpr uint32_t kMaxCellGraphemeCodepoints = 4096;
@@ -1149,6 +1150,27 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     m_renderTimer->setSingleShot(true);
     connect(m_renderTimer, &QTimer::timeout, this, &TerminalWidget::onRenderTimerTimeout);
 
+    m_synchronizedOutputTimeoutTimer = new QTimer(this);
+    m_synchronizedOutputTimeoutTimer->setSingleShot(true);
+    m_synchronizedOutputTimeoutTimer->setInterval(kSynchronizedOutputTimeoutMs);
+    connect(m_synchronizedOutputTimeoutTimer, &QTimer::timeout, this, [this]() {
+        bool synchronizedOutput = false;
+        if (!m_terminal
+            || ghostty_terminal_mode_get(m_terminal, GHOSTTY_MODE_SYNC_OUTPUT, &synchronizedOutput) != GHOSTTY_SUCCESS
+            || !synchronizedOutput) {
+            return;
+        }
+
+        if (ghostty_terminal_mode_set(m_terminal, GHOSTTY_MODE_SYNC_OUTPUT, false) != GHOSTTY_SUCCESS) {
+            qCWarning(terminalLog) << "Failed to clear synchronized output after timeout";
+            return;
+        }
+
+        qCWarning(terminalLog) << "Synchronized output timed out; publishing the pending frame";
+        m_renderStateDirty = true;
+        update();
+    });
+
     m_resizeTimer = new QTimer(this);
     m_resizeTimer->setSingleShot(true);
     connect(m_resizeTimer, &QTimer::timeout, this, [this]() { applyPendingResize(); });
@@ -1392,6 +1414,10 @@ int TerminalWidget::debugResizeApplyCount() const {
 
 int TerminalWidget::debugPtyFlushCount() const {
     return m_debugPtyFlushCount;
+}
+
+int TerminalWidget::debugRenderStateUpdateCount() const {
+    return m_debugRenderStateUpdateCount;
 }
 
 int TerminalWidget::debugPendingPtyDataSize() const {
@@ -1910,11 +1936,23 @@ bool TerminalWidget::syncRenderState() const {
         return true;
     }
 
+    bool synchronizedOutput = false;
+    if (ghostty_terminal_mode_get(m_terminal, GHOSTTY_MODE_SYNC_OUTPUT, &synchronizedOutput) == GHOSTTY_SUCCESS
+        && synchronizedOutput) {
+        if (!m_synchronizedOutputTimeoutTimer->isActive())
+            m_synchronizedOutputTimeoutTimer->start();
+        return true;
+    }
+
+    m_synchronizedOutputTimeoutTimer->stop();
     GhosttyResult err = ghostty_render_state_update(m_renderState, m_terminal);
     if (err != GHOSTTY_SUCCESS) {
         return false;
     }
 
+#ifdef QTGHOSTTY_TESTING
+    ++m_debugRenderStateUpdateCount;
+#endif
     m_renderStateDirty = false;
     return true;
 }

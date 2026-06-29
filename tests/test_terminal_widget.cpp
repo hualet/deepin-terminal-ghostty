@@ -74,6 +74,8 @@ private slots:
     void testCursorOnlyUpdatesUseNarrowRepaint();
     void testCoalescesBurstRepaintsWithoutLosingFinalFrame();
     void testCoalescesSmallPtyBurstsIntoSingleFlush();
+    void testSynchronizedOutputDefersIncompleteFrame();
+    void testSynchronizedOutputTimeoutPublishesFrame();
     void testIncrementalUpdatesRenderDirtyRowsOnly();
     void testCoalescesRapidResizeOperations();
     void testMouseTrackingEnabledSendsSGREvents();
@@ -1652,6 +1654,69 @@ void TestTerminalWidget::testCoalescesSmallPtyBurstsIntoSingleFlush() {
 
     QCOMPARE(widget.debugPtyFlushCount(), initialFlushCount);
     QTRY_COMPARE_WITH_TIMEOUT(widget.debugPtyFlushCount(), initialFlushCount + 1, 100);
+}
+
+void TestTerminalWidget::testSynchronizedOutputDefersIncompleteFrame() {
+    CountingTerminalWidget widget;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+    widget.setStartOptions(options);
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    widget.setCursorBlinkEnabled(false);
+    QTest::qWait(20);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const int initialRenderStateUpdateCount = widget.debugRenderStateUpdateCount();
+    int previousFlushCount = widget.debugPtyFlushCount();
+    bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                             Q_ARG(QByteArray, QByteArray("\033[?2026h\033[2Jpartial")));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+    widget.repaint();
+    QApplication::processEvents();
+
+    QCOMPARE(widget.debugRenderStateUpdateCount(), initialRenderStateUpdateCount);
+
+    previousFlushCount = widget.debugPtyFlushCount();
+    invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                        Q_ARG(QByteArray, QByteArray(" complete\033[?2026l")));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+    widget.repaint();
+    QTRY_VERIFY_WITH_TIMEOUT(widget.debugRenderStateUpdateCount() > initialRenderStateUpdateCount, 100);
+}
+
+void TestTerminalWidget::testSynchronizedOutputTimeoutPublishesFrame() {
+    CountingTerminalWidget widget;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+    widget.setStartOptions(options);
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    widget.setCursorBlinkEnabled(false);
+    QTest::qWait(20);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const int initialRenderStateUpdateCount = widget.debugRenderStateUpdateCount();
+    const int previousFlushCount = widget.debugPtyFlushCount();
+    const bool invoked = QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                                   Q_ARG(QByteArray, QByteArray("\033[?2026hpartial")));
+    QVERIFY(invoked);
+    waitForNextPtyFlush(widget, previousFlushCount);
+    widget.repaint();
+    QApplication::processEvents();
+
+    QCOMPARE(widget.debugRenderStateUpdateCount(), initialRenderStateUpdateCount);
+    QTRY_VERIFY_WITH_TIMEOUT(widget.debugRenderStateUpdateCount() > initialRenderStateUpdateCount, 1500);
 }
 
 void TestTerminalWidget::testIncrementalUpdatesRenderDirtyRowsOnly() {
