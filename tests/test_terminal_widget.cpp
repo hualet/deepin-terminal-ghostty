@@ -1047,11 +1047,10 @@ void TestTerminalWidget::testEmojiFallbackRendererSizedRelativeToCell() {
 
     const int renderedWidth = lastColorful - firstColorful + 1;
     const int cellWidth = cursorRect.width();
-    // Before the fix the sun emoji rendered ~3px wide in an 11px cell (27%). A 2px
-    // horizontal inset makes it fill the cell minus the 2px CJK boundary, i.e. roughly
-    // cellWidth - 4. Require at least 40% so the test is stable yet catches the old
-    // over-shrink.
-    QVERIFY2(renderedWidth * 100 >= cellWidth * 40,
+    // With a 1.5px horizontal inset, the fallback image gains roughly one pixel at
+    // common terminal cell widths. Require at least 60% so the current 2px inset
+    // fails while leaving room for rasterization differences across environments.
+    QVERIFY2(renderedWidth * 100 >= cellWidth * 60,
              qPrintable(QStringLiteral("fallback emoji rendered %1px wide in a %2px cell (cellWidth=%3); "
                                        "it should fill most of the cell, not a small fraction")
                             .arg(renderedWidth)

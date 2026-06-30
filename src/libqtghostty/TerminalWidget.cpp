@@ -2302,14 +2302,11 @@ QImage TerminalWidget::emojiFallbackCellImage(QPainter &painter, const QRect &ce
         // The warning sign uses a tighter inset and is allowed to borrow the following
         // blank cell, so it stays close to its natural size. Other emoji are confined to a
         // single narrow cell. A 4px horizontal inset previously shrank those single-cell
-        // emoji to a small fraction of the cell width (e.g. 3px in an 11px cell at 14pt),
-        // which made every emoji look far smaller than the surrounding text. A 2px
-        // horizontal inset keeps the emoji bitmap as large as the 2px boundary that the
-        // CJK overlap regression test requires (the centered bitmap's right edge lands at
-        // cellLeft + cellWidth - 2), while still leaving that visual gap before adjacent
-        // punctuation.
+        // emoji to a small fraction of the cell width. A 1.5px horizontal inset makes
+        // ordinary emoji modestly larger while retaining visible separation from adjacent
+        // CJK text and punctuation.
         const bool warningSign = isWarningSignEmoji(*codepoints);
-        const qreal kEmojiHorizontalInset = warningSign ? 1.0 : 2.0;
+        const qreal kEmojiHorizontalInset = warningSign ? 1.0 : 1.5;
         const qreal kEmojiVerticalInset = warningSign ? 1.0 : 2.0;
         const QSizeF targetSize(qMax<qreal>(1.0, cellRect.width() - kEmojiHorizontalInset * 2.0),
                                 qMax<qreal>(1.0, cellRect.height() - kEmojiVerticalInset * 2.0));
