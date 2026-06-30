@@ -25,6 +25,7 @@ private slots:
     void testSessionClose();
     void testPreservesUtf8Locale();
     void testHasRunningProcessReturnsFalseForShell();
+    void testHasRunningProcessTracksForegroundCommand();
     void testHasRunningProcessReturnsFalseAfterExit();
     void testWriteWhenNotStartedIsIgnored();
     void testResizeWhenNotStartedIsIgnored();
@@ -234,8 +235,52 @@ void TestPtySession::testPreservesUtf8Locale() {
 void TestPtySession::testHasRunningProcessReturnsFalseForShell() {
     PtySession session;
     QVERIFY(session.start(80, 24));
-    QTest::qWait(100);
-    QCOMPARE(session.hasRunningProcess(), false);
+    // The shell's startup (oh-my-zsh plugins, compinit, etc.) briefly runs
+    // foreground commands such as `git --version`; wait for it to settle at
+    // its prompt before asserting the idle state.
+    QTRY_VERIFY_WITH_TIMEOUT(!session.hasRunningProcess(), 10000);
+}
+
+void TestPtySession::testHasRunningProcessTracksForegroundCommand() {
+    PtySession session;
+    QVERIFY(session.start(80, 24));
+    // Start from a settled, idle shell so the foreground command below is the
+    // only thing that can make hasRunningProcess() report true.
+    QTRY_VERIFY_WITH_TIMEOUT(!session.hasRunningProcess(), 10000);
+
+    // A single bounded foreground command (/usr/bin/sleep is an external
+    // binary in its own process group) holds the foreground continuously, so
+    // hasRunningProcess() reports true while it runs — no fork churn, no
+    // transient sample that the check could pass on by luck.
+    session.write("sleep 60\n");
+    QTRY_VERIFY_WITH_TIMEOUT(session.hasRunningProcess(), 10000);
+
+    // Stop the command. We must confirm it has actually exited, not merely
+    // that hasRunningProcess() flipped false for a moment, so wait for a
+    // sentinel echo that only reaches the PTY after the shell reclaims the
+    // prompt — that requires sleep to have genuinely terminated.
+    session.write("\x03"); // Ctrl-C ends sleep.
+    session.write("echo __foreground_done__\n");
+
+    QSignalSpy spy(&session, &PtySession::dataReceived);
+    QVERIFY(spy.isValid());
+    QByteArray collected;
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 10000) {
+        spy.wait(200);
+        for (const auto &args : spy)
+            collected.append(args.at(0).toByteArray());
+        spy.clear();
+        if (collected.contains("__foreground_done__"))
+            break;
+    }
+    QVERIFY2(collected.contains("__foreground_done__"), "foreground command did not return to the prompt within 10s");
+
+    // The shell has reclaimed the prompt, so the foreground check is idle.
+    // Retry to ride through transient prompt-render helpers an interactive
+    // shell (oh-my-zsh: git status, etc.) briefly foregrounds at the prompt.
+    QTRY_VERIFY_WITH_TIMEOUT(!session.hasRunningProcess(), 10000);
 }
 
 void TestPtySession::testHasRunningProcessReturnsFalseAfterExit() {

@@ -274,6 +274,14 @@ bool PtySession::hasRunningProcess() const {
     if (m_masterFd < 0 || m_childPid <= 0)
         return false;
 
+    // The foreground process group is the ground truth for "something is
+    // running": unlike shell-integration OSC sequences it cannot be emitted by
+    // the program inside the terminal, so it is always safe to trust for the
+    // close-confirmation check. A single tcgetpgrp() is one cheap ioctl
+    // (microseconds), so it stays non-blocking even when close handling walks
+    // every pane, and it detects a foreground process the instant it is
+    // queried — no debounce window that could silently miss a freshly started
+    // command.
     const pid_t fgPgid = ::tcgetpgrp(m_masterFd);
     if (fgPgid <= 0)
         return false;

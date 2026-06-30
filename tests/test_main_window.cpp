@@ -2415,10 +2415,10 @@ void TestMainWindow::testGotoTabShortcutSwitchesInVerticalMode() {
     QVERIFY(waitForTabCount(tabs, 3));
     QCOMPARE(tabs->currentIndex(), 2);
 
-    QTest::keyClick(&window, Qt::Key_1, Qt::ControlModifier | Qt::ShiftModifier);
+    QTest::keyClick(&window, Qt::Key_1, Qt::AltModifier);
     QTRY_COMPARE(tabs->currentIndex(), 0);
 
-    QTest::keyClick(&window, Qt::Key_2, Qt::ControlModifier | Qt::ShiftModifier);
+    QTest::keyClick(&window, Qt::Key_2, Qt::AltModifier);
     QTRY_COMPARE(tabs->currentIndex(), 1);
 }
 

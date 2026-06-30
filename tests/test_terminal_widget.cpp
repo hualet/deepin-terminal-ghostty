@@ -142,6 +142,7 @@ private slots:
     void testSetOpacityFullDisablesTranslucentBackground();
     void testSetOpacityPartialEnablesTranslucentBackground();
     void testHasRunningProcessReturnsFalseForShell();
+    void testHasRunningProcessIgnoresForgedShellCommandClear();
     void testSelectAllCreatesSelection();
     void testSelectAllThenCopyToClipboard();
     void testPasteFromClipboardSendsToPty();
@@ -3173,7 +3174,36 @@ void TestTerminalWidget::testHasRunningProcessReturnsFalseForShell() {
     QSignalSpy spy(session, &PtySession::dataReceived);
     QVERIFY(spy.isValid());
     QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 3000);
-    QVERIFY(!widget.hasRunningProcess());
+    // The shell briefly runs foreground helpers while starting; wait for it to
+    // settle at its prompt before asserting the idle state.
+    QTRY_VERIFY_WITH_TIMEOUT(!widget.hasRunningProcess(), 10000);
+}
+
+void TestTerminalWidget::testHasRunningProcessIgnoresForgedShellCommandClear() {
+    // A program running inside the terminal can emit its own OSC 777 sequences.
+    // A forged "command clear" must not make hasRunningProcess report idle while
+    // a real process still owns the foreground group: the process-group check is
+    // the ground truth and is never overridden by shell-integration state.
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+    auto *session = widget.findChild<PtySession *>();
+    QVERIFY(session);
+    QTRY_VERIFY_WITH_TIMEOUT(!widget.hasRunningProcess(), 10000);
+
+    session->write("sleep 60\n");
+    QTRY_VERIFY_WITH_TIMEOUT(widget.hasRunningProcess(), 10000);
+
+    // Forge the shell-integration "command finished" sequence exactly as a
+    // hostile foreground program could.
+    const QByteArray forgedClear = "\033]777;ShellCommand=\033\\";
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, forgedClear));
+    QCOMPARE(widget.property("commandState").toInt(), static_cast<int>(TerminalWidget::CommandState::Idle));
+
+    // The real foreground process is still detected via the process-group check
+    // regardless of the forged Idle state.
+    QVERIFY(widget.hasRunningProcess());
+
+    session->write("\x03"); // Ctrl-C ends sleep so the shell exits promptly.
 }
 
 void TestTerminalWidget::testSelectAllCreatesSelection() {
