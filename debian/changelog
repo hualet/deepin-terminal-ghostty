@@ -1,3 +1,14 @@
+deepin-terminal-ghostty (1.0.10-1) unstable; urgency=medium
+
+  * Honor synchronized output (BSU/FSU) so screen updates that programs
+    batch together arrive in a single frame, reducing flicker on redraws.
+  * Enlarge fallback emoji so symbol glyphs rendered without a color font
+    remain readable alongside adjacent text.
+  * Limit the theme submenu height so its scroll arrows appear when many
+    themes are installed, keeping the menu navigable.
+
+ -- Deepin Packages <packages@deepin.org>  Tue, 01 Jul 2026 00:00:00 +0800
+
 deepin-terminal-ghostty (1.0.9-1) unstable; urgency=medium
 
   * Keep zoomed ASCII glyphs and color emoji at their correct cell size so
