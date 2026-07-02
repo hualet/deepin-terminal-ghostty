@@ -41,23 +41,20 @@ The rewrite focuses on three goals:
 
 The current development branch already includes:
 
-- PTY-based local shell sessions
-- Ghostty VT parsing and terminal state management
-- Qt/DTK desktop application integration
-- tabbed terminal workflow with horizontal and vertical tab modes
+- session save and restore — preserves tabs, split layouts, working directories, and terminal content (including colors) across restarts
 - split panes inside a tab
-- session save and restore — preserves tabs, split layouts, working directories, and terminal content (including colors) across restarts; configurable via settings
-- settings dialog backed by DTK settings (font, cursor, scrollback, opacity, theme, shortcuts, and session behavior)
-- built-in light/dark/system themes with custom theme support
-- built-in remote management entry and saved server configuration support
-- terminal scrollbar and scrollback navigation
-- inline terminal content search
-- Kitty image protocol support for inline image placements
+- tabbed terminal workflow with horizontal and vertical tab modes
+- Quake / drop-down terminal mode with focus-loss auto-hide
+- D-Bus control service and `dtermctl` CLI for scriptable windows, tabs, splits, and command execution
+- minimal storage footprint
+- 40+ built-in color themes plus light/dark/system and custom theme support
 - adaptive color emoji rendering with a custom FreeType/HarfBuzz fallback when Qt cannot render color emoji correctly
-- X11 PRIMARY selection support (copy-on-select, middle-click paste)
-- bracketed paste mode
-- application translations (zh_CN, es)
-- automated tests for PTY, terminal widget, app settings, session snapshot/manager, and main window behavior
+- Kitty image protocol support for inline image placements
+- inline terminal content search
+- clickable hyperlinks — OSC 8 explicit links and automatic bare URL detection
+- adjustable opacity and window background blur
+- drag-and-drop file paths into the terminal
+- saved SSH server configurations with quick-connect panel
 
 ## Project Status
 
