@@ -2229,20 +2229,30 @@ void TestMainWindow::testTerminalProcessBadgeHasVisibleColoredArtwork() {
     QVERIFY(!image.isNull());
 
     QSet<QRgb> colors;
-    bool hasVisibleAccent = false;
+    int opaquePixels = 0;
+    int whitePixels = 0;
+    bool hasDarkGlyph = false;
+    bool hasGreenAccent = false;
     for (int y = 0; y < image.height(); ++y) {
         for (int x = 0; x < image.width(); ++x) {
             const QColor color = image.pixelColor(x, y);
             if (color.alpha() > 0) {
                 colors.insert(color.rgb());
-                if (color.saturation() > 80 && color.value() > 110)
-                    hasVisibleAccent = true;
+                ++opaquePixels;
+                if (color.red() > 235 && color.green() > 235 && color.blue() > 235)
+                    ++whitePixels;
+                if (color.value() < 100)
+                    hasDarkGlyph = true;
+                if (color.green() > color.red() + 40 && color.green() > color.blue() + 20)
+                    hasGreenAccent = true;
             }
         }
     }
 
     QVERIFY(colors.size() > 2);
-    QVERIFY(hasVisibleAccent);
+    QVERIFY(whitePixels * 2 > opaquePixels);
+    QVERIFY(hasDarkGlyph);
+    QVERIFY(hasGreenAccent);
     QCOMPARE(image.pixelColor(0, 0).alpha(), 0);
     QCOMPARE(image.pixelColor(image.width() - 1, 0).alpha(), 0);
     QCOMPARE(image.pixelColor(0, image.height() - 1).alpha(), 0);
