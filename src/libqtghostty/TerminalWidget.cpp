@@ -4543,11 +4543,24 @@ bool TerminalWidget::isWordBoundary(uint32_t codepoint) const {
         case '^':
         case '~':
         case '\\':
-        case 0x2502:
+        case 0x2502: // box-drawing vertical bar │
             return true;
         default:
-            return false;
+            break;
     }
+
+    // ASCII letters, digits and the connector chars '-', '_', '.', '/', '@'
+    // stay word characters so identifiers, paths, versions and hyphenated
+    // names keep selecting as a single word.
+    if (codepoint < 0x80)
+        return false;
+
+    // For non-ASCII text classify by Unicode category so CJK and full-width
+    // punctuation (，、。：；（）【】《》？！…) and symbols act as word
+    // boundaries, mirroring the ASCII set above, while letters, digits and
+    // marks remain word characters. Use the uint overloads so supplementary
+    // plane codepoints are classified correctly.
+    return QChar::isPunct(codepoint) || QChar::isSpace(codepoint) || QChar::isSymbol(codepoint);
 }
 
 uint32_t TerminalWidget::codepointAtCell(int screenRow, int col) const {

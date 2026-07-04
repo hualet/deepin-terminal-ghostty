@@ -106,6 +106,7 @@ private slots:
     void testDoubleClickSelectsWordWithMixedPunctuation();
     void testDoubleClickStopsAtParentheses();
     void testDoubleClickStopsAtColon();
+    void testDoubleClickStopsAtFullwidthComma();
     void testDoubleClickStopsAtAmpersand();
     void testDoubleClickStopsAtPlus();
     void testDoubleClickStopsAtHash();
@@ -2402,6 +2403,36 @@ void TestTerminalWidget::testDoubleClickStopsAtColon() {
 
     const QString text = widget.debugSelectedText();
     QCOMPARE(text, QStringLiteral("error"));
+}
+
+void TestTerminalWidget::testDoubleClickStopsAtFullwidthComma() {
+    CountingTerminalWidget widget;
+    widget.resize(960, 640);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    // Full-width comma U+FF0C is a word boundary; the ASCII part before it
+    // (including the hyphen) must select as a single word.
+    const QByteArray line = QStringLiteral("qdbusxml2cpp-fix，CMake\n").toUtf8();
+    const int flushBefore = widget.debugPtyFlushCount();
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, line));
+    waitForNextPtyFlush(widget, flushBefore);
+    widget.repaint();
+    QApplication::processEvents();
+
+    const QPoint pos = cellCenterForPos(widget, 3, 0);
+    QMouseEvent press1(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press1);
+    QMouseEvent release1(QEvent::MouseButtonRelease, pos, pos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &release1);
+
+    QMouseEvent press2(QEvent::MouseButtonPress, pos, pos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press2);
+
+    const QString text = widget.debugSelectedText();
+    QCOMPARE(text, QStringLiteral("qdbusxml2cpp-fix"));
 }
 
 void TestTerminalWidget::testDoubleClickStopsAtAmpersand() {
