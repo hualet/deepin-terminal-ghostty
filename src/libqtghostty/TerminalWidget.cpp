@@ -1339,6 +1339,15 @@ void TerminalWidget::importVtContent(const QByteArray &data) {
     ghostty_terminal_reset(m_terminal);
     ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(data.constData()),
                               static_cast<size_t>(data.size()));
+    // The snapshot belongs to the old foreground process, while the restored
+    // widget owns a fresh shell. Do not let stale mouse modes forward clicks to
+    // a process that never enabled them.
+    const QByteArray mouseModeReset(
+        "\033[?9l\033[?1000l\033[?1002l\033[?1003l\033[?1005l\033[?1006l\033[?1015l\033[?1016l");
+    ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(mouseModeReset.constData()),
+                              static_cast<size_t>(mouseModeReset.size()));
+    if (m_mouseEncoder)
+        ghostty_mouse_encoder_reset(m_mouseEncoder);
     // A restored snapshot also restores the old cursor position. Move the live
     // shell to a fresh line after the snapshot so its prompt cannot overwrite it.
     const QByteArray promptBoundary("\033[999;1H\r\n");

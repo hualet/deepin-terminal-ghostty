@@ -162,6 +162,7 @@ private slots:
     void testImportVtContentDropsPendingPtyOutput();
     void testImportVtContentClearsStaleShellIntegrationState();
     void testImportVtContentKeepsFuturePtyOutputAfterRestoredScreen();
+    void testImportVtContentClearsStaleMouseTracking();
 
     void testBareLinkUriAtPositionDetectsHttp();
     void testHyperlinkUriAtPositionIgnoresBareLink();
@@ -3586,6 +3587,33 @@ void TestTerminalWidget::testImportVtContentKeepsFuturePtyOutputAfterRestoredScr
     const QString restoredLine = restored.debugTextForScreenRow(restoredRow);
     QVERIFY(restoredLine.contains(QStringLiteral("RESTORED_LINE")));
     QVERIFY(!restoredLine.contains(QStringLiteral("LIVE_PROMPT")));
+}
+
+void TestTerminalWidget::testImportVtContentClearsStaleMouseTracking() {
+    CountingTerminalWidget saved;
+    saved.resize(800, 600);
+    QVERIFY(saved.initialize());
+    feedTerminalOutput(saved, QByteArray("RESTORED_CONTENT\n\033[?1000h\033[?1006h"));
+    const QByteArray vtData = saved.exportVtContent();
+    QVERIFY(!vtData.isEmpty());
+
+    TerminalWidget restored;
+    restored.resize(800, 600);
+    QVERIFY(restored.initialize());
+
+    auto *session = restored.findChild<PtySession *>();
+    QVERIFY(session);
+    QSignalSpy spy(session, &PtySession::dataWritten);
+    QVERIFY(spy.isValid());
+
+    restored.importVtContent(vtData);
+    spy.clear();
+
+    QMouseEvent pressEvent(QEvent::MouseButtonPress, QPointF(10, 10), QPointF(10, 10), Qt::LeftButton, Qt::LeftButton,
+                           Qt::NoModifier);
+    QApplication::sendEvent(&restored, &pressEvent);
+
+    QCOMPARE(spy.count(), 0);
 }
 
 void TestTerminalWidget::testBareLinkUriAtPositionDetectsHttp() {
