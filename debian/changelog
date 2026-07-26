@@ -1,3 +1,16 @@
+deepin-terminal-ghostty (1.0.11-1) unstable; urgency=medium
+
+  * Refresh the terminal process badge so it remains clear and recognizable
+    at compact sidebar sizes.
+  * Treat CJK punctuation as word boundaries so double-click selection stops
+    at the intended word instead of spanning adjacent text.
+  * Clear stale mouse-reporting modes after session restore so clicks work
+    normally in the fresh shell.
+  * Fit overflowing single-cell Unicode glyphs so symbols such as the
+    reference mark render completely without changing emoji fallback behavior.
+
+ -- Deepin Packages <packages@deepin.org>  Sun, 26 Jul 2026 11:03:36 +0800
+
 deepin-terminal-ghostty (1.0.10-1) unstable; urgency=medium
 
   * Honor synchronized output (BSU/FSU) so screen updates that programs
