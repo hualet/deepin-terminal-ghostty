@@ -62,6 +62,7 @@ private slots:
     void testSetTerminalFontInvalidatesEmojiModeDetection();
     void testFallbackGlyphDoesNotOverlapNextCell();
     void testSingleCodepointFallbackGlyphDoesNotClip();
+    void testOverflowingSingleCodepointGlyphFitsCell();
     void testZoomedAsciiNotReshapedPerCharacter();
     void testRendersAnsiForegroundColors();
     void testRendersInverseTextWithDefaultColors();
@@ -1283,6 +1284,44 @@ void TestTerminalWidget::testSingleCodepointFallbackGlyphDoesNotClip() {
     QVERIFY2(countChangedPixels(before, after, rightEdgeRect) <= 1,
              "single-codepoint fallback glyph should be fitted inside the cell instead of being cut");
     QCOMPARE(countChangedPixels(before, after, nextCellRect), 0);
+}
+
+void TestTerminalWidget::testOverflowingSingleCodepointGlyphFitsCell() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
+    CountingTerminalWidget widget;
+    widget.setStartOptions(options);
+    widget.debugSetEmojiRenderModeForTesting(TerminalWidget::EmojiRenderMode::CustomFallback);
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    feedTerminalOutput(widget, QByteArray("\033[?25l"));
+
+    QInputMethodQueryEvent queryEvent(Qt::ImCursorRectangle);
+    QApplication::sendEvent(&widget, &queryEvent);
+    const QRect cursorRect = queryEvent.value(Qt::ImCursorRectangle).toRect();
+    QVERIFY(cursorRect.isValid());
+
+    const QImage before = renderWidgetImage(widget);
+    feedTerminalOutput(widget, QStringLiteral("※ recap").toUtf8());
+    const QImage after = renderWidgetImage(widget);
+
+    const QRect markCell(cursorRect.topLeft(), cursorRect.size());
+    const QRect followingCell(cursorRect.topLeft() + QPoint(cursorRect.width(), 0), cursorRect.size());
+    const QRect glyphBounds = changedBounds(before.copy(markCell), after.copy(markCell));
+
+    QVERIFY(glyphBounds.isValid());
+    QVERIFY(glyphBounds.left() > 0);
+    QVERIFY(glyphBounds.right() < markCell.width() - 1);
+    QVERIFY2(qAbs(glyphBounds.left() - (markCell.width() - 1 - glyphBounds.right())) <= 1,
+             "overflowing single-codepoint glyph should be fitted and centered instead of clipped");
+    QCOMPARE(countChangedPixels(before, after, followingCell), 0);
+    QCOMPARE(widget.debugLastFrameEmojiFallbackDrawCount(), 0);
 }
 
 void TestTerminalWidget::testZoomedAsciiNotReshapedPerCharacter() {

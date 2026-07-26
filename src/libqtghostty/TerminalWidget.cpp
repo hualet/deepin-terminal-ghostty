@@ -198,6 +198,13 @@ void appendCodepoint(QString &text, uint32_t codepoint) {
     text.append(QChar::ReplacementCharacter);
 }
 
+bool isSingleNonAsciiCodepoint(QStringView text) {
+    if (text.size() == 1)
+        return !text.front().isSurrogate() && text.front().unicode() > 0x7F;
+
+    return text.size() == 2 && text.at(0).isHighSurrogate() && text.at(1).isLowSurrogate();
+}
+
 bool isEmojiCodepoint(uint32_t codepoint) {
     return (codepoint >= 0x1F000 && codepoint <= 0x1FAFF) || (codepoint >= 0x2600 && codepoint <= 0x27BF);
 }
@@ -2480,12 +2487,14 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         // for almost every ASCII glyph once the font was zoomed, because m_cellWidth is a
         // rounded integer while tightBoundingRect() returns subpixel floats. That pulled
         // plain text into the per-character rescale branch below, where each letter was
-        // drawn at a different pointSize and a line of text looked distorted. Emoji
-        // presentation bases and truly overflowing multi-code-unit graphemes still need
+        // drawn at a different pointSize and a line of text looked distorted. Ordinary
+        // ASCII keeps its native advance. Emoji presentation bases, overflowing non-ASCII
+        // single codepoints, and truly overflowing multi-code-unit graphemes still need
         // fitting; everything else keeps the native advance with the cellRect clip above
         // guarding against overflow into the next cell.
         const bool overflowsCell = metrics.horizontalAdvance(text) > m_cellWidth || inkBounds.width() > m_cellWidth;
-        const bool needsFit = isEmojiText || (text.size() > 1 && overflowsCell);
+        const bool overflowingSingleCodepoint = isSingleNonAsciiCodepoint(QStringView(text)) && overflowsCell;
+        const bool needsFit = isEmojiText || overflowingSingleCodepoint || (text.size() > 1 && overflowsCell);
         if (cells == 1 && needsFit) {
             const qreal targetWidth = qMax<qreal>(1.0, cellRect.width() - 2.0);
             const qreal targetHeight = qMax<qreal>(1.0, m_cellHeight - 2.0);
