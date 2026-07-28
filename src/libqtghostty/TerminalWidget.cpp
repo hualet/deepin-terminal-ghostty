@@ -1500,16 +1500,20 @@ QString TerminalWidget::debugSelectedText() const {
 bool TerminalWidget::setupTerminal() {
     ensureGhosttySysCallbacks();
 
-    GhosttyTerminalOptions opts = {
-        .cols = m_cols,
-        .rows = m_rows,
-        .max_scrollback = scrollbackByteBudget(),
-    };
     TerminalTrace::logResize("ghostty.new", m_cols, m_rows, m_cellWidth, m_cellHeight, terminalContentRect());
 
-    GhosttyResult err = ghostty_terminal_new(nullptr, &m_terminal, opts);
+    GhosttyResult err = ghostty_terminal_new(nullptr, &m_terminal, m_cols, m_rows);
     if (err != GHOSTTY_SUCCESS) {
         std::fprintf(stderr, "ghostty_terminal_new failed (%d)\n", err);
+        return false;
+    }
+
+    size_t scrollbackMaxBytes = scrollbackByteBudget();
+    err = ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &scrollbackMaxBytes);
+    if (err != GHOSTTY_SUCCESS) {
+        std::fprintf(stderr, "setting Ghostty scrollback byte limit failed (%d)\n", err);
+        ghostty_terminal_free(m_terminal);
+        m_terminal = nullptr;
         return false;
     }
 
