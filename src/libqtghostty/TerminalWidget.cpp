@@ -1391,6 +1391,7 @@ void TerminalWidget::importVtContent(const QByteArray &data) {
     setProperty("shellCommand", QString());
     updateCommandState(CommandState::Idle);
     m_kittyImageCache.clear();
+    m_kittyGraphicsGeneration.reset();
     invalidateLinkScanCache();
     clearHoverLink();
     ghostty_terminal_reset(m_terminal);
@@ -2183,6 +2184,14 @@ bool TerminalWidget::renderKittyGraphicsLayer(QPainter &painter, GhosttyKittyPla
         return false;
     }
 
+    uint64_t generation = 0;
+    if (ghostty_kitty_graphics_get(graphics, GHOSTTY_KITTY_GRAPHICS_DATA_GENERATION, &generation) != GHOSTTY_SUCCESS)
+        return false;
+    if (!m_kittyGraphicsGeneration || *m_kittyGraphicsGeneration != generation) {
+        m_kittyImageCache.clear();
+        m_kittyGraphicsGeneration = generation;
+    }
+
     if (ghostty_kitty_graphics_get(graphics, GHOSTTY_KITTY_GRAPHICS_DATA_PLACEMENT_ITERATOR, &m_kittyPlacementIter)
         != GHOSTTY_SUCCESS) {
         return false;
@@ -2324,8 +2333,12 @@ QImage TerminalWidget::imageForKittyImage(GhosttyKittyGraphicsImage image) {
             return {};
     }
 
-    if (!qtImage.isNull())
+    if (!qtImage.isNull()) {
+#ifdef QTGHOSTTY_TESTING
+        ++m_debugKittyImageConversionCount;
+#endif
         m_kittyImageCache.insert(imageId, qtImage);
+    }
     return qtImage;
 }
 
@@ -4017,7 +4030,6 @@ bool TerminalWidget::flushPendingPtyData(QRect *repaintRegion) {
 #ifdef QTGHOSTTY_TESTING
     ++m_debugPtyFlushCount;
 #endif
-    m_kittyImageCache.clear();
     ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(m_pendingPtyData.constData()),
                               static_cast<size_t>(m_pendingPtyData.size()));
     scheduleScrollbackCompression();

@@ -275,6 +275,7 @@ private:
     CommandState m_commandState = CommandState::Idle;
     QByteArray m_pendingPtyData;
     QHash<uint32_t, QImage> m_kittyImageCache;
+    std::optional<uint64_t> m_kittyGraphicsGeneration;
     QHash<QString, QImage> m_emojiImageCache;
     QStringList m_emojiImageCacheOrder;
     QTimer *m_renderTimer = nullptr;
@@ -379,6 +380,7 @@ private:
     mutable int m_debugBareLinkScanCount = 0;
     mutable int m_debugTextForScreenRowCount = 0;
     int m_debugScrollbackCompressionStepCount = 0;
+    int m_debugKittyImageConversionCount = 0;
 #endif
 
     // Effects callbacks
