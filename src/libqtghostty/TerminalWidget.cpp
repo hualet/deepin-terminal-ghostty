@@ -746,32 +746,6 @@ std::optional<int> commandResultFromQtGhosttyShellCommandResult(const QByteArray
     return exitCode;
 }
 
-std::optional<QString> clipboardTextFromOsc52Payload(const QByteArray &payload) {
-    static constexpr QByteArrayView kPrefix("52;");
-    if (!payload.startsWith(kPrefix))
-        return std::nullopt;
-
-    const QByteArray body = payload.mid(kPrefix.size());
-    QByteArray encoded;
-    if (body.startsWith(';')) {
-        encoded = body.mid(1);
-    } else {
-        const int separator = body.indexOf(';');
-        if (separator != 1 || body.at(0) != 'c')
-            return std::nullopt;
-        encoded = body.mid(separator + 1);
-    }
-
-    if (encoded == "?")
-        return std::nullopt;
-
-    const auto decoded = QByteArray::fromBase64Encoding(encoded);
-    if (!decoded)
-        return std::nullopt;
-
-    return QString::fromUtf8(*decoded);
-}
-
 bool containsLocalFileUrl(const QMimeData *mimeData) {
     if (!mimeData || !mimeData->hasUrls())
         return false;
@@ -1066,6 +1040,64 @@ void effectWritePty(GhosttyTerminal terminal, void *userdata, const uint8_t *dat
     if (widget->m_ptySession && len > 0) {
         widget->m_ptySession->write(QByteArray(reinterpret_cast<const char *>(data), static_cast<int>(len)));
     }
+}
+
+GhosttyClipboardWriteResult effectClipboardWrite(GhosttyTerminal terminal, void *userdata,
+                                                 const GhosttyClipboardWrite *write) {
+    (void)terminal;
+    if (!userdata || !write || write->size < sizeof(GhosttyClipboardWrite))
+        return GHOSTTY_CLIPBOARD_WRITE_RESULT_INVALID_DATA;
+
+    QClipboard *clipboard = QGuiApplication::clipboard();
+    if (!clipboard)
+        return GHOSTTY_CLIPBOARD_WRITE_RESULT_IO_ERROR;
+
+    QClipboard::Mode mode = QClipboard::Clipboard;
+    switch (write->location) {
+        case GHOSTTY_CLIPBOARD_LOCATION_STANDARD:
+            break;
+        case GHOSTTY_CLIPBOARD_LOCATION_SELECTION:
+        case GHOSTTY_CLIPBOARD_LOCATION_PRIMARY:
+            if (!clipboard->supportsSelection())
+                return GHOSTTY_CLIPBOARD_WRITE_RESULT_UNSUPPORTED;
+            mode = QClipboard::Selection;
+            break;
+        default:
+            return GHOSTTY_CLIPBOARD_WRITE_RESULT_UNSUPPORTED;
+    }
+
+    if (write->contents_len == 0) {
+        clipboard->clear(mode);
+        return GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS;
+    }
+    if (!write->contents)
+        return GHOSTTY_CLIPBOARD_WRITE_RESULT_INVALID_DATA;
+
+    auto *mimeData = new QMimeData;
+    for (size_t i = 0; i < write->contents_len; ++i) {
+        const GhosttyClipboardContent &content = write->contents[i];
+        if (!content.mime.ptr || content.mime.len == 0
+            || content.mime.len > static_cast<size_t>(std::numeric_limits<qsizetype>::max())
+            || (!content.data.ptr && content.data.len > 0)
+            || content.data.len > static_cast<size_t>(std::numeric_limits<qsizetype>::max())) {
+            delete mimeData;
+            return GHOSTTY_CLIPBOARD_WRITE_RESULT_INVALID_DATA;
+        }
+
+        const QByteArray mimeBytes(reinterpret_cast<const char *>(content.mime.ptr),
+                                   static_cast<qsizetype>(content.mime.len));
+        if (mimeBytes.contains('\0')) {
+            delete mimeData;
+            return GHOSTTY_CLIPBOARD_WRITE_RESULT_INVALID_DATA;
+        }
+
+        const QByteArray data(reinterpret_cast<const char *>(content.data.ptr),
+                              static_cast<qsizetype>(content.data.len));
+        mimeData->setData(QString::fromLatin1(mimeBytes), data);
+    }
+
+    clipboard->setMimeData(mimeData, mode);
+    return GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS;
 }
 
 bool effectSize(GhosttyTerminal terminal, void *userdata, GhosttySizeReportSize *out_size) {
@@ -1521,6 +1553,8 @@ bool TerminalWidget::setupTerminal() {
 
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_USERDATA, this);
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_WRITE_PTY, reinterpret_cast<const void *>(effectWritePty));
+    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE,
+                         reinterpret_cast<const void *>(effectClipboardWrite));
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_SIZE, reinterpret_cast<const void *>(effectSize));
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_DEVICE_ATTRIBUTES,
                          reinterpret_cast<const void *>(effectDeviceAttributes));
@@ -3605,18 +3639,13 @@ void TerminalWidget::scanShellIntegrationSequences(const QByteArray &data) {
         const int sequenceEnd = useBel ? belEnd + 1 : stEnd + 2;
         const QByteArray payload = m_oscScanBuffer.mid(2, payloadEnd - 2);
 
-        const std::optional<QString> clipboardText = clipboardTextFromOsc52Payload(payload);
-        if (clipboardText.has_value()) {
-            QGuiApplication::clipboard()->setText(clipboardText.value());
+        const std::optional<int> result = commandResultFromQtGhosttyShellCommandResult(payload);
+        if (result.has_value()) {
+            setShellCommandResult(result.value());
         } else {
-            const std::optional<int> result = commandResultFromQtGhosttyShellCommandResult(payload);
-            if (result.has_value()) {
-                setShellCommandResult(result.value());
-            } else {
-                const std::optional<QString> command = shellCommandFromOscPayload(payload);
-                if (command.has_value())
-                    setShellCommand(command.value());
-            }
+            const std::optional<QString> command = shellCommandFromOscPayload(payload);
+            if (command.has_value())
+                setShellCommand(command.value());
         }
 
         m_oscScanBuffer.remove(0, sequenceEnd);
