@@ -116,6 +116,7 @@ public:
     bool debugAppliedIsDark() const;
     QColor debugAppliedForeground() const;
     QColor debugAppliedBackground() const;
+    QColor debugAppliedPaletteColor(int index) const;
     void debugSetRawTerminalFont(const QFont &font);
     void debugSetEmojiRenderModeForTesting(EmojiRenderMode mode);
 #endif

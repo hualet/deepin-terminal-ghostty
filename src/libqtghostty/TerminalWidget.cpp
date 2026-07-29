@@ -3632,9 +3632,10 @@ void TerminalWidget::applyTheme(const TerminalTheme &theme) {
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_COLOR_CURSOR, &cr);
 
     GhosttyColorRgb palette[256] = {};
-    ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_COLOR_PALETTE, palette);
+    ghostty_color_palette_default(palette);
     for (int i = 0; i < 16; ++i)
         palette[i] = toRgb(theme.ansi[i]);
+    ghostty_color_palette_generate(palette, nullptr, &bg, &fg, true, palette);
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_COLOR_PALETTE, palette);
 
     m_isDark = theme.isDark;
@@ -5212,6 +5213,16 @@ QColor TerminalWidget::debugAppliedBackground() const {
         return QColor();
     GhosttyColorRgb rgb;
     ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_COLOR_BACKGROUND, &rgb);
+    return QColor(rgb.r, rgb.g, rgb.b);
+}
+
+QColor TerminalWidget::debugAppliedPaletteColor(int index) const {
+    if (!m_terminal || index < 0 || index >= 256)
+        return QColor();
+    GhosttyColorRgb palette[256] = {};
+    if (ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_COLOR_PALETTE, palette) != GHOSTTY_SUCCESS)
+        return QColor();
+    const GhosttyColorRgb rgb = palette[index];
     return QColor(rgb.r, rgb.g, rgb.b);
 }
 
