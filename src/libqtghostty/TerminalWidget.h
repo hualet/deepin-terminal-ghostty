@@ -109,6 +109,7 @@ public:
     int debugCursorOnlyRepaintCount() const;
     int debugScrollbackLines() const;
     size_t debugScrollbackByteBudget() const;
+    int debugUnicodeTextCellWidth(const QString &text) const;
     void debugSetSelection(int startRow, int startCol, int endRow, int endCol, bool active);
     bool debugCellInSelection(int screenRow, int col) const;
     QString debugSelectedText() const;
@@ -204,6 +205,7 @@ private:
     bool renderKittyPlacement(QPainter &painter, GhosttyKittyGraphics graphics);
     QImage imageForKittyImage(GhosttyKittyGraphicsImage image);
     void renderPreeditText(QPainter &painter);
+    int unicodeTextCellWidth(const QString &text) const;
     void sendFocusEvent(bool gained);
     QRect inputMethodCursorRect() const;
     QRect terminalContentRect() const;

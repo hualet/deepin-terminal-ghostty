@@ -4218,9 +4218,8 @@ void TerminalWidget::renderPreeditText(QPainter &painter) {
     }
 
     const QRect cursorRect = inputMethodCursorRect();
-    QFontMetrics fm(m_font);
     const int baseline = cursorRect.y() + m_fontAscent;
-    const int preeditWidth = fm.horizontalAdvance(m_preeditText);
+    const int preeditWidth = unicodeTextCellWidth(m_preeditText) * m_cellWidth;
     const QRect backgroundRect(cursorRect.x(), cursorRect.y(), qMax(preeditWidth, cursorRect.width()), m_cellHeight);
 
     painter.fillRect(backgroundRect, palette().base());
@@ -4229,6 +4228,26 @@ void TerminalWidget::renderPreeditText(QPainter &painter) {
     painter.drawText(cursorRect.x(), baseline, m_preeditText);
     painter.drawLine(cursorRect.x(), cursorRect.y() + m_cellHeight - 1, cursorRect.x() + qMax(preeditWidth, 1),
                      cursorRect.y() + m_cellHeight - 1);
+}
+
+int TerminalWidget::unicodeTextCellWidth(const QString &text) const {
+    const QList<uint> qtCodepoints = text.toUcs4();
+    std::vector<uint32_t> codepoints;
+    codepoints.reserve(static_cast<size_t>(qtCodepoints.size()));
+    for (uint codepoint : qtCodepoints)
+        codepoints.push_back(static_cast<uint32_t>(codepoint));
+
+    int totalWidth = 0;
+    for (size_t offset = 0; offset < codepoints.size();) {
+        uint8_t width = 0;
+        const size_t consumed =
+            ghostty_unicode_grapheme_width(codepoints.data() + offset, codepoints.size() - offset, &width);
+        if (consumed == 0)
+            break;
+        totalWidth += width;
+        offset += consumed;
+    }
+    return totalWidth;
 }
 
 // ---------------------------------------------------------------------------
@@ -5194,6 +5213,10 @@ QColor TerminalWidget::debugAppliedBackground() const {
     GhosttyColorRgb rgb;
     ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_COLOR_BACKGROUND, &rgb);
     return QColor(rgb.r, rgb.g, rgb.b);
+}
+
+int TerminalWidget::debugUnicodeTextCellWidth(const QString &text) const {
+    return unicodeTextCellWidth(text);
 }
 
 void TerminalWidget::debugSetRawTerminalFont(const QFont &font) {
