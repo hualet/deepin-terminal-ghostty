@@ -1501,6 +1501,7 @@ void TerminalWidget::importVtContent(const QByteArray &data) {
     const QByteArray promptBoundary("\033[999;1H\r\n");
     ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(promptBoundary.constData()),
                               static_cast<size_t>(promptBoundary.size()));
+    checkVtProcessingError();
     scheduleScrollbackCompression();
     m_renderStateDirty = true;
     update();
@@ -1512,6 +1513,14 @@ QString TerminalWidget::workingDirectory() const {
     if (!m_ptySession)
         return {};
     return m_ptySession->workingDirectory();
+}
+
+bool TerminalWidget::hasVtProcessingError() const {
+    bool processingError = false;
+    return m_terminal
+           && ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_VT_PROCESSING_ERROR, &processingError)
+                  == GHOSTTY_SUCCESS
+           && processingError;
 }
 
 QString TerminalWidget::visibleText() const {
@@ -4056,6 +4065,15 @@ bool TerminalWidget::applyScrollbackLimits() {
     return true;
 }
 
+void TerminalWidget::checkVtProcessingError() {
+    if (m_vtProcessingErrorReported || !hasVtProcessingError())
+        return;
+
+    m_vtProcessingErrorReported = true;
+    qCWarning(terminalLog) << "Ghostty reported a terminal-owned VT processing failure";
+    Q_EMIT vtProcessingErrorDetected();
+}
+
 void TerminalWidget::scheduleScrollbackCompression() {
     if (!m_terminal || !m_scrollbackCompressionTimer || !m_scrollbackCompressionAvailable)
         return;
@@ -4131,6 +4149,7 @@ bool TerminalWidget::flushPendingPtyData(QRect *repaintRegion) {
 #endif
     ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(m_pendingPtyData.constData()),
                               static_cast<size_t>(m_pendingPtyData.size()));
+    checkVtProcessingError();
     scheduleScrollbackCompression();
     invalidateLinkScanCache();
     clearHoverLink();

@@ -50,6 +50,7 @@ public:
     int terminalColumns() const;
     int terminalRows() const;
     bool hasRunningProcess() const;
+    bool hasVtProcessingError() const;
     QString workingDirectory() const;
 
     void setTerminalFont(const QFont &font);
@@ -136,6 +137,7 @@ signals:
     void linkActivated(const QString &uri);
     void desktopNotificationRequested(const QString &title, const QString &body);
     void progressChanged(ProgressState state, int progress);
+    void vtProcessingErrorDetected();
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -223,6 +225,7 @@ private:
     void clearRenderStateDirtyRows();
     size_t scrollbackByteBudget() const;
     bool applyScrollbackLimits();
+    void checkVtProcessingError();
     void scheduleScrollbackCompression();
     void runScrollbackCompressionStep();
     void scanShellIntegrationSequences(const QByteArray &data);
@@ -329,6 +332,7 @@ private:
     ViewportScrollState m_viewportScrollState;
     std::optional<uint64_t> m_scrollbackCompressionActivity;
     bool m_scrollbackCompressionAvailable = true;
+    bool m_vtProcessingErrorReported = false;
     bool m_isDark = true;
     qreal m_opacity = 1.0;
 
