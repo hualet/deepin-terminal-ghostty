@@ -49,6 +49,8 @@ constexpr size_t kKittyApcMaxBytes = 80 * 1024 * 1024;
 constexpr size_t kBytesPerScrollbackLine = 20 * 1000;
 constexpr size_t kMinimumScrollbackBytes = 100 * 1000 * 1000;
 constexpr int kSelectionAutoScrollIntervalMs = 50;
+constexpr int kScrollbackCompressionIdleMs = 250;
+constexpr int kScrollbackCompressionContinuationMs = 1;
 constexpr char kEmojiFontFamily[] = "Noto Color Emoji";
 
 QColor faintForeground(const QColor &foreground, const QColor &background) {
@@ -1217,6 +1219,10 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     m_selectionAutoScrollTimer = new QTimer(this);
     m_selectionAutoScrollTimer->setInterval(kSelectionAutoScrollIntervalMs);
     connect(m_selectionAutoScrollTimer, &QTimer::timeout, this, [this]() { handleSelectionAutoScroll(); });
+
+    m_scrollbackCompressionTimer = new QTimer(this);
+    m_scrollbackCompressionTimer->setSingleShot(true);
+    connect(m_scrollbackCompressionTimer, &QTimer::timeout, this, [this]() { runScrollbackCompressionStep(); });
 }
 
 TerminalWidget::~TerminalWidget() {
@@ -1297,6 +1303,7 @@ void TerminalWidget::scrollViewportBy(int deltaRows) {
         .value = {.delta = static_cast<intptr_t>(deltaRows)},
     };
     ghostty_terminal_scroll_viewport(m_terminal, sv);
+    scheduleScrollbackCompression();
     m_renderStateDirty = true;
     updateViewportScrollState();
     update();
@@ -1313,6 +1320,7 @@ void TerminalWidget::scrollViewportToOffset(int offset) {
         .value = {.row = static_cast<size_t>(targetOffset)},
     };
     ghostty_terminal_scroll_viewport(m_terminal, sv);
+    scheduleScrollbackCompression();
     m_renderStateDirty = true;
     updateViewportScrollState();
     update();
@@ -1402,6 +1410,7 @@ void TerminalWidget::importVtContent(const QByteArray &data) {
     const QByteArray promptBoundary("\033[999;1H\r\n");
     ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(promptBoundary.constData()),
                               static_cast<size_t>(promptBoundary.size()));
+    scheduleScrollbackCompression();
     m_renderStateDirty = true;
     update();
 }
@@ -3474,6 +3483,8 @@ void TerminalWidget::setStartOptions(const PtySession::StartOptions &options) {
 
 void TerminalWidget::setScrollbackLines(int lines) {
     m_scrollbackLines = std::max(0, lines);
+    if (m_terminal && applyScrollbackLimits())
+        scheduleScrollbackCompression();
     invalidateLinkScanCache();
     updateViewportScrollState();
 }
@@ -3596,6 +3607,7 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
         .value = {.delta = static_cast<intptr_t>(rows)},
     };
     ghostty_terminal_scroll_viewport(m_terminal, sv);
+    scheduleScrollbackCompression();
     m_renderStateDirty = true;
     updateViewportScrollState();
     update();
@@ -3860,6 +3872,7 @@ void TerminalWidget::applyPendingResize() {
     if (m_terminal) {
         ghostty_terminal_resize(m_terminal, m_cols, m_rows, static_cast<uint32_t>(m_cellWidth),
                                 static_cast<uint32_t>(m_cellHeight));
+        scheduleScrollbackCompression();
         TerminalTrace::logResize("ghostty.resize", m_cols, m_rows, m_cellWidth, m_cellHeight, terminalContentRect());
         m_renderStateDirty = true;
         updateViewportScrollState();
@@ -3931,6 +3944,67 @@ bool TerminalWidget::applyScrollbackLimits() {
     return true;
 }
 
+void TerminalWidget::scheduleScrollbackCompression() {
+    if (!m_terminal || !m_scrollbackCompressionTimer || !m_scrollbackCompressionAvailable)
+        return;
+
+    uint64_t activity = 0;
+    const GhosttyResult err = ghostty_terminal_compression_activity(m_terminal, &activity);
+    if (err != GHOSTTY_SUCCESS) {
+        qCWarning(terminalLog) << "Failed to query Ghostty scrollback compression activity" << err;
+        return;
+    }
+
+    if (m_scrollbackCompressionActivity && *m_scrollbackCompressionActivity == activity)
+        return;
+
+    m_scrollbackCompressionActivity = activity;
+    m_scrollbackCompressionTimer->start(kScrollbackCompressionIdleMs);
+}
+
+void TerminalWidget::runScrollbackCompressionStep() {
+    if (!m_terminal || !m_scrollbackCompressionTimer || !m_scrollbackCompressionAvailable)
+        return;
+
+    uint64_t activity = 0;
+    GhosttyResult err = ghostty_terminal_compression_activity(m_terminal, &activity);
+    if (err != GHOSTTY_SUCCESS) {
+        qCWarning(terminalLog) << "Failed to query Ghostty scrollback compression activity" << err;
+        return;
+    }
+
+    if (!m_scrollbackCompressionActivity || *m_scrollbackCompressionActivity != activity) {
+        m_scrollbackCompressionActivity = activity;
+        m_scrollbackCompressionTimer->start(kScrollbackCompressionIdleMs);
+        return;
+    }
+
+    GhosttyTerminalCompressionResult result = GHOSTTY_TERMINAL_COMPRESSION_RESULT_COMPLETE;
+    err = ghostty_terminal_compress(m_terminal, GHOSTTY_TERMINAL_COMPRESSION_MODE_INCREMENTAL, &result);
+    if (err != GHOSTTY_SUCCESS) {
+        qCWarning(terminalLog) << "Failed to compress Ghostty scrollback" << err;
+        return;
+    }
+
+#ifdef QTGHOSTTY_TESTING
+    ++m_debugScrollbackCompressionStepCount;
+#endif
+
+    switch (result) {
+        case GHOSTTY_TERMINAL_COMPRESSION_RESULT_PENDING:
+            m_scrollbackCompressionTimer->start(kScrollbackCompressionContinuationMs);
+            break;
+        case GHOSTTY_TERMINAL_COMPRESSION_RESULT_UNSUPPORTED:
+            m_scrollbackCompressionAvailable = false;
+            break;
+        case GHOSTTY_TERMINAL_COMPRESSION_RESULT_COMPLETE:
+            break;
+        default:
+            qCWarning(terminalLog) << "Ghostty returned an unknown scrollback compression result" << result;
+            break;
+    }
+}
+
 bool TerminalWidget::flushPendingPtyData(QRect *repaintRegion) {
     if (!m_terminal || m_pendingPtyData.isEmpty()) {
         return false;
@@ -3946,6 +4020,7 @@ bool TerminalWidget::flushPendingPtyData(QRect *repaintRegion) {
     m_kittyImageCache.clear();
     ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(m_pendingPtyData.constData()),
                               static_cast<size_t>(m_pendingPtyData.size()));
+    scheduleScrollbackCompression();
     invalidateLinkScanCache();
     clearHoverLink();
     m_pendingPtyData.clear();

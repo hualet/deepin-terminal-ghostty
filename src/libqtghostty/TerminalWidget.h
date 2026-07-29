@@ -215,6 +215,8 @@ private:
     void clearRenderStateDirtyRows();
     size_t scrollbackByteBudget() const;
     bool applyScrollbackLimits();
+    void scheduleScrollbackCompression();
+    void runScrollbackCompressionStep();
     void scanShellIntegrationSequences(const QByteArray &data);
     void setShellCommand(const QString &command);
     void setShellCommandResult(int exitCode);
@@ -279,6 +281,7 @@ private:
     QTimer *m_synchronizedOutputTimeoutTimer = nullptr;
     QTimer *m_resizeTimer = nullptr;
     QTimer *m_selectionAutoScrollTimer = nullptr;
+    QTimer *m_scrollbackCompressionTimer = nullptr;
     QElapsedTimer m_lastRenderTime;
     QImage m_backBuffer;
     int m_backBufferViewportOffset = 0;
@@ -314,6 +317,8 @@ private:
     // Scrollback
     int m_scrollbackLines = 5000;
     ViewportScrollState m_viewportScrollState;
+    std::optional<uint64_t> m_scrollbackCompressionActivity;
+    bool m_scrollbackCompressionAvailable = true;
     bool m_isDark = true;
     qreal m_opacity = 1.0;
 
@@ -373,6 +378,7 @@ private:
     int m_debugCursorOnlyRepaintCount = 0;
     mutable int m_debugBareLinkScanCount = 0;
     mutable int m_debugTextForScreenRowCount = 0;
+    int m_debugScrollbackCompressionStepCount = 0;
 #endif
 
     // Effects callbacks
