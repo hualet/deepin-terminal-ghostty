@@ -4,6 +4,7 @@
 #include <QClipboard>
 #include <QElapsedTimer>
 #include <QEvent>
+#include <QFile>
 #include <QImage>
 #include <QInputMethodEvent>
 #include <QInputMethodQueryEvent>
@@ -24,6 +25,8 @@
 
 #include <ghostty/vt.h>
 
+#include <unistd.h>
+
 class TestTerminalWidget : public QObject {
     Q_OBJECT
 
@@ -33,9 +36,14 @@ private slots:
 
     void testInitialize();
     void testInputMethodSupport();
+    void testUnicodeGraphemeWidths();
+    void testTerminalReportedWorkingDirectory();
     void testNoAppSpecificSignals();
     void testSizeReport();
     void testTitleChanged();
+    void testDesktopNotificationCallbacks();
+    void testProgressReportCallbacks();
+    void testNormalOutputDoesNotReportVtProcessingError();
     void testShellIntegrationCommandDetection();
     void testGridSize();
     void testIgnoresTransientTinyResize();
@@ -67,6 +75,8 @@ private slots:
     void testRendersAnsiForegroundColors();
     void testRendersInverseTextWithDefaultColors();
     void testRendersInlineKittyPngImage();
+    void testKittyImageCacheSurvivesUnrelatedOutput();
+    void testKittyImageGenerationInvalidatesReplacement();
     void testRendersTextDecorations();
     void testStyledTextKeepsCharactersOnCellGrid();
     void testConcealedTextDoesNotRenderGlyphs();
@@ -92,6 +102,7 @@ private slots:
     void testSelectedTextTopLeftToBottomRight();
     void testSelectedTextBottomRightToTopLeft();
     void testApplyThemeSetsColors();
+    void testThemeGeneratesHarmoniousExtendedPalette();
 
     void testCommandStateRunning();
     void testCommandStateSucceeded();
@@ -129,6 +140,10 @@ private slots:
     void testZoomOutClampsAtMinimum();
     void testSetScrollbackLines();
     void testScrollbackLineCountMapsToByteBudget();
+    void testLiveScrollbackLimitsReachGhostty();
+    void testScrollbackCompressionWaitsForIdle();
+    void testScrollbackCompressionRestartsIdleDelay();
+    void testScrollbackCompressionPreservesContent();
     void testViewportScrollStateAndAbsoluteScroll();
     void testOutputDoesNotFollowBottomWhenViewportScrolledBack();
     void testOutputDoesNotRepaintScrolledBackViewportContent();
@@ -152,6 +167,7 @@ private slots:
     void testOsc52WritesClipboard();
     void testOsc52WritesClipboardAcrossChunks();
     void testOsc52ReadRequestDoesNotChangeClipboard();
+    void testIterm2CopyWritesClipboard();
     void testSearchFindsMatchInTerminalContent();
     void testSearchNoMatch();
     void testSearchEmptyQueryClears();
@@ -278,6 +294,20 @@ int countChangedPixels(const QImage &before, const QImage &after, const QRect &r
     }
 
     return count;
+}
+
+qint64 residentSetBytes() {
+    QFile statm(QStringLiteral("/proc/self/statm"));
+    if (!statm.open(QIODevice::ReadOnly))
+        return -1;
+
+    const QList<QByteArray> fields = statm.readAll().simplified().split(' ');
+    if (fields.size() < 2)
+        return -1;
+
+    bool ok = false;
+    const qint64 residentPages = fields.at(1).toLongLong(&ok);
+    return ok ? residentPages * sysconf(_SC_PAGESIZE) : -1;
 }
 
 void waitForNextPtyFlush(CountingTerminalWidget &widget, int previousFlushCount, int timeoutMs = 100) {
@@ -473,6 +503,40 @@ void TestTerminalWidget::testInputMethodSupport() {
     QTRY_VERIFY_WITH_TIMEOUT(collectedPtyOutput(spy).contains(QStringLiteral("中文").toUtf8()), 2000);
 }
 
+void TestTerminalWidget::testUnicodeGraphemeWidths() {
+    TerminalWidget widget;
+
+    QCOMPARE(widget.debugUnicodeTextCellWidth(QStringLiteral("A")), 1);
+    QCOMPARE(widget.debugUnicodeTextCellWidth(QString::fromUtf8("中")), 2);
+    QCOMPARE(widget.debugUnicodeTextCellWidth(QString(QChar('e')) + QChar(0x0301)), 1);
+    QCOMPARE(widget.debugUnicodeTextCellWidth(QString(QChar(0x2764)) + QChar(0xFE0E)), 1);
+    QCOMPARE(widget.debugUnicodeTextCellWidth(QString(QChar(0x2764)) + QChar(0xFE0F)), 2);
+
+    const char32_t familyCodepoints[] = {0x1F468, 0x200D, 0x1F469, 0x200D, 0x1F467};
+    const QString family = QString::fromUcs4(familyCodepoints, std::size(familyCodepoints));
+    QCOMPARE(widget.debugUnicodeTextCellWidth(family), 2);
+}
+
+void TestTerminalWidget::testTerminalReportedWorkingDirectory() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+    const QString ptyWorkingDirectory = widget.workingDirectory();
+    QSignalSpy spy(&widget, &TerminalWidget::workingDirectoryChanged);
+    QVERIFY(spy.isValid());
+
+    feedTerminalOutput(widget, QByteArray("\033]7;file://localhost/tmp/project%20dir\033\\"));
+    QCOMPARE(widget.workingDirectory(), QStringLiteral("/tmp/project dir"));
+    QCOMPARE(spy.count(), 1);
+
+    feedTerminalOutput(widget, QByteArray("\033]1337;CurrentDir=/var/tmp\033\\"));
+    QCOMPARE(widget.workingDirectory(), QStringLiteral("/var/tmp"));
+    QCOMPARE(spy.count(), 2);
+
+    feedTerminalOutput(widget, QByteArray("\033]7;file://remote.example/srv/project\033\\"));
+    QCOMPARE(widget.workingDirectory(), ptyWorkingDirectory);
+    QCOMPARE(spy.count(), 3);
+}
+
 void TestTerminalWidget::testNoAppSpecificSignals() {
     TerminalWidget widget;
 
@@ -521,6 +585,63 @@ void TestTerminalWidget::testTitleChanged() {
 
     QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 100);
     QCOMPARE(spy.at(0).at(0).toString(), QString("MyTestTitle"));
+}
+
+void TestTerminalWidget::testDesktopNotificationCallbacks() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+    QSignalSpy spy(&widget, &TerminalWidget::desktopNotificationRequested);
+    QVERIFY(spy.isValid());
+
+    feedTerminalOutput(widget, QByteArray("\033]777;notify;Build;Needs "));
+    QCOMPARE(spy.count(), 0);
+    feedTerminalOutput(widget, QByteArray("attention\033\\"));
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.at(0).at(0).toString(), QStringLiteral("Build"));
+    QCOMPARE(spy.at(0).at(1).toString(), QStringLiteral("Needs attention"));
+
+    feedTerminalOutput(widget, QByteArray("\033]9;Complete\a"));
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.at(1).at(0).toString(), QString());
+    QCOMPARE(spy.at(1).at(1).toString(), QStringLiteral("Complete"));
+}
+
+void TestTerminalWidget::testProgressReportCallbacks() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+    QSignalSpy spy(&widget, &TerminalWidget::progressChanged);
+    QVERIFY(spy.isValid());
+
+    const QList<QByteArray> sequences = {
+        QByteArray("\033]9;4;1;42\a"),    QByteArray("\033]9;4;3\033\\"),  QByteArray("\033]9;4;4;75\033\\"),
+        QByteArray("\033]9;4;2;7\033\\"), QByteArray("\033]9;4;0;\033\\"),
+    };
+    for (const QByteArray &sequence : sequences)
+        feedTerminalOutput(widget, sequence);
+
+    QCOMPARE(spy.count(), 5);
+    QCOMPARE(spy.at(0).at(0).value<TerminalWidget::ProgressState>(), TerminalWidget::ProgressState::Set);
+    QCOMPARE(spy.at(0).at(1).toInt(), 42);
+    QCOMPARE(spy.at(1).at(0).value<TerminalWidget::ProgressState>(), TerminalWidget::ProgressState::Indeterminate);
+    QCOMPARE(spy.at(1).at(1).toInt(), -1);
+    QCOMPARE(spy.at(2).at(0).value<TerminalWidget::ProgressState>(), TerminalWidget::ProgressState::Pause);
+    QCOMPARE(spy.at(2).at(1).toInt(), 75);
+    QCOMPARE(spy.at(3).at(0).value<TerminalWidget::ProgressState>(), TerminalWidget::ProgressState::Error);
+    QCOMPARE(spy.at(3).at(1).toInt(), 7);
+    QCOMPARE(spy.at(4).at(0).value<TerminalWidget::ProgressState>(), TerminalWidget::ProgressState::Remove);
+    QCOMPARE(spy.at(4).at(1).toInt(), -1);
+}
+
+void TestTerminalWidget::testNormalOutputDoesNotReportVtProcessingError() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+    QSignalSpy spy(&widget, &TerminalWidget::vtProcessingErrorDetected);
+    QVERIFY(spy.isValid());
+
+    feedTerminalOutput(widget, QByteArray("normal output\r\n\033[31mcolored\033[0m\r\n"));
+
+    QVERIFY(!widget.hasVtProcessingError());
+    QCOMPARE(spy.count(), 0);
 }
 
 void TestTerminalWidget::testShellIntegrationCommandDetection() {
@@ -1459,6 +1580,46 @@ void TestTerminalWidget::testRendersInlineKittyPngImage() {
              "inline Kitty PNG image should render into its placement cells");
 }
 
+void TestTerminalWidget::testKittyImageCacheSurvivesUnrelatedOutput() {
+    CountingTerminalWidget widget;
+    widget.resize(640, 400);
+    QVERIFY(widget.initialize());
+
+    static constexpr const char *kOneByOneRedPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAA"
+                                                         "DUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+    const QByteArray kittyImage =
+        QByteArray("\033_Ga=T,f=100,q=2,i=42,c=4,r=2;") + kOneByOneRedPngBase64 + QByteArray("\033\\");
+
+    feedTerminalOutput(widget, kittyImage);
+    renderWidgetImage(widget);
+    QCOMPARE(widget.debugKittyImageConversionCount(), 1);
+
+    feedTerminalOutput(widget, QByteArray("\033[10;1Hunrelated text"));
+    renderWidgetImage(widget);
+    QCOMPARE(widget.debugKittyImageConversionCount(), 1);
+}
+
+void TestTerminalWidget::testKittyImageGenerationInvalidatesReplacement() {
+    CountingTerminalWidget widget;
+    widget.resize(640, 400);
+    QVERIFY(widget.initialize());
+
+    const QByteArray redImage("\033[H\033_Ga=T,f=32,q=2,s=1,v=1,i=43,c=4,r=2;/wAA/w==\033\\");
+    const QByteArray blueImage("\033[H\033_Ga=T,f=32,q=2,s=1,v=1,i=43,c=4,r=2;AAD//w==\033\\");
+    const QFontMetrics fm(widget.terminalFont());
+    const QRect imageArea(0, 0, fm.horizontalAdvance('M') * 4, fm.height() * 2);
+
+    feedTerminalOutput(widget, redImage);
+    const QImage redFrame = renderWidgetImage(widget);
+    QCOMPARE(widget.debugKittyImageConversionCount(), 1);
+    QVERIFY(countPixelsNear(redFrame, imageArea, QColor(255, 0, 0), 8) > imageArea.width() * imageArea.height() / 2);
+
+    feedTerminalOutput(widget, blueImage);
+    const QImage blueFrame = renderWidgetImage(widget);
+    QCOMPARE(widget.debugKittyImageConversionCount(), 2);
+    QVERIFY(countPixelsNear(blueFrame, imageArea, QColor(0, 0, 255), 8) > imageArea.width() * imageArea.height() / 2);
+}
+
 void TestTerminalWidget::testRendersTextDecorations() {
     PtySession::StartOptions options;
     options.command = QStringLiteral("sleep 5");
@@ -2088,6 +2249,26 @@ void TestTerminalWidget::testApplyThemeSetsColors() {
     QVERIFY(widget.debugAppliedIsDark());
     QCOMPARE(widget.debugAppliedForeground(), QColor(255, 0, 0));
     QCOMPARE(widget.debugAppliedBackground(), QColor(0, 0, 255));
+}
+
+void TestTerminalWidget::testThemeGeneratesHarmoniousExtendedPalette() {
+    TerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    TerminalTheme theme;
+    theme.foreground = QColor(20, 30, 40);
+    theme.background = QColor(240, 245, 250);
+    theme.cursor = theme.foreground;
+    theme.isDark = false;
+    for (int i = 0; i < 16; ++i)
+        theme.ansi[i] = QColor(i, i + 1, i + 2);
+
+    widget.applyTheme(theme);
+
+    QCOMPARE(widget.debugAppliedPaletteColor(0), theme.ansi[0]);
+    QCOMPARE(widget.debugAppliedPaletteColor(15), theme.ansi[15]);
+    QCOMPARE(widget.debugAppliedPaletteColor(16), theme.background);
+    QCOMPARE(widget.debugAppliedPaletteColor(231), theme.foreground);
 }
 
 void TestTerminalWidget::testCommandStateRunning() {
@@ -2937,6 +3118,85 @@ void TestTerminalWidget::testScrollbackLineCountMapsToByteBudget() {
     QCOMPARE(widget.debugScrollbackByteBudget(), size_t(400 * 1000 * 1000));
 }
 
+void TestTerminalWidget::testLiveScrollbackLimitsReachGhostty() {
+    TerminalWidget widget;
+    widget.setScrollbackLines(20000);
+    QVERIFY(widget.initialize());
+    QCOMPARE(widget.debugConfiguredScrollbackMaxLines(), size_t(20000));
+    QCOMPARE(widget.debugConfiguredScrollbackMaxBytes(), size_t(400 * 1000 * 1000));
+
+    widget.setScrollbackLines(6000);
+    QCOMPARE(widget.debugConfiguredScrollbackMaxLines(), size_t(6000));
+    QCOMPARE(widget.debugConfiguredScrollbackMaxBytes(), size_t(120 * 1000 * 1000));
+}
+
+void TestTerminalWidget::testScrollbackCompressionWaitsForIdle() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    QByteArray history;
+    for (int i = 0; i < 6000; ++i)
+        history.append("compressible terminal history line\r\n");
+    feedTerminalOutput(widget, history);
+
+    QVERIFY(widget.debugScrollbackCompressionTimerActive());
+    QCOMPARE(widget.debugScrollbackCompressionStepCount(), 0);
+    QTest::qWait(100);
+    QCOMPARE(widget.debugScrollbackCompressionStepCount(), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(widget.debugScrollbackCompressionStepCount() > 0, 1000);
+}
+
+void TestTerminalWidget::testScrollbackCompressionRestartsIdleDelay() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    QByteArray firstHistory;
+    QByteArray secondHistory;
+    for (int i = 0; i < 200; ++i) {
+        firstHistory.append("first compression activity\r\n");
+        secondHistory.append("second compression activity\r\n");
+    }
+    feedTerminalOutput(widget, firstHistory);
+    QTest::qWait(100);
+    const int remainingBeforeActivity = widget.debugScrollbackCompressionRemainingTime();
+    QVERIFY(remainingBeforeActivity > 0);
+
+    feedTerminalOutput(widget, secondHistory);
+    const int remainingAfterActivity = widget.debugScrollbackCompressionRemainingTime();
+    QVERIFY(remainingAfterActivity > remainingBeforeActivity);
+    QCOMPARE(widget.debugScrollbackCompressionStepCount(), 0);
+
+    QTest::qWait(100);
+    QCOMPARE(widget.debugScrollbackCompressionStepCount(), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(widget.debugScrollbackCompressionStepCount() > 0, 1000);
+}
+
+void TestTerminalWidget::testScrollbackCompressionPreservesContent() {
+    CountingTerminalWidget widget;
+    widget.setScrollbackLines(50000);
+    QVERIFY(widget.initialize());
+
+    QByteArray history;
+    for (int i = 0; i < 30000; ++i) {
+        history.append(QByteArray::number(i))
+            .append(": preserved repetitive scrollback content that should compress efficiently\r\n");
+    }
+    feedTerminalOutput(widget, history);
+
+    const QByteArray before = widget.exportVtContent();
+    QVERIFY(!before.isEmpty());
+    const qint64 residentBefore = residentSetBytes();
+    const int compressionSteps = widget.debugRunScrollbackCompressionToCompletion();
+    const qint64 residentAfter = residentSetBytes();
+    QVERIFY(compressionSteps > 0);
+    QVERIFY(residentBefore > 0);
+    QVERIFY(residentAfter > 0);
+    QVERIFY2(residentAfter < residentBefore, "compression should reclaim resident scrollback pages");
+    qInfo() << "scrollback compression RSS bytes:" << residentBefore << "->" << residentAfter << "in"
+            << compressionSteps << "steps";
+    QCOMPARE(widget.exportVtContent(), before);
+}
+
 void TestTerminalWidget::testViewportScrollStateAndAbsoluteScroll() {
     CountingTerminalWidget widget;
     widget.resize(240, 80);
@@ -2957,6 +3217,12 @@ void TestTerminalWidget::testViewportScrollStateAndAbsoluteScroll() {
     widget.scrollViewportToOffset(0);
     QTRY_VERIFY(spy.count() > 0);
     QCOMPARE(widget.viewportScrollState().offset, 0);
+
+    const int middleOffset = bottomState.maximumOffset() / 2;
+    QVERIFY(middleOffset > 0);
+    widget.scrollViewportToOffset(middleOffset);
+    QTRY_COMPARE(widget.viewportScrollState().offset, middleOffset);
+    QCOMPARE(widget.debugLastScrollViewportTag(), GHOSTTY_SCROLL_VIEWPORT_ROW);
 
     widget.scrollViewportToOffset(widget.viewportScrollState().maximumOffset());
     QTRY_COMPARE(widget.viewportScrollState().offset, bottomState.maximumOffset());
@@ -3371,22 +3637,20 @@ void TestTerminalWidget::testDropLocalFileWritesEscapedPathToPty() {
 }
 
 void TestTerminalWidget::testOsc52WritesClipboard() {
-    TerminalWidget widget;
+    CountingTerminalWidget widget;
     QVERIFY(widget.initialize());
 
     QGuiApplication::clipboard()->clear();
     const QByteArray encoded = QByteArray("copied from osc52").toBase64();
     const QByteArray sequence = QByteArray("\033]52;c;") + encoded + QByteArray("\a");
 
-    const bool invoked =
-        QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, sequence));
-    QVERIFY(invoked);
+    feedTerminalOutput(widget, sequence);
 
     QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("copied from osc52"));
 }
 
 void TestTerminalWidget::testOsc52WritesClipboardAcrossChunks() {
-    TerminalWidget widget;
+    CountingTerminalWidget widget;
     QVERIFY(widget.initialize());
 
     QGuiApplication::clipboard()->clear();
@@ -3394,24 +3658,33 @@ void TestTerminalWidget::testOsc52WritesClipboardAcrossChunks() {
     const QByteArray firstChunk = QByteArray("\033]52;c;") + encoded.left(encoded.size() / 2);
     const QByteArray secondChunk = encoded.mid(encoded.size() / 2) + QByteArray("\033\\");
 
-    QVERIFY(
-        QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, firstChunk)));
+    feedTerminalOutput(widget, firstChunk);
     QCOMPARE(QGuiApplication::clipboard()->text(), QString());
 
-    QVERIFY(
-        QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, secondChunk)));
+    feedTerminalOutput(widget, secondChunk);
     QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("chunked osc52"));
 }
 
 void TestTerminalWidget::testOsc52ReadRequestDoesNotChangeClipboard() {
-    TerminalWidget widget;
+    CountingTerminalWidget widget;
     QVERIFY(widget.initialize());
 
     QGuiApplication::clipboard()->setText(QStringLiteral("existing"));
     const QByteArray sequence = QByteArray("\033]52;c;?\a");
 
-    QVERIFY(QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, sequence)));
+    feedTerminalOutput(widget, sequence);
     QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("existing"));
+}
+
+void TestTerminalWidget::testIterm2CopyWritesClipboard() {
+    CountingTerminalWidget widget;
+    QVERIFY(widget.initialize());
+
+    QGuiApplication::clipboard()->clear();
+    const QByteArray encoded = QByteArray("copied from iterm2").toBase64();
+    feedTerminalOutput(widget, QByteArray("\033]1337;Copy=:") + encoded + QByteArray("\a"));
+
+    QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("copied from iterm2"));
 }
 
 void TestTerminalWidget::testSearchFindsMatchInTerminalContent() {

@@ -37,6 +37,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPointer>
+#include <QProgressBar>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSignalSpy>
@@ -86,6 +87,8 @@ private slots:
     void testTermPaneReportsProcessIconNames();
     void testAppTerminalsSetTerminalContentMargins();
     void testTermPaneWrapsTerminalWithFloatingScrollBar();
+    void testTerminalProgressOverlayTracksReports();
+    void testTermPaneForwardsDesktopNotifications();
     void testScrollBarPositionDoesNotFollowBottomAfterOutput();
     void testVerticalTabsActionReflectsAndUpdatesSettings();
     void testVerticalTabsActionTracksExternalSettingChanges();
@@ -958,6 +961,63 @@ void TestMainWindow::testTermPaneWrapsTerminalWithFloatingScrollBar() {
 
     scrollBar->setValue(0);
     QTRY_COMPARE(terminal->viewportScrollState().offset, 0);
+}
+
+void TestMainWindow::testTerminalProgressOverlayTracksReports() {
+    ExposedTermPane pane;
+    pane.resize(360, 160);
+    pane.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&pane));
+
+    auto *terminal = pane.currentTerminal();
+    QVERIFY(terminal);
+    auto *container = qobject_cast<TerminalScrollContainer *>(terminal->parentWidget());
+    QVERIFY(container);
+    auto *progress = container->findChild<QProgressBar *>(QStringLiteral("terminalProgressBar"));
+    QVERIFY(progress);
+    QVERIFY(!progress->isVisibleTo(container));
+
+    auto feed = [terminal](const QByteArray &data) {
+        return QMetaObject::invokeMethod(terminal, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, data));
+    };
+
+    QVERIFY(feed(QByteArray("\033]9;4;1;42\a")));
+    QTRY_VERIFY(progress->isVisibleTo(container));
+    QCOMPARE(progress->minimum(), 0);
+    QCOMPARE(progress->maximum(), 100);
+    QCOMPARE(progress->value(), 42);
+    QCOMPARE(progress->property("progressState").toString(), QStringLiteral("set"));
+
+    QVERIFY(feed(QByteArray("\033]9;4;3\033\\")));
+    QTRY_COMPARE(progress->maximum(), 0);
+    QCOMPARE(progress->property("progressState").toString(), QStringLiteral("indeterminate"));
+
+    QVERIFY(feed(QByteArray("\033]9;4;4;75\033\\")));
+    QTRY_COMPARE(progress->value(), 75);
+    QCOMPARE(progress->property("progressState").toString(), QStringLiteral("pause"));
+
+    QVERIFY(feed(QByteArray("\033]9;4;2;7\033\\")));
+    QTRY_COMPARE(progress->value(), 7);
+    QCOMPARE(progress->property("progressState").toString(), QStringLiteral("error"));
+
+    QVERIFY(feed(QByteArray("\033]9;4;0;\033\\")));
+    QTRY_VERIFY(!progress->isVisibleTo(container));
+}
+
+void TestMainWindow::testTermPaneForwardsDesktopNotifications() {
+    ExposedTermPane pane;
+    auto *terminal = pane.currentTerminal();
+    QVERIFY(terminal);
+    QSignalSpy spy(&pane, &TermPane::desktopNotificationRequested);
+    QVERIFY(spy.isValid());
+
+    const bool invoked =
+        QMetaObject::invokeMethod(terminal, "onPtyDataReceived", Qt::DirectConnection,
+                                  Q_ARG(QByteArray, QByteArray("\033]777;notify;Build;Needs attention\033\\")));
+    QVERIFY(invoked);
+    QTRY_COMPARE(spy.count(), 1);
+    QCOMPARE(spy.at(0).at(0).toString(), QStringLiteral("Build"));
+    QCOMPARE(spy.at(0).at(1).toString(), QStringLiteral("Needs attention"));
 }
 
 void TestMainWindow::testScrollBarPositionDoesNotFollowBottomAfterOutput() {

@@ -110,6 +110,14 @@ public:
     int debugCursorOnlyRepaintCount() const;
     int debugScrollbackLines() const;
     size_t debugScrollbackByteBudget() const;
+    size_t debugConfiguredScrollbackMaxLines() const;
+    size_t debugConfiguredScrollbackMaxBytes() const;
+    GhosttyTerminalScrollViewportTag debugLastScrollViewportTag() const;
+    bool debugScrollbackCompressionTimerActive() const;
+    int debugScrollbackCompressionStepCount() const;
+    int debugScrollbackCompressionRemainingTime() const;
+    int debugRunScrollbackCompressionToCompletion();
+    int debugKittyImageConversionCount() const;
     int debugUnicodeTextCellWidth(const QString &text) const;
     void debugSetSelection(int startRow, int startCol, int endRow, int endCol, bool active);
     bool debugCellInSelection(int screenRow, int col) const;
@@ -394,6 +402,7 @@ private:
     mutable int m_debugTextForScreenRowCount = 0;
     int m_debugScrollbackCompressionStepCount = 0;
     int m_debugKittyImageConversionCount = 0;
+    GhosttyTerminalScrollViewportTag m_debugLastScrollViewportTag = GHOSTTY_SCROLL_VIEWPORT_MAX_VALUE;
 #endif
 
     // Effects callbacks

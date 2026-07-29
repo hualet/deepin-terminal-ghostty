@@ -1387,6 +1387,9 @@ void TerminalWidget::scrollViewportBy(int deltaRows) {
         .tag = GHOSTTY_SCROLL_VIEWPORT_DELTA,
         .value = {.delta = static_cast<intptr_t>(deltaRows)},
     };
+#ifdef QTGHOSTTY_TESTING
+    m_debugLastScrollViewportTag = sv.tag;
+#endif
     ghostty_terminal_scroll_viewport(m_terminal, sv);
     scheduleScrollbackCompression();
     m_renderStateDirty = true;
@@ -1404,6 +1407,9 @@ void TerminalWidget::scrollViewportToOffset(int offset) {
         .tag = GHOSTTY_SCROLL_VIEWPORT_ROW,
         .value = {.row = static_cast<size_t>(targetOffset)},
     };
+#ifdef QTGHOSTTY_TESTING
+    m_debugLastScrollViewportTag = sv.tag;
+#endif
     ghostty_terminal_scroll_viewport(m_terminal, sv);
     scheduleScrollbackCompression();
     m_renderStateDirty = true;
@@ -1631,6 +1637,65 @@ int TerminalWidget::debugScrollbackLines() const {
 
 size_t TerminalWidget::debugScrollbackByteBudget() const {
     return scrollbackByteBudget();
+}
+
+size_t TerminalWidget::debugConfiguredScrollbackMaxLines() const {
+    size_t value = std::numeric_limits<size_t>::max();
+    if (!m_terminal
+        || ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_SCROLLBACK_MAX_LINES, &value) != GHOSTTY_SUCCESS) {
+        return std::numeric_limits<size_t>::max();
+    }
+    return value;
+}
+
+size_t TerminalWidget::debugConfiguredScrollbackMaxBytes() const {
+    size_t value = std::numeric_limits<size_t>::max();
+    if (!m_terminal
+        || ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_SCROLLBACK_MAX_BYTES, &value) != GHOSTTY_SUCCESS) {
+        return std::numeric_limits<size_t>::max();
+    }
+    return value;
+}
+
+GhosttyTerminalScrollViewportTag TerminalWidget::debugLastScrollViewportTag() const {
+    return m_debugLastScrollViewportTag;
+}
+
+bool TerminalWidget::debugScrollbackCompressionTimerActive() const {
+    return m_scrollbackCompressionTimer && m_scrollbackCompressionTimer->isActive();
+}
+
+int TerminalWidget::debugScrollbackCompressionStepCount() const {
+    return m_debugScrollbackCompressionStepCount;
+}
+
+int TerminalWidget::debugScrollbackCompressionRemainingTime() const {
+    return m_scrollbackCompressionTimer ? m_scrollbackCompressionTimer->remainingTime() : -1;
+}
+
+int TerminalWidget::debugRunScrollbackCompressionToCompletion() {
+    if (!m_terminal)
+        return -1;
+
+    if (m_scrollbackCompressionTimer)
+        m_scrollbackCompressionTimer->stop();
+
+    constexpr int kMaximumCompressionSteps = 100000;
+    for (int step = 1; step <= kMaximumCompressionSteps; ++step) {
+        GhosttyTerminalCompressionResult result = GHOSTTY_TERMINAL_COMPRESSION_RESULT_COMPLETE;
+        const GhosttyResult err =
+            ghostty_terminal_compress(m_terminal, GHOSTTY_TERMINAL_COMPRESSION_MODE_INCREMENTAL, &result);
+        if (err != GHOSTTY_SUCCESS || result == GHOSTTY_TERMINAL_COMPRESSION_RESULT_UNSUPPORTED)
+            return -1;
+        if (result == GHOSTTY_TERMINAL_COMPRESSION_RESULT_COMPLETE)
+            return step;
+    }
+
+    return -1;
+}
+
+int TerminalWidget::debugKittyImageConversionCount() const {
+    return m_debugKittyImageConversionCount;
 }
 
 void TerminalWidget::debugSetSelection(int startRow, int startCol, int endRow, int endCol, bool active) {
