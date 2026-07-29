@@ -1508,10 +1508,7 @@ bool TerminalWidget::setupTerminal() {
         return false;
     }
 
-    size_t scrollbackMaxBytes = scrollbackByteBudget();
-    err = ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &scrollbackMaxBytes);
-    if (err != GHOSTTY_SUCCESS) {
-        std::fprintf(stderr, "setting Ghostty scrollback byte limit failed (%d)\n", err);
+    if (!applyScrollbackLimits()) {
         ghostty_terminal_free(m_terminal);
         m_terminal = nullptr;
         return false;
@@ -3432,7 +3429,7 @@ void TerminalWidget::setStartOptions(const PtySession::StartOptions &options) {
 }
 
 void TerminalWidget::setScrollbackLines(int lines) {
-    m_scrollbackLines = lines;
+    m_scrollbackLines = std::max(0, lines);
     invalidateLinkScanCache();
     updateViewportScrollState();
 }
@@ -3871,6 +3868,28 @@ void TerminalWidget::clearRenderStateDirtyRows() {
 
 size_t TerminalWidget::scrollbackByteBudget() const {
     return std::max<size_t>(kMinimumScrollbackBytes, static_cast<size_t>(m_scrollbackLines) * kBytesPerScrollbackLine);
+}
+
+bool TerminalWidget::applyScrollbackLimits() {
+    if (!m_terminal)
+        return false;
+
+    size_t scrollbackMaxLines = static_cast<size_t>(m_scrollbackLines);
+    GhosttyResult err =
+        ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_LINES, &scrollbackMaxLines);
+    if (err != GHOSTTY_SUCCESS) {
+        qCWarning(terminalLog) << "Failed to set Ghostty scrollback line limit" << err;
+        return false;
+    }
+
+    size_t scrollbackMaxBytes = scrollbackByteBudget();
+    err = ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &scrollbackMaxBytes);
+    if (err != GHOSTTY_SUCCESS) {
+        qCWarning(terminalLog) << "Failed to set Ghostty scrollback byte limit" << err;
+        return false;
+    }
+
+    return true;
 }
 
 bool TerminalWidget::flushPendingPtyData(QRect *repaintRegion) {

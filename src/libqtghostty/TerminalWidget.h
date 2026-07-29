@@ -214,6 +214,7 @@ private:
     QRect cursorPaintRect() const;
     void clearRenderStateDirtyRows();
     size_t scrollbackByteBudget() const;
+    bool applyScrollbackLimits();
     void scanShellIntegrationSequences(const QByteArray &data);
     void setShellCommand(const QString &command);
     void setShellCommandResult(int exitCode);
