@@ -24,6 +24,9 @@
 #include <DWindowManagerHelper>
 #include <QActionGroup>
 #include <QCursor>
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDBusPendingCall>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QInputDialog>
@@ -458,6 +461,18 @@ void MainWindow::connectPaneSignals(TermPane *pane) {
         return;
 
     connect(pane, &TermPane::terminalTitleChanged, this, &MainWindow::onTerminalTitleChanged);
+    connect(pane, &TermPane::desktopNotificationRequested, this, [](const QString &title, const QString &body) {
+        QString applicationName = QGuiApplication::applicationDisplayName();
+        if (applicationName.isEmpty())
+            applicationName = QStringLiteral("Deepin Terminal");
+
+        QDBusMessage message = QDBusMessage::createMethodCall(
+            QStringLiteral("org.freedesktop.Notifications"), QStringLiteral("/org/freedesktop/Notifications"),
+            QStringLiteral("org.freedesktop.Notifications"), QStringLiteral("Notify"));
+        message << applicationName << uint(0) << QStringLiteral("deepin-terminal-ghostty") << title << body
+                << QStringList{} << QVariantMap{} << -1;
+        QDBusConnection::sessionBus().asyncCall(message);
+    });
     connect(pane, &TermPane::startupSessionExited, this, [this](int exitCode) {
         if (m_startupSessionHandled)
             return;

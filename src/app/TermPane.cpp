@@ -391,6 +391,15 @@ void TermPane::setupTerminalConnections(TerminalWidget *term) {
     connect(term, &TerminalWidget::commandStateChanged, this, [this, term](TerminalWidget::CommandState state) {
         Q_EMIT paneCommandStateChanged(ensurePaneId(term), state);
     });
+    connect(term, &TerminalWidget::desktopNotificationRequested, this,
+            [this, term](const QString &title, const QString &body) {
+                QString summary = title;
+                if (summary.isEmpty())
+                    summary = paneTitle(term);
+                if (summary.isEmpty())
+                    summary = tr("Terminal");
+                Q_EMIT desktopNotificationRequested(summary, body);
+            });
     connect(term, &TerminalWidget::sessionClosed, this, [this, term]() { removeTerminal(term); });
     connect(term, &TerminalWidget::focusGained, this, [this, term]() { setCurrentTerminal(term); });
     connect(term, &TerminalWidget::linkActivated, this,

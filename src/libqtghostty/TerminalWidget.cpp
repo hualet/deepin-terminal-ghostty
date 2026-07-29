@@ -1102,6 +1102,26 @@ GhosttyClipboardWriteResult effectClipboardWrite(GhosttyTerminal terminal, void 
     return GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS;
 }
 
+void effectDesktopNotification(GhosttyTerminal terminal, void *userdata,
+                               const GhosttyTerminalDesktopNotification *notification) {
+    (void)terminal;
+    if (!userdata || !notification || notification->size < sizeof(GhosttyTerminalDesktopNotification))
+        return;
+    if ((!notification->title.ptr && notification->title.len > 0)
+        || (!notification->body.ptr && notification->body.len > 0)
+        || notification->title.len > static_cast<size_t>(std::numeric_limits<int>::max())
+        || notification->body.len > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        return;
+    }
+
+    auto *widget = static_cast<TerminalWidget *>(userdata);
+    const QString title = QString::fromUtf8(reinterpret_cast<const char *>(notification->title.ptr),
+                                            static_cast<int>(notification->title.len));
+    const QString body = QString::fromUtf8(reinterpret_cast<const char *>(notification->body.ptr),
+                                           static_cast<int>(notification->body.len));
+    Q_EMIT widget->desktopNotificationRequested(title, body);
+}
+
 bool effectSize(GhosttyTerminal terminal, void *userdata, GhosttySizeReportSize *out_size) {
     (void)terminal;
     auto *widget = static_cast<TerminalWidget *>(userdata);
@@ -1575,6 +1595,8 @@ bool TerminalWidget::setupTerminal() {
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_WRITE_PTY, reinterpret_cast<const void *>(effectWritePty));
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE,
                          reinterpret_cast<const void *>(effectClipboardWrite));
+    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_DESKTOP_NOTIFICATION,
+                         reinterpret_cast<const void *>(effectDesktopNotification));
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_SIZE, reinterpret_cast<const void *>(effectSize));
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_DEVICE_ATTRIBUTES,
                          reinterpret_cast<const void *>(effectDeviceAttributes));

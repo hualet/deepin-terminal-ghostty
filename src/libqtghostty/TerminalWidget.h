@@ -129,6 +129,7 @@ signals:
     void hyperlinkActivated(const QString &uri);
     void linkHovered(const QString &uri);
     void linkActivated(const QString &uri);
+    void desktopNotificationRequested(const QString &title, const QString &body);
 
 protected:
     void paintEvent(QPaintEvent *event) override;

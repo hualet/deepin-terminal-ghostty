@@ -69,6 +69,7 @@ signals:
     void paneTitleChanged(const QUuid &paneId, const QString &title);
     void paneCommandStateChanged(const QUuid &paneId, TerminalWidget::CommandState state);
     void terminalTitleChanged(const QString &title);
+    void desktopNotificationRequested(const QString &title, const QString &body);
     void startupSessionExited(int exitCode);
     void sessionClosed();
     void currentTerminalChanged(TerminalWidget *term);
