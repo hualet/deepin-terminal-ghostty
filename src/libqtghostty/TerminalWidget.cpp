@@ -1305,7 +1305,17 @@ void TerminalWidget::scrollViewportBy(int deltaRows) {
 void TerminalWidget::scrollViewportToOffset(int offset) {
     const ViewportScrollState state = queryViewportScrollState();
     const int targetOffset = qBound(0, offset, state.maximumOffset());
-    scrollViewportBy(targetOffset - state.offset);
+    if (!m_terminal || targetOffset == state.offset)
+        return;
+
+    GhosttyTerminalScrollViewport sv = {
+        .tag = GHOSTTY_SCROLL_VIEWPORT_ROW,
+        .value = {.row = static_cast<size_t>(targetOffset)},
+    };
+    ghostty_terminal_scroll_viewport(m_terminal, sv);
+    m_renderStateDirty = true;
+    updateViewportScrollState();
+    update();
 }
 
 QByteArray TerminalWidget::exportVtContent() const {
