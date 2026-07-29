@@ -28,6 +28,8 @@ class TerminalWidget : public QWidget {
 public:
     enum class CommandState { Idle = 0, Running = 1, Succeeded = 2, Failed = 3 };
     enum class EmojiRenderMode { QtNative = 0, CustomFallback = 1 };
+    enum class ProgressState { Remove = 0, Set = 1, Error = 2, Indeterminate = 3, Pause = 4 };
+    Q_ENUM(ProgressState)
     struct ViewportScrollState {
         int offset = 0;
         int totalRows = 0;
@@ -130,6 +132,7 @@ signals:
     void linkHovered(const QString &uri);
     void linkActivated(const QString &uri);
     void desktopNotificationRequested(const QString &title, const QString &body);
+    void progressChanged(ProgressState state, int progress);
 
 protected:
     void paintEvent(QPaintEvent *event) override;

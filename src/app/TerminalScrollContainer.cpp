@@ -3,6 +3,7 @@
 #include "TerminalWidget.h"
 
 #include <QAbstractScrollArea>
+#include <QProgressBar>
 #include <QScrollBar>
 #include <QSignalBlocker>
 #include <QStyle>
@@ -10,6 +11,7 @@
 namespace {
 constexpr int kFloatingScrollBarMargin = 2;
 constexpr int kMinimumScrollBarWidth = 15;
+constexpr int kProgressBarHeight = 3;
 } // namespace
 
 TerminalScrollContainer::TerminalScrollContainer(QWidget *parent) : QWidget(parent) {
@@ -37,7 +39,19 @@ TerminalScrollContainer::TerminalScrollContainer(QWidget *parent) : QWidget(pare
         m_scrollBar->setAutoFillBackground(true);
     m_scrollBar->hide();
 
+    m_progressBar = new QProgressBar(this);
+    m_progressBar->setObjectName(QStringLiteral("terminalProgressBar"));
+    m_progressBar->setTextVisible(false);
+    m_progressBar->setRange(0, 100);
+    m_progressBar->setStyleSheet(
+        QStringLiteral("QProgressBar { border: none; background: transparent; }"
+                       "QProgressBar::chunk { background: #2ca7f8; }"
+                       "QProgressBar[progressState=\"pause\"]::chunk { background: #e6a23c; }"
+                       "QProgressBar[progressState=\"error\"]::chunk { background: #e64545; }"));
+    m_progressBar->hide();
+
     connect(m_terminal, &TerminalWidget::viewportScrollStateChanged, this, &TerminalScrollContainer::updateScrollBar);
+    connect(m_terminal, &TerminalWidget::progressChanged, this, &TerminalScrollContainer::updateProgress);
     connect(m_scrollBar, &QScrollBar::valueChanged, this, [this](int value) {
         if (m_updatingScrollBar)
             return;
@@ -66,6 +80,46 @@ void TerminalScrollContainer::resizeEvent(QResizeEvent *event) {
     if (m_scrollHost->geometry() != scrollHostRect)
         m_scrollHost->setGeometry(scrollHostRect);
     m_scrollHost->raise();
+
+    m_progressBar->setGeometry(0, qMax(0, height() - kProgressBarHeight), width(), kProgressBarHeight);
+    m_progressBar->raise();
+}
+
+void TerminalScrollContainer::updateProgress(TerminalWidget::ProgressState state, int progress) {
+    if (state == TerminalWidget::ProgressState::Remove) {
+        m_progressBar->hide();
+        return;
+    }
+
+    QString stateName;
+    if (state == TerminalWidget::ProgressState::Indeterminate) {
+        stateName = QStringLiteral("indeterminate");
+        m_progressBar->setRange(0, 0);
+    } else {
+        m_progressBar->setRange(0, 100);
+        if (progress >= 0)
+            m_progressBar->setValue(qBound(0, progress, 100));
+
+        switch (state) {
+            case TerminalWidget::ProgressState::Set:
+                stateName = QStringLiteral("set");
+                break;
+            case TerminalWidget::ProgressState::Pause:
+                stateName = QStringLiteral("pause");
+                break;
+            case TerminalWidget::ProgressState::Error:
+                stateName = QStringLiteral("error");
+                break;
+            default:
+                return;
+        }
+    }
+
+    m_progressBar->setProperty("progressState", stateName);
+    m_progressBar->style()->unpolish(m_progressBar);
+    m_progressBar->style()->polish(m_progressBar);
+    m_progressBar->show();
+    m_progressBar->raise();
 }
 
 void TerminalScrollContainer::updateScrollBar() {
@@ -86,4 +140,6 @@ void TerminalScrollContainer::updateScrollBar() {
         m_scrollBar->show();
         m_scrollHost->raise();
     }
+    if (m_progressBar->isVisible())
+        m_progressBar->raise();
 }

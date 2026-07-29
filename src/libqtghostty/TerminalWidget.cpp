@@ -1122,6 +1122,36 @@ void effectDesktopNotification(GhosttyTerminal terminal, void *userdata,
     Q_EMIT widget->desktopNotificationRequested(title, body);
 }
 
+void effectProgressReport(GhosttyTerminal terminal, void *userdata, const GhosttyTerminalProgressReport *report) {
+    (void)terminal;
+    if (!userdata || !report || report->size < sizeof(GhosttyTerminalProgressReport))
+        return;
+
+    TerminalWidget::ProgressState state;
+    switch (report->state) {
+        case GHOSTTY_TERMINAL_PROGRESS_STATE_REMOVE:
+            state = TerminalWidget::ProgressState::Remove;
+            break;
+        case GHOSTTY_TERMINAL_PROGRESS_STATE_SET:
+            state = TerminalWidget::ProgressState::Set;
+            break;
+        case GHOSTTY_TERMINAL_PROGRESS_STATE_ERROR:
+            state = TerminalWidget::ProgressState::Error;
+            break;
+        case GHOSTTY_TERMINAL_PROGRESS_STATE_INDETERMINATE:
+            state = TerminalWidget::ProgressState::Indeterminate;
+            break;
+        case GHOSTTY_TERMINAL_PROGRESS_STATE_PAUSE:
+            state = TerminalWidget::ProgressState::Pause;
+            break;
+        default:
+            return;
+    }
+
+    auto *widget = static_cast<TerminalWidget *>(userdata);
+    Q_EMIT widget->progressChanged(state, report->progress);
+}
+
 bool effectSize(GhosttyTerminal terminal, void *userdata, GhosttySizeReportSize *out_size) {
     (void)terminal;
     auto *widget = static_cast<TerminalWidget *>(userdata);
@@ -1410,6 +1440,7 @@ void TerminalWidget::importVtContent(const QByteArray &data) {
     m_pendingExitCode = -1;
     setProperty("shellCommand", QString());
     updateCommandState(CommandState::Idle);
+    Q_EMIT progressChanged(ProgressState::Remove, -1);
     m_kittyImageCache.clear();
     m_kittyGraphicsGeneration.reset();
     invalidateLinkScanCache();
@@ -1597,6 +1628,8 @@ bool TerminalWidget::setupTerminal() {
                          reinterpret_cast<const void *>(effectClipboardWrite));
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_DESKTOP_NOTIFICATION,
                          reinterpret_cast<const void *>(effectDesktopNotification));
+    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_PROGRESS_REPORT,
+                         reinterpret_cast<const void *>(effectProgressReport));
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_SIZE, reinterpret_cast<const void *>(effectSize));
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_DEVICE_ATTRIBUTES,
                          reinterpret_cast<const void *>(effectDeviceAttributes));

@@ -1,10 +1,12 @@
 #pragma once
 
+#include "TerminalWidget.h"
+
 #include <QWidget>
 
 class QAbstractScrollArea;
+class QProgressBar;
 class QScrollBar;
-class TerminalWidget;
 
 class TerminalScrollContainer : public QWidget {
     Q_OBJECT
@@ -20,9 +22,11 @@ protected:
 
 private:
     void updateScrollBar();
+    void updateProgress(TerminalWidget::ProgressState state, int progress);
 
     TerminalWidget *m_terminal = nullptr;
     QAbstractScrollArea *m_scrollHost = nullptr;
     QScrollBar *m_scrollBar = nullptr;
+    QProgressBar *m_progressBar = nullptr;
     bool m_updatingScrollBar = false;
 };
