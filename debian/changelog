@@ -1,3 +1,18 @@
+deepin-terminal-ghostty (1.0.12-1) unstable; urgency=medium
+
+  * Upgrade the bundled Ghostty VT engine and use its semantic clipboard and
+    working-directory callbacks for broader protocol support and more reliable
+    session state.
+  * Surface terminal desktop notifications and command progress in the native
+    desktop interface.
+  * Reduce memory and rendering overhead with idle scrollback compression and
+    generation-aware Kitty image caching.
+  * Improve terminal correctness with exact scrollback limits, absolute
+    viewport jumps, grapheme-aware input method sizing, theme-aligned extended
+    colors, and sticky VT error diagnostics.
+
+ -- Deepin Packages <packages@deepin.org>  Wed, 29 Jul 2026 11:03:37 +0800
+
 deepin-terminal-ghostty (1.0.11-1) unstable; urgency=medium
 
   * Refresh the terminal process badge so it remains clear and recognizable
