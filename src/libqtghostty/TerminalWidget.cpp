@@ -6,6 +6,7 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFontMetrics>
@@ -16,6 +17,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QSet>
+#include <QSysInfo>
 #include <QUrl>
 #include <QWheelEvent>
 
@@ -1196,6 +1198,39 @@ void effectTitleChanged(GhosttyTerminal terminal, void *userdata) {
     }
 }
 
+void effectPwdChanged(GhosttyTerminal terminal, void *userdata) {
+    auto *widget = static_cast<TerminalWidget *>(userdata);
+    if (!widget)
+        return;
+
+    GhosttyString reported = {};
+    if (ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_PWD, &reported) != GHOSTTY_SUCCESS
+        || (!reported.ptr && reported.len > 0) || reported.len > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        return;
+    }
+
+    const QString raw = QString::fromUtf8(reinterpret_cast<const char *>(reported.ptr), static_cast<int>(reported.len));
+    QString workingDirectory;
+    const QUrl url(raw, QUrl::StrictMode);
+    if (url.scheme().compare(QStringLiteral("file"), Qt::CaseInsensitive) == 0) {
+        const QString host = url.host();
+        const bool localHost = host.isEmpty() || host.compare(QStringLiteral("localhost"), Qt::CaseInsensitive) == 0
+                               || host.compare(QSysInfo::machineHostName(), Qt::CaseInsensitive) == 0;
+        if (url.isValid() && localHost)
+            workingDirectory = url.path(QUrl::FullyDecoded);
+    } else if (url.scheme().isEmpty() && QDir::isAbsolutePath(raw)) {
+        workingDirectory = raw;
+    }
+
+    if (!workingDirectory.isEmpty())
+        workingDirectory = QDir::cleanPath(workingDirectory);
+    if (widget->m_terminalWorkingDirectory == workingDirectory)
+        return;
+
+    widget->m_terminalWorkingDirectory = workingDirectory;
+    Q_EMIT widget->workingDirectoryChanged(widget->workingDirectory());
+}
+
 bool effectColorScheme(GhosttyTerminal terminal, void *userdata, GhosttyColorScheme *out_scheme) {
     (void)terminal;
     auto *widget = static_cast<TerminalWidget *>(userdata);
@@ -1440,6 +1475,10 @@ void TerminalWidget::importVtContent(const QByteArray &data) {
     m_pendingExitCode = -1;
     setProperty("shellCommand", QString());
     updateCommandState(CommandState::Idle);
+    if (!m_terminalWorkingDirectory.isEmpty()) {
+        m_terminalWorkingDirectory.clear();
+        Q_EMIT workingDirectoryChanged(workingDirectory());
+    }
     Q_EMIT progressChanged(ProgressState::Remove, -1);
     m_kittyImageCache.clear();
     m_kittyGraphicsGeneration.reset();
@@ -1468,6 +1507,8 @@ void TerminalWidget::importVtContent(const QByteArray &data) {
 }
 
 QString TerminalWidget::workingDirectory() const {
+    if (!m_terminalWorkingDirectory.isEmpty())
+        return m_terminalWorkingDirectory;
     if (!m_ptySession)
         return {};
     return m_ptySession->workingDirectory();
@@ -1636,6 +1677,8 @@ bool TerminalWidget::setupTerminal() {
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_XTVERSION, reinterpret_cast<const void *>(effectXtversion));
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED,
                          reinterpret_cast<const void *>(effectTitleChanged));
+    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_PWD_CHANGED,
+                         reinterpret_cast<const void *>(effectPwdChanged));
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_COLOR_SCHEME,
                          reinterpret_cast<const void *>(effectColorScheme));
 

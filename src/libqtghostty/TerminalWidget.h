@@ -121,6 +121,7 @@ public:
 
 signals:
     void terminalTitleChanged(const QString &title);
+    void workingDirectoryChanged(const QString &workingDirectory);
     void shellCommandChanged(const QString &command);
     void sessionExited(int exitCode);
     void sessionClosed();
@@ -275,6 +276,7 @@ private:
     PtySession::StartOptions m_startOptions;
     bool m_hasStartOptions = false;
     QByteArray m_oscScanBuffer;
+    QString m_terminalWorkingDirectory;
     int m_pendingExitCode = -1;
     CommandState m_commandState = CommandState::Idle;
     QByteArray m_pendingPtyData;
@@ -393,5 +395,6 @@ private:
     friend bool effectDeviceAttributes(GhosttyTerminal terminal, void *userdata, GhosttyDeviceAttributes *out_attrs);
     friend GhosttyString effectXtversion(GhosttyTerminal terminal, void *userdata);
     friend void effectTitleChanged(GhosttyTerminal terminal, void *userdata);
+    friend void effectPwdChanged(GhosttyTerminal terminal, void *userdata);
     friend bool effectColorScheme(GhosttyTerminal terminal, void *userdata, GhosttyColorScheme *out_scheme);
 };
