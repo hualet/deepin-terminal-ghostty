@@ -71,6 +71,7 @@ private slots:
     void testFallbackGlyphDoesNotOverlapNextCell();
     void testSingleCodepointFallbackGlyphDoesNotClip();
     void testOverflowingSingleCodepointGlyphFitsCell();
+    void testKimiBlockLogoKeepsCellFillingGeometry();
     void testZoomedAsciiNotReshapedPerCharacter();
     void testRendersAnsiForegroundColors();
     void testRendersInverseTextWithDefaultColors();
@@ -1443,6 +1444,41 @@ void TestTerminalWidget::testOverflowingSingleCodepointGlyphFitsCell() {
              "overflowing single-codepoint glyph should be fitted and centered instead of clipped");
     QCOMPARE(countChangedPixels(before, after, followingCell), 0);
     QCOMPARE(widget.debugLastFrameEmojiFallbackDrawCount(), 0);
+}
+
+void TestTerminalWidget::testKimiBlockLogoKeepsCellFillingGeometry() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
+    CountingTerminalWidget widget;
+    widget.setStartOptions(options);
+    QFont font(QStringLiteral("DejaVu Sans Mono"));
+    font.setStyleHint(QFont::Monospace);
+    font.setFixedPitch(true);
+    font.setPointSize(12);
+    widget.debugSetRawTerminalFont(font);
+    QVERIFY(widget.initialize());
+    widget.resize(320, 100);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    feedTerminalOutput(widget, QByteArray("\033[?25l"));
+    feedTerminalOutput(widget, QStringLiteral("\033[38;2;80;160;240m▐█▛█▛█▌\r\n▐█████▌\033[0m").toUtf8());
+    const QImage frame = renderWidgetImage(widget);
+
+    const QFontMetrics fm(widget.terminalFont());
+    const int cellWidth = fm.horizontalAdvance(QLatin1Char('M'));
+    const int cellHeight = fm.height();
+    for (int column = 1; column <= 5; ++column) {
+        const QRect cell(column * cellWidth, cellHeight, cellWidth, cellHeight);
+        const int blockPixels = countPixelsNear(frame, cell, QColor(80, 160, 240), 24);
+        const int minimumPixels = cell.width() * cell.height() * 80 / 100;
+        QVERIFY2(blockPixels >= minimumPixels, qPrintable(QStringLiteral("full block cell %1 covers only %2/%3 pixels")
+                                                              .arg(column)
+                                                              .arg(blockPixels)
+                                                              .arg(cell.width() * cell.height())));
+    }
 }
 
 void TestTerminalWidget::testZoomedAsciiNotReshapedPerCharacter() {

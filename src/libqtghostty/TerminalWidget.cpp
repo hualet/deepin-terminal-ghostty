@@ -209,6 +209,14 @@ bool isSingleNonAsciiCodepoint(QStringView text) {
     return text.size() == 2 && text.at(0).isHighSurrogate() && text.at(1).isLowSurrogate();
 }
 
+bool isBlockElementCodepoint(QStringView text) {
+    if (text.size() != 1)
+        return false;
+
+    const ushort codepoint = text.front().unicode();
+    return codepoint >= 0x2580 && codepoint <= 0x259F;
+}
+
 bool isEmojiCodepoint(uint32_t codepoint) {
     return (codepoint >= 0x1F000 && codepoint <= 0x1FAFF) || (codepoint >= 0x2600 && codepoint <= 0x27BF);
 }
@@ -2727,12 +2735,14 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         // rounded integer while tightBoundingRect() returns subpixel floats. That pulled
         // plain text into the per-character rescale branch below, where each letter was
         // drawn at a different pointSize and a line of text looked distorted. Ordinary
-        // ASCII keeps its native advance. Emoji presentation bases, overflowing non-ASCII
-        // single codepoints, and truly overflowing multi-code-unit graphemes still need
-        // fitting; everything else keeps the native advance with the cellRect clip above
-        // guarding against overflow into the next cell.
+        // ASCII and cell-filling Block Elements keep their native advance. Emoji
+        // presentation bases, other overflowing non-ASCII single codepoints, and truly
+        // overflowing multi-code-unit graphemes still need fitting; everything else keeps
+        // the native advance with the cellRect clip above guarding against overflow into
+        // the next cell.
         const bool overflowsCell = metrics.horizontalAdvance(text) > m_cellWidth || inkBounds.width() > m_cellWidth;
-        const bool overflowingSingleCodepoint = isSingleNonAsciiCodepoint(QStringView(text)) && overflowsCell;
+        const bool overflowingSingleCodepoint = isSingleNonAsciiCodepoint(QStringView(text))
+                                                && !isBlockElementCodepoint(QStringView(text)) && overflowsCell;
         const bool needsFit = isEmojiText || overflowingSingleCodepoint || (text.size() > 1 && overflowsCell);
         if (cells == 1 && needsFit) {
             const qreal targetWidth = qMax<qreal>(1.0, cellRect.width() - 2.0);
