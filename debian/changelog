@@ -1,3 +1,10 @@
+deepin-terminal-ghostty (1.0.13-1) unstable; urgency=medium
+
+  * Preserve cell-filling Unicode block elements so terminal logos and other
+    adjacent block graphics render as continuous shapes.
+
+ -- Deepin Packages <packages@deepin.org>  Fri, 31 Jul 2026 00:00:00 +0800
+
 deepin-terminal-ghostty (1.0.12-1) unstable; urgency=medium
 
   * Upgrade the bundled Ghostty VT engine and use its semantic clipboard and
