@@ -217,6 +217,14 @@ bool isBlockElementCodepoint(QStringView text) {
     return codepoint >= 0x2580 && codepoint <= 0x259F;
 }
 
+bool isBraillePatternCodepoint(QStringView text) {
+    if (text.size() != 1)
+        return false;
+
+    const ushort codepoint = text.front().unicode();
+    return codepoint >= 0x2800 && codepoint <= 0x28FF;
+}
+
 bool isEmojiCodepoint(uint32_t codepoint) {
     return (codepoint >= 0x1F000 && codepoint <= 0x1FAFF) || (codepoint >= 0x2600 && codepoint <= 0x27BF);
 }
@@ -2727,7 +2735,9 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
 
         QFont drawFont = painter.font();
         QFontMetricsF metrics(drawFont);
-        QRectF inkBounds = metrics.tightBoundingRect(text);
+        const bool isBraillePattern = isBraillePatternCodepoint(QStringView(text));
+        const QString fitReference = isBraillePattern ? QString(QChar(0x28FF)) : text;
+        QRectF fitInkBounds = metrics.tightBoundingRect(fitReference);
         const bool isEmojiText = singleEmojiCodepoint(QStringView(text)).has_value();
         // Only fit glyphs whose advance or ink genuinely exceeds the cell. The earlier
         // predicate (inkBounds.right() >= m_cellWidth - 1, inkBounds.left() < 0, ...) fired
@@ -2735,20 +2745,22 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         // rounded integer while tightBoundingRect() returns subpixel floats. That pulled
         // plain text into the per-character rescale branch below, where each letter was
         // drawn at a different pointSize and a line of text looked distorted. Ordinary
-        // ASCII and cell-filling Block Elements keep their native advance. Emoji
-        // presentation bases, other overflowing non-ASCII single codepoints, and truly
-        // overflowing multi-code-unit graphemes still need fitting; everything else keeps
-        // the native advance with the cellRect clip above guarding against overflow into
-        // the next cell.
-        const bool overflowsCell = metrics.horizontalAdvance(text) > m_cellWidth || inkBounds.width() > m_cellWidth;
+        // ASCII and cell-filling Block Elements keep their native advance. Braille Patterns
+        // use the all-dots glyph as one shared fitting reference so animation frames keep a
+        // stable point size and baseline. Emoji presentation bases, other overflowing
+        // non-ASCII single codepoints, and truly overflowing multi-code-unit graphemes still
+        // need fitting; everything else keeps the native advance with the cellRect clip above
+        // guarding against overflow into the next cell.
+        const bool overflowsCell =
+            metrics.horizontalAdvance(fitReference) > m_cellWidth || fitInkBounds.width() > m_cellWidth;
         const bool overflowingSingleCodepoint = isSingleNonAsciiCodepoint(QStringView(text))
                                                 && !isBlockElementCodepoint(QStringView(text)) && overflowsCell;
         const bool needsFit = isEmojiText || overflowingSingleCodepoint || (text.size() > 1 && overflowsCell);
         if (cells == 1 && needsFit) {
             const qreal targetWidth = qMax<qreal>(1.0, cellRect.width() - 2.0);
             const qreal targetHeight = qMax<qreal>(1.0, m_cellHeight - 2.0);
-            const qreal scale = qMin(targetWidth / qMax<qreal>(1.0, inkBounds.width()),
-                                     targetHeight / qMax<qreal>(1.0, inkBounds.height()));
+            const qreal scale = qMin(targetWidth / qMax<qreal>(1.0, fitInkBounds.width()),
+                                     targetHeight / qMax<qreal>(1.0, fitInkBounds.height()));
             if (drawFont.pixelSize() > 0) {
                 drawFont.setPixelSize(qMax(1, static_cast<int>(std::floor(drawFont.pixelSize() * scale))));
             } else {
@@ -2756,11 +2768,11 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
             }
             painter.setFont(drawFont);
             metrics = QFontMetricsF(drawFont);
-            inkBounds = metrics.tightBoundingRect(text);
+            fitInkBounds = metrics.tightBoundingRect(fitReference);
 
-            const qreal fittedX = cellRect.x() + (cellRect.width() - inkBounds.width()) / 2.0 - inkBounds.left();
+            const qreal fittedX = cellRect.x() + (cellRect.width() - fitInkBounds.width()) / 2.0 - fitInkBounds.left();
             const qreal fittedBaseline =
-                cellRect.y() + (cellRect.height() - inkBounds.height()) / 2.0 - inkBounds.top();
+                cellRect.y() + (cellRect.height() - fitInkBounds.height()) / 2.0 - fitInkBounds.top();
 
             const qreal devicePixelRatio = painter.device()->devicePixelRatioF();
             QImage cellImage(

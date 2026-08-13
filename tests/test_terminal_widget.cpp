@@ -71,6 +71,7 @@ private slots:
     void testFallbackGlyphDoesNotOverlapNextCell();
     void testSingleCodepointFallbackGlyphDoesNotClip();
     void testOverflowingSingleCodepointGlyphFitsCell();
+    void testBrailleSpinnerKeepsStableDotGeometry();
     void testKimiBlockLogoKeepsCellFillingGeometry();
     void testZoomedAsciiNotReshapedPerCharacter();
     void testRendersAnsiForegroundColors();
@@ -1444,6 +1445,86 @@ void TestTerminalWidget::testOverflowingSingleCodepointGlyphFitsCell() {
              "overflowing single-codepoint glyph should be fitted and centered instead of clipped");
     QCOMPARE(countChangedPixels(before, after, followingCell), 0);
     QCOMPARE(widget.debugLastFrameEmojiFallbackDrawCount(), 0);
+}
+
+void TestTerminalWidget::testBrailleSpinnerKeepsStableDotGeometry() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
+    CountingTerminalWidget widget;
+    widget.setStartOptions(options);
+    QFont brailleFont(QStringLiteral("DejaVu Sans Mono"));
+    brailleFont.setStyleHint(QFont::Monospace);
+    brailleFont.setFixedPitch(true);
+    brailleFont.setPointSize(12);
+    widget.debugSetRawTerminalFont(brailleFont);
+    QVERIFY(widget.initialize());
+    widget.resize(320, 100);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    feedTerminalOutput(widget, QByteArray("\033[?25l"));
+    const QImage blankFrame = renderWidgetImage(widget);
+
+    const QStringList frames = {
+        QStringLiteral("⠋"), QStringLiteral("⠙"), QStringLiteral("⠹"), QStringLiteral("⠸"), QStringLiteral("⠼"),
+        QStringLiteral("⠴"), QStringLiteral("⠦"), QStringLiteral("⠧"), QStringLiteral("⠇"), QStringLiteral("⠏"),
+    };
+    const QList<int> dotCounts = {3, 3, 4, 3, 4, 3, 3, 4, 3, 4};
+    const QFontMetricsF metrics(widget.terminalFont());
+    const QString fitReference(QChar(0x28FF));
+    QVERIFY2(metrics.horizontalAdvance(fitReference) > metrics.horizontalAdvance(QLatin1Char('M'))
+                 || metrics.tightBoundingRect(fitReference).width() > metrics.horizontalAdvance(QLatin1Char('M')),
+             "test font must exercise the overflowing-glyph fit path");
+
+    QInputMethodQueryEvent queryEvent(Qt::ImCursorRectangle);
+    QApplication::sendEvent(&widget, &queryEvent);
+    const QRect logicalCell = queryEvent.value(Qt::ImCursorRectangle).toRect();
+    QVERIFY(logicalCell.isValid());
+    const qreal devicePixelRatio = blankFrame.devicePixelRatio();
+    const QRect imageCell(qFloor(logicalCell.x() * devicePixelRatio), qFloor(logicalCell.y() * devicePixelRatio),
+                          qCeil((logicalCell.x() + logicalCell.width()) * devicePixelRatio)
+                              - qFloor(logicalCell.x() * devicePixelRatio),
+                          qCeil((logicalCell.y() + logicalCell.height()) * devicePixelRatio)
+                              - qFloor(logicalCell.y() * devicePixelRatio));
+    const QRect nextImageCell = imageCell.translated(imageCell.width(), 0);
+
+    feedTerminalOutput(widget, QByteArray("\r\033[2K") + fitReference.toUtf8());
+    const QImage referenceFrame = renderWidgetImage(widget);
+    const int referencePixels = countChangedPixels(blankFrame, referenceFrame, imageCell);
+    QVERIFY2(referencePixels > 0, "the all-dots Braille fitting reference should be visible");
+
+    for (int i = 0; i < frames.size(); ++i) {
+        feedTerminalOutput(widget, QByteArray("\r\033[2K") + frames.at(i).toUtf8());
+        const QImage spinnerFrame = renderWidgetImage(widget);
+        const int paintedPixels = countChangedPixels(blankFrame, spinnerFrame, imageCell);
+        QVERIFY2(paintedPixels > 0, "every spinner frame should paint its Braille dots");
+
+        int pixelsOutsideReference = 0;
+        for (int y = imageCell.top(); y <= imageCell.bottom(); ++y) {
+            for (int x = imageCell.left(); x <= imageCell.right(); ++x) {
+                const bool spinnerPainted = spinnerFrame.pixel(x, y) != blankFrame.pixel(x, y);
+                const bool referencePainted = referenceFrame.pixel(x, y) != blankFrame.pixel(x, y);
+                if (spinnerPainted && !referencePainted)
+                    ++pixelsOutsideReference;
+            }
+        }
+
+        QVERIFY2(pixelsOutsideReference == 0,
+                 qPrintable(QStringLiteral("Braille frame %1 moved %2 pixels outside the shared dot grid")
+                                .arg(frames.at(i))
+                                .arg(pixelsOutsideReference)));
+
+        const int expectedPixels = referencePixels * dotCounts.at(i) / 8;
+        QVERIFY2(qAbs(paintedPixels - expectedPixels) * 100 <= expectedPixels * 20,
+                 qPrintable(QStringLiteral("Braille frame %1 paints %2 pixels; shared dot geometry expects %3")
+                                .arg(frames.at(i))
+                                .arg(paintedPixels)
+                                .arg(expectedPixels)));
+
+        QCOMPARE(countChangedPixels(blankFrame, spinnerFrame, nextImageCell), 0);
+    }
 }
 
 void TestTerminalWidget::testKimiBlockLogoKeepsCellFillingGeometry() {
