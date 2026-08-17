@@ -1,3 +1,10 @@
+deepin-terminal-ghostty (1.0.14-1) unstable; urgency=medium
+
+  * Stabilize Braille loading spinners on a shared dot grid so npm and npx
+    indicators no longer pulse as their frames change.
+
+ -- Deepin Packages <packages@deepin.org>  Mon, 17 Aug 2026 14:04:18 +0800
+
 deepin-terminal-ghostty (1.0.13-1) unstable; urgency=medium
 
   * Preserve cell-filling Unicode block elements so terminal logos and other
