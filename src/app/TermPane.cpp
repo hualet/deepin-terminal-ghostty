@@ -37,6 +37,16 @@
 namespace {
 
 constexpr int kTerminalContentPadding = 12;
+constexpr qreal kDividerBlendRatio = 0.08;
+
+QColor blendedDividerColor(const QColor &background, const QColor &foreground) {
+    const auto blendChannel = [](int backgroundChannel, int foregroundChannel) {
+        return qRound(backgroundChannel * (1.0 - kDividerBlendRatio) + foregroundChannel * kDividerBlendRatio);
+    };
+    return QColor(blendChannel(background.red(), foreground.red()),
+                  blendChannel(background.green(), foreground.green()),
+                  blendChannel(background.blue(), foreground.blue()));
+}
 
 Qt::KeyboardModifiers normalizedModifiers(Qt::KeyboardModifiers modifiers) {
     return modifiers & (Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier);
@@ -359,7 +369,10 @@ TerminalWidget *TermPane::createTerminal(const std::optional<PtySession::StartOp
         auto colorType = DGuiApplicationHelper::instance()->themeType();
         scheme = colorType == DGuiApplicationHelper::DarkType ? QStringLiteral("dark") : QStringLiteral("light");
     }
-    term->applyTheme(ThemeLoader::findTheme(themes, scheme));
+    const TerminalTheme theme = ThemeLoader::findTheme(themes, scheme);
+    term->applyTheme(theme);
+    if (m_splitterHandleStyleSheet.isEmpty())
+        m_splitterHandleStyleSheet = splitterHandleStyleSheet(theme.background, theme.foreground);
 
     term->installEventFilter(this);
     setupTerminalConnections(term);
@@ -517,20 +530,19 @@ QSplitter *TermPane::createPaneSplitter(Qt::Orientation orientation) {
     auto *splitter = new QSplitter(orientation, this);
     splitter->setChildrenCollapsible(false);
     splitter->setHandleWidth(1);
-    const bool isDark = DGuiApplicationHelper::instance()->themeType() == DGuiApplicationHelper::DarkType;
-    splitter->setStyleSheet(splitterHandleStyleSheet(isDark));
+    splitter->setStyleSheet(m_splitterHandleStyleSheet);
     return splitter;
 }
 
-QString TermPane::splitterHandleStyleSheet(bool isDark) {
-    return isDark ? QStringLiteral("QSplitter::handle { background-color: rgba(255,255,255,0.08); }")
-                  : QStringLiteral("QSplitter::handle { background-color: rgba(0,0,0,0.08); }");
+QString TermPane::splitterHandleStyleSheet(const QColor &background, const QColor &foreground) {
+    const QColor divider = blendedDividerColor(background, foreground);
+    return QStringLiteral("QSplitter::handle { background-color: %1; }").arg(divider.name(QColor::HexRgb));
 }
 
-void TermPane::refreshDividerStyles(bool isDark) {
-    const QString sheet = splitterHandleStyleSheet(isDark);
+void TermPane::refreshDividerStyles(const QColor &background, const QColor &foreground) {
+    m_splitterHandleStyleSheet = splitterHandleStyleSheet(background, foreground);
     for (auto *splitter : findChildren<QSplitter *>())
-        splitter->setStyleSheet(sheet);
+        splitter->setStyleSheet(m_splitterHandleStyleSheet);
 }
 
 QList<TerminalWidget *> TermPane::terminalsInVisualOrder() const {

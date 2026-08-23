@@ -35,6 +35,7 @@
 #include <QJsonObject>
 #include <QKeyEvent>
 #include <QMenu>
+#include <QPalette>
 #include <QProcess>
 #include <QScreen>
 #include <QShortcut>
@@ -1045,8 +1046,9 @@ void MainWindow::rebuildCentralLayout() {
             m_mainSplitter = new QSplitter(Qt::Horizontal, this);
             m_mainSplitter->setChildrenCollapsible(false);
             m_mainSplitter->setHandleWidth(1);
-            const bool isDark = DGuiApplicationHelper::instance()->themeType() == DGuiApplicationHelper::DarkType;
-            m_mainSplitter->setStyleSheet(TermPane::splitterHandleStyleSheet(isDark));
+            const QPalette palette = DGuiApplicationHelper::instance()->applicationPalette();
+            m_mainSplitter->setStyleSheet(TermPane::splitterHandleStyleSheet(palette.color(QPalette::Window),
+                                                                             palette.color(QPalette::WindowText)));
             m_mainSplitter->setObjectName(QStringLiteral("verticalTabsSplitter"));
         }
         bool sidebarJustAdded = (m_mainSplitter->indexOf(m_verticalSidebar) < 0);
@@ -1488,12 +1490,14 @@ void MainWindow::applyThemeToAll() {
     else
         helper->setPaletteType(theme.isDark ? DGuiApplicationHelper::DarkType : DGuiApplicationHelper::LightType);
 
-    const QString dividerSheet = TermPane::splitterHandleStyleSheet(theme.isDark);
+    const QPalette palette = helper->applicationPalette();
+    const QString dividerSheet =
+        TermPane::splitterHandleStyleSheet(palette.color(QPalette::Window), palette.color(QPalette::WindowText));
     if (m_mainSplitter)
         m_mainSplitter->setStyleSheet(dividerSheet);
     for (int i = 0; i < m_stackWidget->count(); ++i) {
         if (auto *pane = qobject_cast<TermPane *>(m_stackWidget->widget(i)))
-            pane->refreshDividerStyles(theme.isDark);
+            pane->refreshDividerStyles(theme.background, theme.foreground);
     }
 }
 

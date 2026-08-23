@@ -4,6 +4,7 @@
 #include "SessionSnapshot.h"
 #include "TerminalWidget.h"
 
+#include <QColor>
 #include <QJsonArray>
 #include <QList>
 #include <QPair>
@@ -56,8 +57,8 @@ public:
     SplitNode buildSplitTree() const;
     QList<QPair<QString, TerminalWidget *>> restoreFromSplitTree(const SplitNode &node);
 
-    static QString splitterHandleStyleSheet(bool isDark);
-    void refreshDividerStyles(bool isDark);
+    static QString splitterHandleStyleSheet(const QColor &background, const QColor &foreground);
+    void refreshDividerStyles(const QColor &background, const QColor &foreground);
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -101,6 +102,7 @@ private:
     QWidget *m_rootWidget = nullptr;
     QPointer<TerminalWidget> m_currentTerm;
     PageSearchBar *m_searchBar = nullptr;
+    QString m_splitterHandleStyleSheet;
     std::optional<PtySession::StartOptions> m_initialSessionOptions;
     QPointer<TerminalWidget> m_startupTerminal;
     bool m_deferPaneStructureChanged = false;

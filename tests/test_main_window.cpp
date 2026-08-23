@@ -640,10 +640,30 @@ void TestMainWindow::testTermPaneReportsPaneSnapshotsAfterSplit() {
 }
 
 void TestMainWindow::testPaneDividerColorsFollowTheme() {
-    QCOMPARE(TermPane::splitterHandleStyleSheet(true),
-             QStringLiteral("QSplitter::handle { background-color: rgba(255,255,255,0.08); }"));
-    QCOMPARE(TermPane::splitterHandleStyleSheet(false),
-             QStringLiteral("QSplitter::handle { background-color: rgba(0,0,0,0.08); }"));
+    const QColor themeBackground(32, 32, 32);
+    const QColor themeForeground(240, 240, 240);
+    const QString dividerSheet = TermPane::splitterHandleStyleSheet(themeBackground, themeForeground);
+
+    QSplitter renderedSplitter(Qt::Horizontal);
+    renderedSplitter.setAttribute(Qt::WA_DontShowOnScreen);
+    renderedSplitter.resize(201, 80);
+    renderedSplitter.setHandleWidth(1);
+    renderedSplitter.setStyleSheet(
+        QStringLiteral("QSplitter { background-color: rgb(250,250,250); } %1").arg(dividerSheet));
+    auto *left = new QWidget;
+    auto *right = new QWidget;
+    left->setStyleSheet(QStringLiteral("background-color: rgb(250,250,250);"));
+    right->setStyleSheet(QStringLiteral("background-color: rgb(250,250,250);"));
+    renderedSplitter.addWidget(left);
+    renderedSplitter.addWidget(right);
+    renderedSplitter.setSizes({100, 100});
+    renderedSplitter.show();
+    QCoreApplication::processEvents();
+
+    QImage image(renderedSplitter.size(), QImage::Format_ARGB32_Premultiplied);
+    image.fill(QColor(250, 250, 250));
+    renderedSplitter.render(&image);
+    QCOMPARE(image.pixelColor(renderedSplitter.handle(1)->geometry().center()), QColor(49, 49, 49));
 
     ExposedTermPane pane;
     pane.resize(1200, 800);
@@ -655,13 +675,9 @@ void TestMainWindow::testPaneDividerColorsFollowTheme() {
     const auto splitters = pane.findChildren<QSplitter *>();
     QVERIFY(!splitters.isEmpty());
 
-    pane.refreshDividerStyles(true);
+    pane.refreshDividerStyles(themeBackground, themeForeground);
     for (auto *splitter : splitters)
-        QVERIFY(splitter->styleSheet().contains(QLatin1String("rgba(255,255,255,0.08)")));
-
-    pane.refreshDividerStyles(false);
-    for (auto *splitter : splitters)
-        QVERIFY(splitter->styleSheet().contains(QLatin1String("rgba(0,0,0,0.08)")));
+        QCOMPARE(splitter->styleSheet(), dividerSheet);
 }
 
 void TestMainWindow::testSplitSuppressesIntermediateRepaintWhileReparenting() {
