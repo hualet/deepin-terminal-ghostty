@@ -14,12 +14,69 @@
 - [x] shell standard keybindings
 - [ ] 现代扩展协议
   - [ ] kitty image protocol
+    - [x] pin `libghostty-vt` and the complete public header tree to
+      `e77b2309fca3a27db1123a4f904b7fb432ee7162`
     - [x] inline/direct image storage
     - [x] inline PNG decode callback
+    - [x] decoded RGB, RGBA, grayscale, and grayscale-alpha image conversion
     - [x] non-virtual placement rendering
     - [x] below-background / below-text / above-text z-layer rendering
-    - [ ] Unicode placeholder / virtual placements (`U=1`, required by textual-image TGP)
-    - [ ] file / temporary-file / shared-memory media
+    - [x] graphics/image generation-based cache invalidation
+    - [ ] Unicode placeholder / virtual placements (`U=1`, required by
+      `textual-image` TGP)
+      - [ ] Preferred dependency: add a Ghostty C API that returns decoded
+        virtual render fragments, including image/placement ids, viewport cell
+        rectangle, source rectangle, and z-layer. The current placement helper
+        intentionally reports virtual placements as not viewport-visible.
+      - [ ] Available fallback dependencies: consume
+        `GHOSTTY_ROW_DATA_KITTY_VIRTUAL_PLACEHOLDER`, render-cell graphemes,
+        foreground/underline colors, and Ghostty's pinned row/column diacritic
+        table to decode U+10EEEE cells in `qtghostty`.
+      - [ ] Resolve virtual placements and relative placements whose root is
+        virtual, including continuation cells, omitted row/column diacritics,
+        32-bit image ids, and optional placement ids.
+      - [ ] Paint only the matching source fragment for every placeholder run,
+        honor source cropping, scaling, offsets and z-order, and suppress the
+        U+10EEEE glyph without suppressing unrelated text decorations.
+      - [ ] Cover scrolling, scrollback, resize/reflow, clipping, deletion,
+        retransmission, alternate-screen switching, and overlapping virtual
+        placements.
+    - [ ] Animated images
+      - [x] Ghostty exposes current-frame pixels and changes image generation
+        when its internal animation state advances.
+      - [ ] Required upstream dependency: expose animation tick/next-deadline
+        or wake scheduling through the C API. Reading the current frame alone
+        cannot advance an animation from a Qt embedder.
+      - [ ] Drive the API from a single-shot Qt timer, invalidate only affected
+        image caches/regions, and stop scheduling when no visible animation is
+        active.
+      - [ ] Verify frame loading, composition modes, background frames, loop
+        counts, frame gaps, replacement, deletion, and hidden/offscreen images.
+    - [ ] Local transfer media
+      - [ ] Temporary file first: pass a `GhosttyString` restricted to an
+        application-controlled temporary directory, define symlink/path and
+        lifecycle policy, and add outside-directory rejection tests.
+      - [ ] Shared memory: gate by Linux/platform availability, retain
+        Ghostty's size/range checks, define same-user namespace expectations,
+        and verify cleanup on success, failure, deletion, and terminal reset.
+      - [ ] Direct file: keep disabled unless an explicit product security
+        policy permits terminal clients to read arbitrary local paths; prefer
+        an opt-in allowlist or sandboxed broker if enabled.
+    - [ ] Protocol conformance and regression matrix
+      - [ ] Transmission: chunked direct payloads, RGB/RGBA/PNG, zlib,
+        pending payload completion, image id/number lookup, quiet/query
+        responses, malformed input, and storage/APC limits.
+      - [ ] Placement: transmit-and-display, display existing image, source
+        cropping, pixel offsets, cell sizing, cursor movement, pinned and
+        relative placement roots, negative z-index layers, scroll/resize
+        geometry, and partial viewport clipping.
+      - [ ] Mutation: retransmit the same id, replace with the same dimensions,
+        delete by id/number/placement/z/cursor scope, reset, and main/alternate
+        screen lifetime.
+      - [ ] Interoperability fixtures: `kitten icat` stream mode,
+        `kitten icat --unicode-placeholder`, `textual-image` TGP, Kitty's
+        graphics protocol test programs, and captured APC byte streams that run
+        without depending on a live shell.
 - [ ] Quake 模式
 - [x] shell integration
 - [x] 标签页状态信息展示
