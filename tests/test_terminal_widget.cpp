@@ -590,7 +590,11 @@ void TestTerminalWidget::testTitleChanged() {
 }
 
 void TestTerminalWidget::testDesktopNotificationCallbacks() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
     CountingTerminalWidget widget;
+    widget.setStartOptions(options);
     QVERIFY(widget.initialize());
     QSignalSpy spy(&widget, &TerminalWidget::desktopNotificationRequested);
     QVERIFY(spy.isValid());
@@ -1841,7 +1845,11 @@ void TestTerminalWidget::testConcealedTextDoesNotRenderGlyphs() {
 }
 
 void TestTerminalWidget::testRendersBoxDrawingCharactersWithoutTextShaping() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
     CountingTerminalWidget widget;
+    widget.setStartOptions(options);
     QVERIFY(widget.initialize());
 
     widget.resize(240, 120);
@@ -3767,7 +3775,11 @@ void TestTerminalWidget::testOsc52WritesClipboard() {
 }
 
 void TestTerminalWidget::testOsc52WritesClipboardAcrossChunks() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
     CountingTerminalWidget widget;
+    widget.setStartOptions(options);
     QVERIFY(widget.initialize());
 
     QGuiApplication::clipboard()->clear();

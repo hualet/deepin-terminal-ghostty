@@ -55,6 +55,28 @@ constexpr int kScrollbackCompressionIdleMs = 250;
 constexpr int kScrollbackCompressionContinuationMs = 1;
 constexpr char kEmojiFontFamily[] = "Noto Color Emoji";
 
+GhosttyResult terminalModeGet(GhosttyTerminal terminal, GhosttyMode mode, bool *value) {
+    if (!value)
+        return GHOSTTY_INVALID_VALUE;
+
+    GhosttyTerminalModeConfig config = {
+        .mode = mode,
+        .value = false,
+    };
+    const GhosttyResult result = ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_MODE, &config);
+    if (result == GHOSTTY_SUCCESS)
+        *value = config.value;
+    return result;
+}
+
+GhosttyResult terminalModeSet(GhosttyTerminal terminal, GhosttyMode mode, bool value) {
+    GhosttyTerminalModeConfig config = {
+        .mode = mode,
+        .value = value,
+    };
+    return ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_MODE, &config);
+}
+
 QColor faintForeground(const QColor &foreground, const QColor &background) {
     return QColor((foreground.red() + background.red()) / 2, (foreground.green() + background.green()) / 2,
                   (foreground.blue() + background.blue()) / 2);
@@ -1297,13 +1319,12 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     m_synchronizedOutputTimeoutTimer->setInterval(kSynchronizedOutputTimeoutMs);
     connect(m_synchronizedOutputTimeoutTimer, &QTimer::timeout, this, [this]() {
         bool synchronizedOutput = false;
-        if (!m_terminal
-            || ghostty_terminal_mode_get(m_terminal, GHOSTTY_MODE_SYNC_OUTPUT, &synchronizedOutput) != GHOSTTY_SUCCESS
+        if (!m_terminal || terminalModeGet(m_terminal, GHOSTTY_MODE_SYNC_OUTPUT, &synchronizedOutput) != GHOSTTY_SUCCESS
             || !synchronizedOutput) {
             return;
         }
 
-        if (ghostty_terminal_mode_set(m_terminal, GHOSTTY_MODE_SYNC_OUTPUT, false) != GHOSTTY_SUCCESS) {
+        if (terminalModeSet(m_terminal, GHOSTTY_MODE_SYNC_OUTPUT, false) != GHOSTTY_SUCCESS) {
             qCWarning(terminalLog) << "Failed to clear synchronized output after timeout";
             return;
         }
@@ -1780,7 +1801,7 @@ bool TerminalWidget::setupTerminal() {
 
     bool fileMedium = false;
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_FILE, &fileMedium);
-    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_TEMP_FILE, &fileMedium);
+    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_TEMP_FILE, nullptr);
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_SHARED_MEM, &fileMedium);
 
     return true;
@@ -2196,7 +2217,7 @@ bool TerminalWidget::syncRenderState() const {
     }
 
     bool synchronizedOutput = false;
-    if (ghostty_terminal_mode_get(m_terminal, GHOSTTY_MODE_SYNC_OUTPUT, &synchronizedOutput) == GHOSTTY_SUCCESS
+    if (terminalModeGet(m_terminal, GHOSTTY_MODE_SYNC_OUTPUT, &synchronizedOutput) == GHOSTTY_SUCCESS
         && synchronizedOutput) {
         if (!m_synchronizedOutputTimeoutTimer->isActive())
             m_synchronizedOutputTimeoutTimer->start();
@@ -2242,7 +2263,7 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
 
     GhosttyResult err = GHOSTTY_SUCCESS;
     GhosttyRenderStateColors colors = GHOSTTY_INIT_SIZED(GhosttyRenderStateColors);
-    err = ghostty_render_state_colors_get(m_renderState, &colors);
+    err = ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_COLORS, &colors);
     if (err != GHOSTTY_SUCCESS)
         return;
 
@@ -3229,7 +3250,7 @@ void TerminalWidget::renderOverlays(QPainter &painter) const {
     }
 
     GhosttyRenderStateColors colors = GHOSTTY_INIT_SIZED(GhosttyRenderStateColors);
-    if (ghostty_render_state_colors_get(m_renderState, &colors) != GHOSTTY_SUCCESS)
+    if (ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_COLORS, &colors) != GHOSTTY_SUCCESS)
         return;
 
     bool cursorVisible = false;
@@ -3768,7 +3789,7 @@ void TerminalWidget::sendFocusEvent(bool gained) {
         return;
 
     bool focusMode = false;
-    if (ghostty_terminal_mode_get(m_terminal, GHOSTTY_MODE_FOCUS_EVENT, &focusMode) != GHOSTTY_SUCCESS)
+    if (terminalModeGet(m_terminal, GHOSTTY_MODE_FOCUS_EVENT, &focusMode) != GHOSTTY_SUCCESS)
         return;
     if (!focusMode)
         return;
@@ -4649,7 +4670,7 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
         if (!text.isEmpty()) {
             QByteArray data = text.toUtf8();
             bool bracketed = false;
-            ghostty_terminal_mode_get(m_terminal, GHOSTTY_MODE_BRACKETED_PASTE, &bracketed);
+            terminalModeGet(m_terminal, GHOSTTY_MODE_BRACKETED_PASTE, &bracketed);
             if (bracketed) {
                 size_t required = 0;
                 QByteArray mutableData(data);
@@ -4867,7 +4888,7 @@ void TerminalWidget::pasteFromClipboard() {
     QByteArray data = text.toUtf8();
 
     bool bracketed = false;
-    ghostty_terminal_mode_get(m_terminal, GHOSTTY_MODE_BRACKETED_PASTE, &bracketed);
+    terminalModeGet(m_terminal, GHOSTTY_MODE_BRACKETED_PASTE, &bracketed);
 
     if (bracketed) {
         size_t required = 0;
