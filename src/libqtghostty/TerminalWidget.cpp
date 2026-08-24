@@ -3558,18 +3558,20 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     uint32_t ucp = unshiftedCodepointForKey(event->key());
     ghostty_key_event_set_unshifted_codepoint(m_keyEvent, ucp);
 
-    // consumed_mods: modifiers that the platform text input already accounted
-    // for when producing the UTF-8 text. For printable keys, shift/ctrl/alt
-    // are consumed because they change the resulting character.
+    // consumed_mods: modifiers the platform text input already accounted for
+    // when producing the UTF-8 text. Only Shift genuinely changes the produced
+    // character (a -> A). Ctrl turns keys into C0 bytes, which are stripped
+    // from the utf8 field below, so its consumed bit never takes effect. Alt
+    // must NOT be reported consumed: on Linux it never alters the text and is
+    // a binding-only modifier (the GTK apprt reports GDK's consumed
+    // modifiers, where plain letters consume no Alt). Reporting it consumed
+    // makes the encoder drop Alt from the effective mods, so Alt+B would emit
+    // a bare "b" instead of ESC b and break backward-word in readline shells.
     GhosttyMods consumed = 0;
-    if (ucp != 0) {
-        if (mods & GHOSTTY_MODS_SHIFT)
-            consumed |= GHOSTTY_MODS_SHIFT;
-        if (mods & GHOSTTY_MODS_CTRL)
-            consumed |= GHOSTTY_MODS_CTRL;
-        if (mods & GHOSTTY_MODS_ALT)
-            consumed |= GHOSTTY_MODS_ALT;
-    }
+    if (ucp != 0 && (mods & GHOSTTY_MODS_SHIFT))
+        consumed |= GHOSTTY_MODS_SHIFT;
+    if (ucp != 0 && (mods & GHOSTTY_MODS_CTRL))
+        consumed |= GHOSTTY_MODS_CTRL;
     ghostty_key_event_set_consumed_mods(m_keyEvent, consumed);
 
     QByteArray textUtf8 = event->text().toUtf8();

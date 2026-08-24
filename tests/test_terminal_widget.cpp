@@ -36,6 +36,7 @@ private slots:
 
     void testInitialize();
     void testInputMethodSupport();
+    void testAltLetterSendsEscapePrefix();
     void testUnicodeGraphemeWidths();
     void testTerminalReportedWorkingDirectory();
     void testNoAppSpecificSignals();
@@ -503,6 +504,41 @@ void TestTerminalWidget::testInputMethodSupport() {
     QTest::keyClick(&widget, Qt::Key_Return);
 
     QTRY_VERIFY_WITH_TIMEOUT(collectedPtyOutput(spy).contains(QStringLiteral("中文").toUtf8()), 2000);
+}
+
+void TestTerminalWidget::testAltLetterSendsEscapePrefix() {
+    // Alt+<printable> must be written to the PTY as ESC-prefixed text (M-b in
+    // readline terms). Observe PtySession::dataWritten so the assertion checks
+    // the widget's own output bytes and does not depend on the spawned shell
+    // or on process-wide environment state.
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
+    TerminalWidget widget;
+    widget.setStartOptions(options);
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    widget.setFocus();
+
+    auto *session = widget.findChild<PtySession *>();
+    QVERIFY(session);
+
+    QSignalSpy spy(session, &PtySession::dataWritten);
+    QVERIFY(spy.isValid());
+
+    QKeyEvent altB(QEvent::KeyPress, Qt::Key_B, Qt::AltModifier, QStringLiteral("b"));
+    QApplication::sendEvent(&widget, &altB);
+
+    const auto wroteEscapePrefixedB = [&spy] {
+        for (const auto &args : spy)
+            if (args.at(0).toByteArray().contains(QByteArray("\x1b"
+                                                             "b")))
+                return true;
+        return false;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(wroteEscapePrefixedB(), 2000);
 }
 
 void TestTerminalWidget::testUnicodeGraphemeWidths() {
