@@ -1,3 +1,17 @@
+deepin-terminal-ghostty (1.0.15-1) unstable; urgency=medium
+
+  * Launch zsh sessions roughly twice as fast by restoring the user's
+    ZDOTDIR before their startup files run, so completion caches such as
+    oh-my-zsh's zcompdump stay effective instead of being rebuilt per
+    tab.
+  * Fix Alt+letter shortcuts reaching programs as plain text, restoring
+    readline's Alt+B backward-word and similar combinations.
+  * Blend split-pane divider colors with dark themes so separators no
+    longer render as bright lines.
+  * Update the vendored Ghostty terminal engine.
+
+ -- Deepin Packages <packages@deepin.org>  Tue, 26 Aug 2026 10:30:00 +0800
+
 deepin-terminal-ghostty (1.0.14-1) unstable; urgency=medium
 
   * Stabilize Braille loading spinners on a shared dot grid so npm and npx
