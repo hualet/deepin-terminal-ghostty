@@ -37,6 +37,8 @@ constexpr int kChildDestructionGraceMs = 300;
 constexpr int kMaxPendingWriteBytes = 1024 * 1024;
 constexpr int kReadChunkBytes = 64 * 1024;
 constexpr const char kTermEnv[] = "TERM=xterm-256color";
+constexpr const char kZdotdirEnvName[] = "ZDOTDIR";
+constexpr const char kZdotdirMarkerEnvName[] = "DEEPIN_TERMINAL_GHOSTTY_ZDOTDIR";
 
 struct ShellIntegration {
     std::vector<std::string> shellArgs;
@@ -94,16 +96,21 @@ bool writeTextFile(const QString &path, const QByteArray &content) {
     return true;
 }
 
+bool environmentEntryHasName(const char *entry, const char *name) {
+    const size_t nameLength = std::strlen(name);
+    return std::strncmp(entry, name, nameLength) == 0 && entry[nameLength] == '=';
+}
+
 QByteArray shellIntegrationPrelude() {
     return R"SH(
 __deepin_terminal_ghostty_emit_command() {
-    printf '\033]777;ShellCommand=%s\033\\' "$(printf '%s' "$1" | base64 | tr -d '\n')"
+    'printf' '\033]777;ShellCommand=%s\033\\' "$('printf' '%s' "$1" | 'base64' | 'tr' -d '\n')"
 }
 __deepin_terminal_ghostty_clear_command() {
-    printf '\033]777;ShellCommand=\033\\'
+    'printf' '\033]777;ShellCommand=\033\\'
 }
 __deepin_terminal_ghostty_report_result() {
-    printf '\033]777;ShellCommandResult=%s\033\\' "$?"
+    'printf' '\033]777;ShellCommandResult=%s\033\\' "$?"
 }
 )SH";
 }
@@ -157,38 +164,155 @@ PROMPT_COMMAND="__deepin_terminal_ghostty_report_result;__deepin_terminal_ghostt
         if (tempDir.isEmpty())
             return integration;
 
-        const QString rcPath = tempDir + QStringLiteral("/.zshrc");
-        const QByteArray content = QByteArray(R"SH(
-if [ -r "$HOME/.zshrc" ]; then
-    source "$HOME/.zshrc"
-fi
-)SH") + shellIntegrationPrelude() + QByteArray(R"SH(
+        // Two-stage integration in a temp ZDOTDIR:
+        //
+        // .zshenv restores the original ZDOTDIR (set, empty, or unset) and
+        // sources the user's real .zshenv, so their startup chain sees the
+        // true environment. It defines the reporting hooks and registers
+        // them right away, because a user .zshenv running `unsetopt RCS`
+        // makes zsh skip every later startup file - including our .zshrc
+        // wrapper. When rc files are still enabled it points ZDOTDIR back
+        // at the temp dir so zsh loads the wrapper.
+        //
+        // The wrapper restores the user's ZDOTDIR state, sources their real
+        // .zshrc (keeping ZDOTDIR-derived paths such as oh-my-zsh's
+        // .zcompdump cache effective), and re-registers the hooks so
+        // configurations that reset the hook arrays (preexec_functions=()
+        // and friends) cannot drop them. Registration is idempotent, so
+        // having both stages never duplicates hook entries.
+        const QString envPath = tempDir + QStringLiteral("/.zshenv");
+        const QByteArray hookDefinitions = shellIntegrationPrelude() + QByteArray(R"SH(
 __deepin_terminal_ghostty_preexec() {
-    emulate -L zsh
+    'emulate' -L zsh
     __deepin_terminal_ghostty_emit_command "$1"
 }
 __deepin_terminal_ghostty_precmd() {
-    emulate -L zsh
+    'emulate' -L zsh
     __deepin_terminal_ghostty_report_result
     __deepin_terminal_ghostty_clear_command
 }
-autoload -Uz add-zsh-hook 2>/dev/null
-if (( $+functions[add-zsh-hook] )); then
-    add-zsh-hook preexec __deepin_terminal_ghostty_preexec
-    add-zsh-hook precmd __deepin_terminal_ghostty_precmd
+_deepin_terminal_ghostty_register_hooks() {
+    'emulate' -L zsh
+    (( ${preexec_functions[(Ie)__deepin_terminal_ghostty_preexec]} )) \
+        || preexec_functions+=(__deepin_terminal_ghostty_preexec)
+    (( ${precmd_functions[(Ie)__deepin_terminal_ghostty_precmd]} )) \
+        || precmd_functions+=(__deepin_terminal_ghostty_precmd)
+}
+)SH");
+        const QByteArray envContent = QByteArray(R"SH(
+if [[ -n "${DEEPIN_TERMINAL_GHOSTTY_ZDOTDIR+X}" ]]; then
+    'typeset' -g _DEEPIN_TERMINAL_GHOSTTY_ZDOTDIR="$DEEPIN_TERMINAL_GHOSTTY_ZDOTDIR"
+    'typeset' -g _DEEPIN_TERMINAL_GHOSTTY_ZDOTDIR_SET=1
+    'builtin' 'export' ZDOTDIR="$DEEPIN_TERMINAL_GHOSTTY_ZDOTDIR"
 else
-    preexec_functions+=(__deepin_terminal_ghostty_preexec)
-    precmd_functions+=(__deepin_terminal_ghostty_precmd)
+    'typeset' -g _DEEPIN_TERMINAL_GHOSTTY_ZDOTDIR_SET=0
+    'builtin' 'unset' ZDOTDIR
+fi
+'builtin' 'unset' DEEPIN_TERMINAL_GHOSTTY_ZDOTDIR
+
+# Source the user's real .zshenv. zsh falls back to $HOME only when
+# ZDOTDIR is unset; an explicitly empty value selects /.zshenv, so the
+# path must distinguish set-empty from unset.
+if (( _DEEPIN_TERMINAL_GHOSTTY_ZDOTDIR_SET )); then
+    _deepin_terminal_ghostty_file="${_DEEPIN_TERMINAL_GHOSTTY_ZDOTDIR}/.zshenv"
+else
+    _deepin_terminal_ghostty_file="$HOME/.zshenv"
+fi
+[[ ! -r "$_deepin_terminal_ghostty_file" ]] || 'builtin' 'source' -- "$_deepin_terminal_ghostty_file"
+'builtin' 'unset' _deepin_terminal_ghostty_file
+
+# Record the complete state that the user's .zshrc must see after .zshenv:
+# set/unset, exact value, and the export attribute.
+if [[ -n "${ZDOTDIR+X}" ]]; then
+    'typeset' -g _DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR="$ZDOTDIR"
+    'typeset' -g _DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR_SET=1
+    'typeset' -g _DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR_EXPORTED=0
+    [[ ${(t)ZDOTDIR} == *-export* ]] \
+        && 'typeset' -g _DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR_EXPORTED=1
+else
+    'typeset' -g _DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR=""
+    'typeset' -g _DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR_SET=0
+    'typeset' -g _DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR_EXPORTED=0
+fi
+'builtin' 'unset' _DEEPIN_TERMINAL_GHOSTTY_ZDOTDIR _DEEPIN_TERMINAL_GHOSTTY_ZDOTDIR_SET
+)SH") + hookDefinitions + QByteArray(R"SH(
+# Fallback registration: covers configurations whose .zshenv runs
+# `unsetopt RCS`, which makes zsh skip the wrapper .zshrc entirely.
+if [[ -o interactive ]]; then
+    _deepin_terminal_ghostty_register_hooks
+fi
+
+# Keep zsh looking in this directory for the .zshrc wrapper - unless the
+# user's .zshenv disabled rc-file sourcing, in which case the wrapper
+# never loads and their own ZDOTDIR state is restored directly.
+if [[ -o RCS ]]; then
+    'builtin' 'export' ZDOTDIR="${${(%):-%x}:A:h}"
+else
+    if (( _DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR_SET )); then
+        if (( _DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR_EXPORTED )); then
+            'typeset' -gx ZDOTDIR="${_DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR-}"
+        else
+            'typeset' -g +x ZDOTDIR="${_DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR-}"
+        fi
+    else
+        'builtin' 'unset' ZDOTDIR
+    fi
+    'builtin' 'unset' _DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR \
+        _DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR_SET \
+        _DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR_EXPORTED
+fi
+)SH");
+
+        const QString rcPath = tempDir + QStringLiteral("/.zshrc");
+        const QByteArray rcContent = QByteArray(R"SH(
+# Restore the user's ZDOTDIR state (set, empty, or unset) before their
+# .zshrc runs so ZDOTDIR-derived paths behave exactly like a plain
+# terminal.
+if [[ -n "${_DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR_SET+X}" ]]; then
+    if (( _DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR_SET )); then
+        if (( _DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR_EXPORTED )); then
+            'typeset' -gx ZDOTDIR="${_DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR-}"
+        else
+            'typeset' -g +x ZDOTDIR="${_DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR-}"
+        fi
+    else
+        'builtin' 'unset' ZDOTDIR
+    fi
+    'builtin' 'unset' _DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR \
+        _DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR_SET \
+        _DEEPIN_TERMINAL_GHOSTTY_RC_ZDOTDIR_EXPORTED
+fi
+
+if [[ -n "${ZDOTDIR+X}" ]]; then
+    _deepin_terminal_ghostty_file="$ZDOTDIR/.zshrc"
+else
+    _deepin_terminal_ghostty_file="$HOME/.zshrc"
+fi
+# Never source this wrapper recursively.
+if [[ "${_deepin_terminal_ghostty_file:A}" != "${${(%):-%x}:A}" ]]; then
+    [[ ! -r "$_deepin_terminal_ghostty_file" ]] || 'builtin' 'source' -- "$_deepin_terminal_ghostty_file"
+fi
+'builtin' 'unset' _deepin_terminal_ghostty_file
+
+# Re-register after the user's startup files so hook-array resets in
+# their configuration cannot drop these entries; the membership check
+# keeps the earlier .zshenv registration from being duplicated.
+if (( $+functions[_deepin_terminal_ghostty_register_hooks] )); then
+    _deepin_terminal_ghostty_register_hooks
 fi
 )SH");
 
         integration.tempDir = tempDir;
 
-        if (!writeTextFile(rcPath, content))
+        if (!writeTextFile(envPath, envContent) || !writeTextFile(rcPath, rcContent))
             return integration;
 
         integration.shellArgs = {shellPath, "-i"};
         integration.extraEnv.push_back(("ZDOTDIR=" + QFile::encodeName(tempDir)).constData());
+        if (qEnvironmentVariableIsSet("ZDOTDIR")) {
+            const QByteArray marker = QByteArray(kZdotdirMarkerEnvName) + '=' + qgetenv("ZDOTDIR");
+            integration.extraEnv.push_back(marker.constData());
+        }
         return integration;
     }
 
@@ -493,7 +617,9 @@ bool PtySession::spawn(int cols, int rows, const StartOptions &options) {
     for (char **entry = environ; entry != nullptr && *entry != nullptr; ++entry) {
         if (std::strncmp(*entry, "TERM=", 5) == 0)
             continue;
-        if (!shellIntegration.extraEnv.empty() && std::strncmp(*entry, "ZDOTDIR=", 7) == 0)
+        if (environmentEntryHasName(*entry, kZdotdirMarkerEnvName))
+            continue;
+        if (!shellIntegration.extraEnv.empty() && environmentEntryHasName(*entry, kZdotdirEnvName))
             continue;
         envStorage.emplace_back(*entry);
     }

@@ -2,10 +2,49 @@
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QFile>
+#include <QDir>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+
+// Restores process-wide shell startup variables on scope exit, including
+// when a QVERIFY failure returns from the test early.
+class ScopedShellEnvironment {
+public:
+    ScopedShellEnvironment()
+        : m_shellSet(qEnvironmentVariableIsSet("SHELL")),
+          m_shell(qgetenv("SHELL")),
+          m_homeSet(qEnvironmentVariableIsSet("HOME")),
+          m_home(qgetenv("HOME")),
+          m_zdotdirSet(qEnvironmentVariableIsSet("ZDOTDIR")),
+          m_zdotdir(qgetenv("ZDOTDIR")),
+          m_zdotdirMarkerSet(qEnvironmentVariableIsSet("DEEPIN_TERMINAL_GHOSTTY_ZDOTDIR")),
+          m_zdotdirMarker(qgetenv("DEEPIN_TERMINAL_GHOSTTY_ZDOTDIR")) {}
+
+    ~ScopedShellEnvironment() {
+        restore("DEEPIN_TERMINAL_GHOSTTY_ZDOTDIR", m_zdotdirMarkerSet, m_zdotdirMarker);
+        restore("ZDOTDIR", m_zdotdirSet, m_zdotdir);
+        restore("HOME", m_homeSet, m_home);
+        restore("SHELL", m_shellSet, m_shell);
+    }
+
+private:
+    static void restore(const char *name, bool wasSet, const QByteArray &value) {
+        if (wasSet)
+            qputenv(name, value);
+        else
+            qunsetenv(name);
+    }
+
+    bool m_shellSet;
+    QByteArray m_shell;
+    bool m_homeSet;
+    QByteArray m_home;
+    bool m_zdotdirSet;
+    QByteArray m_zdotdir;
+    bool m_zdotdirMarkerSet;
+    QByteArray m_zdotdirMarker;
+};
 
 class TestPtySession : public QObject {
     Q_OBJECT
@@ -21,6 +60,11 @@ private slots:
     void testReportsChildExitCode();
     void testBashShellIntegrationHookReportsCommands();
     void testZshShellIntegrationHookReportsCommands();
+    void testZshShellIntegrationSurvivesHookArrayReset();
+    void testZshShellIntegrationSurvivesUnsetoptRcs();
+    void testZshShellIntegrationPreservesEmptyZdotdir();
+    void testZshShellIntegrationPreservesUnexportedZdotdir();
+    void testZshShellIntegrationDiscardsInheritedZdotdirMarker();
     void testResize();
     void testSessionClose();
     void testPreservesUtf8Locale();
@@ -132,16 +176,11 @@ void TestPtySession::testReportsChildExitCode() {
 }
 
 void verifyShellIntegrationHookReportsCommands(const QString &shellPath) {
-    const QByteArray previousShell = qgetenv("SHELL");
+    const ScopedShellEnvironment envGuard;
     qputenv("SHELL", QFile::encodeName(shellPath));
 
     PtySession session;
     QVERIFY(session.start(80, 24));
-
-    if (previousShell.isEmpty())
-        qunsetenv("SHELL");
-    else
-        qputenv("SHELL", previousShell);
 
     QSignalSpy spy(&session, &PtySession::dataReceived);
     QVERIFY(spy.isValid());
@@ -175,6 +214,262 @@ void TestPtySession::testZshShellIntegrationHookReportsCommands() {
         QSKIP("zsh is not available");
 
     verifyShellIntegrationHookReportsCommands(QStringLiteral("/bin/zsh"));
+}
+
+void TestPtySession::testZshShellIntegrationSurvivesHookArrayReset() {
+    if (!QFile::exists(QStringLiteral("/bin/zsh")))
+        QSKIP("zsh is not available");
+
+    // A custom ZDOTDIR whose .zshrc resets the hook arrays, as some
+    // frameworks do before installing their own hooks. The integration
+    // must still source this .zshrc from its restored location and
+    // re-register the reporting hooks afterwards.
+    QTemporaryDir zdotdir;
+    QVERIFY(zdotdir.isValid());
+
+    QFile rc(QDir(zdotdir.path()).filePath(QStringLiteral(".zshrc")));
+    QVERIFY(rc.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QVERIFY(rc.write("echo custom_zdotdir_rc_ran\npreexec_functions=()\nprecmd_functions=()\n") > 0);
+    rc.close();
+
+    const ScopedShellEnvironment envGuard;
+    qputenv("SHELL", QFile::encodeName(QStringLiteral("/bin/zsh")));
+    qputenv("ZDOTDIR", QFile::encodeName(zdotdir.path()));
+
+    PtySession session;
+    QVERIFY(session.start(80, 24));
+
+    QSignalSpy spy(&session, &PtySession::dataReceived);
+    QVERIFY(spy.isValid());
+
+    session.write("printf 'hook_reset_ok'\n");
+
+    QByteArray output;
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 3000
+           && (!output.contains("custom_zdotdir_rc_ran") || output.count("]777;ShellCommand=") < 2)) {
+        spy.wait(100);
+        for (const auto &args : spy)
+            output.append(args.at(0).toByteArray());
+        spy.clear();
+    }
+
+    QVERIFY2(output.contains("custom_zdotdir_rc_ran"),
+             qPrintable(QString::fromLatin1("Expected the user .zshrc from the custom ZDOTDIR to run, got: %1")
+                            .arg(QString::fromUtf8(output))));
+    QVERIFY2(output.count("]777;ShellCommand=") >= 2,
+             qPrintable(QString::fromLatin1("Expected command reporting to survive the hook-array reset, got: %1")
+                            .arg(QString::fromUtf8(output))));
+}
+
+void TestPtySession::testZshShellIntegrationPreservesEmptyZdotdir() {
+    if (!QFile::exists(QStringLiteral("/bin/zsh")))
+        QSKIP("zsh is not available");
+
+    // ZDOTDIR set but empty is a valid state that zsh resolves to
+    // /.zshenv and /.zshrc (usually absent); it must not be treated as
+    // unset, and the reporting hooks must still be registered.
+    const ScopedShellEnvironment envGuard;
+    qputenv("SHELL", QFile::encodeName(QStringLiteral("/bin/zsh")));
+    qputenv("ZDOTDIR", QByteArrayLiteral(""));
+
+    PtySession session;
+    QVERIFY(session.start(80, 24));
+
+    QSignalSpy spy(&session, &PtySession::dataReceived);
+    QVERIFY(spy.isValid());
+
+    session.write("printf 'empty_zdotdir_ok'\n");
+
+    QByteArray output;
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 3000 && (!output.contains("empty_zdotdir_ok") || output.count("]777;ShellCommand=") < 2)) {
+        spy.wait(100);
+        for (const auto &args : spy)
+            output.append(args.at(0).toByteArray());
+        spy.clear();
+    }
+
+    QVERIFY2(output.contains("empty_zdotdir_ok"),
+             qPrintable(QString::fromLatin1("Expected command output, got: %1").arg(QString::fromUtf8(output))));
+    QVERIFY2(output.count("]777;ShellCommand=") >= 2,
+             qPrintable(QString::fromLatin1("Expected command reporting with an empty ZDOTDIR, got: %1")
+                            .arg(QString::fromUtf8(output))));
+}
+
+void TestPtySession::testZshShellIntegrationSurvivesUnsetoptRcs() {
+    if (!QFile::exists(QStringLiteral("/bin/zsh")))
+        QSKIP("zsh is not available");
+
+    // `unsetopt RCS` in a user .zshenv makes zsh skip every later startup
+    // file, including the integration .zshrc wrapper. The hooks registered
+    // from the integration .zshenv must keep reporting, the user's .zshrc
+    // must stay skipped (plain-terminal behavior), and their ZDOTDIR state
+    // must be restored instead of left on the temp dir.
+    QTemporaryDir zdotdir;
+    QVERIFY(zdotdir.isValid());
+
+    QFile env(QDir(zdotdir.path()).filePath(QStringLiteral(".zshenv")));
+    QVERIFY(env.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QVERIFY(env.write("echo custom_zdotdir_env_ran\nunsetopt RCS\n") > 0);
+    env.close();
+
+    QFile rc(QDir(zdotdir.path()).filePath(QStringLiteral(".zshrc")));
+    QVERIFY(rc.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QVERIFY(rc.write("echo custom_zdotdir_rc_ran\n") > 0);
+    rc.close();
+
+    const ScopedShellEnvironment envGuard;
+    qputenv("SHELL", QFile::encodeName(QStringLiteral("/bin/zsh")));
+    qputenv("ZDOTDIR", QFile::encodeName(zdotdir.path()));
+
+    PtySession session;
+    QVERIFY(session.start(80, 24));
+
+    QSignalSpy spy(&session, &PtySession::dataReceived);
+    QVERIFY(spy.isValid());
+
+    session.write("printf 'unsetopt_rcs_ok'\n");
+
+    QByteArray output;
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 3000
+           && (!output.contains("custom_zdotdir_env_ran") || !output.contains("unsetopt_rcs_ok")
+               || output.count("]777;ShellCommand=") < 2)) {
+        spy.wait(100);
+        for (const auto &args : spy)
+            output.append(args.at(0).toByteArray());
+        spy.clear();
+    }
+
+    QVERIFY2(
+        output.contains("custom_zdotdir_env_ran"),
+        qPrintable(QString::fromLatin1("Expected the user .zshenv to run, got: %1").arg(QString::fromUtf8(output))));
+    QVERIFY2(!output.contains("custom_zdotdir_rc_ran"),
+             qPrintable(QString::fromLatin1("The user .zshrc must stay skipped under unsetopt RCS, got: %1")
+                            .arg(QString::fromUtf8(output))));
+    QVERIFY2(output.count("]777;ShellCommand=") >= 2,
+             qPrintable(QString::fromLatin1("Expected command reporting to survive unsetopt RCS, got: %1")
+                            .arg(QString::fromUtf8(output))));
+}
+
+void TestPtySession::testZshShellIntegrationPreservesUnexportedZdotdir() {
+    if (!QFile::exists(QStringLiteral("/bin/zsh")))
+        QSKIP("zsh is not available");
+
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+
+    QDir homeDir(home.path());
+    QVERIFY(homeDir.mkpath(QStringLiteral(".config/zsh")));
+
+    QFile env(homeDir.filePath(QStringLiteral(".zshenv")));
+    QVERIFY(env.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QVERIFY(env.write("ZDOTDIR=\"$HOME/.config/zsh\"\n") > 0);
+    env.close();
+
+    QFile rc(homeDir.filePath(QStringLiteral(".config/zsh/.zshrc")));
+    QVERIFY(rc.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QVERIFY(rc.write("print -r -- \"custom_zdotdir_rc_type=${(t)ZDOTDIR}\"\n") > 0);
+    rc.close();
+
+    const ScopedShellEnvironment envGuard;
+    qputenv("SHELL", QFile::encodeName(QStringLiteral("/bin/zsh")));
+    qputenv("HOME", QFile::encodeName(home.path()));
+    qunsetenv("ZDOTDIR");
+    qunsetenv("DEEPIN_TERMINAL_GHOSTTY_ZDOTDIR");
+
+    PtySession session;
+    QVERIFY(session.start(80, 24));
+
+    QSignalSpy spy(&session, &PtySession::dataReceived);
+    QVERIFY(spy.isValid());
+
+    session.write("printf 'unexported_zdotdir_ok\\n'\n");
+
+    QByteArray output;
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 3000
+           && (!output.contains("custom_zdotdir_rc_type=") || !output.contains("unexported_zdotdir_ok"))) {
+        spy.wait(100);
+        for (const auto &args : spy)
+            output.append(args.at(0).toByteArray());
+        spy.clear();
+    }
+
+    QVERIFY2(output.contains("custom_zdotdir_rc_type=scalar"),
+             qPrintable(QString::fromLatin1("Expected the relocated .zshrc to observe ZDOTDIR, got: %1")
+                            .arg(QString::fromUtf8(output))));
+    QVERIFY2(!output.contains("custom_zdotdir_rc_type=scalar-export"),
+             qPrintable(
+                 QString::fromLatin1("Expected ZDOTDIR to remain unexported, got: %1").arg(QString::fromUtf8(output))));
+}
+
+void TestPtySession::testZshShellIntegrationDiscardsInheritedZdotdirMarker() {
+    if (!QFile::exists(QStringLiteral("/bin/zsh")))
+        QSKIP("zsh is not available");
+
+    QTemporaryDir home;
+    QTemporaryDir staleZdotdir;
+    QVERIFY(home.isValid());
+    QVERIFY(staleZdotdir.isValid());
+
+    QFile homeEnv(QDir(home.path()).filePath(QStringLiteral(".zshenv")));
+    QVERIFY(homeEnv.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QVERIFY(homeEnv.write("print -r -- home_zshenv_ran\n") > 0);
+    homeEnv.close();
+
+    QFile homeRc(QDir(home.path()).filePath(QStringLiteral(".zshrc")));
+    QVERIFY(homeRc.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QVERIFY(homeRc.write("print -r -- home_zshrc_ran\n") > 0);
+    homeRc.close();
+
+    QFile staleEnv(QDir(staleZdotdir.path()).filePath(QStringLiteral(".zshenv")));
+    QVERIFY(staleEnv.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QVERIFY(staleEnv.write("print -r -- stale_zshenv_ran\n") > 0);
+    staleEnv.close();
+
+    QFile staleRc(QDir(staleZdotdir.path()).filePath(QStringLiteral(".zshrc")));
+    QVERIFY(staleRc.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QVERIFY(staleRc.write("print -r -- stale_zshrc_ran\n") > 0);
+    staleRc.close();
+
+    const ScopedShellEnvironment envGuard;
+    qputenv("SHELL", QFile::encodeName(QStringLiteral("/bin/zsh")));
+    qputenv("HOME", QFile::encodeName(home.path()));
+    qunsetenv("ZDOTDIR");
+    qputenv("DEEPIN_TERMINAL_GHOSTTY_ZDOTDIR", QFile::encodeName(staleZdotdir.path()));
+
+    PtySession session;
+    QVERIFY(session.start(80, 24));
+
+    QSignalSpy spy(&session, &PtySession::dataReceived);
+    QVERIFY(spy.isValid());
+
+    session.write("printf 'marker_cleanup_ok\\n'\n");
+
+    QByteArray output;
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 3000
+           && (!output.contains("marker_cleanup_ok")
+               || (!output.contains("home_zshrc_ran") && !output.contains("stale_zshrc_ran")))) {
+        spy.wait(100);
+        for (const auto &args : spy)
+            output.append(args.at(0).toByteArray());
+        spy.clear();
+    }
+
+    QVERIFY2(
+        output.contains("home_zshenv_ran") && output.contains("home_zshrc_ran"),
+        qPrintable(QString::fromLatin1("Expected HOME startup files to run, got: %1").arg(QString::fromUtf8(output))));
+    QVERIFY2(!output.contains("stale_zshenv_ran") && !output.contains("stale_zshrc_ran"),
+             qPrintable(QString::fromLatin1("Inherited private marker selected stale startup files, got: %1")
+                            .arg(QString::fromUtf8(output))));
 }
 
 void TestPtySession::testResize() {
