@@ -54,8 +54,20 @@ int normalizedExitCode(int status) {
     return 1;
 }
 
-std::string resolveShellPath() {
-    const QByteArray shellEnv = qgetenv("SHELL");
+std::string resolveShellPath(const QStringList &environment = {}) {
+    QByteArray shellEnv;
+    if (environment.isEmpty()) {
+        shellEnv = qgetenv("SHELL");
+    } else {
+        // A forwarded environment carries the caller's shell preference; the
+        // interactive shell must match what $SHELL advertises to the child.
+        for (const QString &entry : environment) {
+            if (entry.length() > 6 && entry.startsWith(QStringLiteral("SHELL="))) {
+                shellEnv = entry.mid(6).toUtf8();
+                break;
+            }
+        }
+    }
     if (!shellEnv.isEmpty()) {
         qCDebug(ptyLog) << "Resolved shell from SHELL environment" << shellEnv;
         return shellEnv.constData();
@@ -605,7 +617,7 @@ bool PtySession::spawn(int cols, int rows, const StartOptions &options) {
     return false;
 #else
     int masterFd = -1;
-    const std::string shellPath = resolveShellPath();
+    const std::string shellPath = resolveShellPath(options.environment);
     const QByteArray command = options.command.toUtf8();
     const QByteArray workingDirectory = options.workingDirectory.toUtf8();
     ShellIntegration shellIntegration;
@@ -614,14 +626,23 @@ bool PtySession::spawn(int cols, int rows, const StartOptions &options) {
     std::vector<std::string> envStorage;
     std::vector<char *> envp;
 
-    for (char **entry = environ; entry != nullptr && *entry != nullptr; ++entry) {
-        if (std::strncmp(*entry, "TERM=", 5) == 0)
-            continue;
-        if (environmentEntryHasName(*entry, kZdotdirMarkerEnvName))
-            continue;
-        if (!shellIntegration.extraEnv.empty() && environmentEntryHasName(*entry, kZdotdirEnvName))
-            continue;
-        envStorage.emplace_back(*entry);
+    const auto appendEnvironmentEntry = [&envStorage, &shellIntegration](const char *entry) {
+        if (std::strchr(entry, '=') == nullptr)
+            return;
+        if (std::strncmp(entry, "TERM=", 5) == 0)
+            return;
+        if (environmentEntryHasName(entry, kZdotdirMarkerEnvName))
+            return;
+        if (!shellIntegration.extraEnv.empty() && environmentEntryHasName(entry, kZdotdirEnvName))
+            return;
+        envStorage.emplace_back(entry);
+    };
+    if (options.environment.isEmpty()) {
+        for (char **entry = environ; entry != nullptr && *entry != nullptr; ++entry)
+            appendEnvironmentEntry(*entry);
+    } else {
+        for (const QString &entry : options.environment)
+            appendEnvironmentEntry(entry.toUtf8().constData());
     }
     envStorage.emplace_back(kTermEnv);
     for (const std::string &entry : shellIntegration.extraEnv)

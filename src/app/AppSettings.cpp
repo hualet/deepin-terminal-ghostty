@@ -28,6 +28,7 @@ constexpr auto kBackgroundBlurPath = "basic.interface.blurred_background";
 constexpr auto kSessionRestorePath = "advanced.session.sessionRestore";
 constexpr auto kSessionRestoreBehaviorPath = "advanced.session.sessionRestoreBehavior";
 constexpr auto kHideQuakeOnFocusLossPath = "advanced.window.hideQuakeOnFocusLoss";
+constexpr auto kReuseWindowPath = "advanced.window.reuseWindow";
 
 QString shortcutPath(Dtk::Core::DSettings *settings, const QString &name) {
     static const QStringList kGroups = {"terminal", "tab", "advanced"};
@@ -288,4 +289,8 @@ QString AppSettings::sessionRestoreBehavior() const {
 
 bool AppSettings::hideQuakeOnFocusLoss() const {
     return m_dsettings->value(kHideQuakeOnFocusLossPath).toBool();
+}
+
+bool AppSettings::reuseWindow() const {
+    return m_dsettings->value(kReuseWindowPath).toBool();
 }

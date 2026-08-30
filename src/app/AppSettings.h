@@ -49,6 +49,7 @@ public:
     bool sessionRestore() const;
     QString sessionRestoreBehavior() const;
     bool hideQuakeOnFocusLoss() const;
+    bool reuseWindow() const;
 
     QSize windowSize() const;
     void saveWindowSize(const QSize &size);

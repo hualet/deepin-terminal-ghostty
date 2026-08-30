@@ -177,7 +177,7 @@ private slots:
         QCOMPARE(optionKeys(findGroupByKey(groups, QStringLiteral("scrolling"))),
                  QStringList({QStringLiteral("scrollbackLines")}));
         QCOMPARE(optionKeys(findGroupByKey(groups, QStringLiteral("window"))),
-                 QStringList({QStringLiteral("hideQuakeOnFocusLoss")}));
+                 QStringList({QStringLiteral("reuseWindow"), QStringLiteral("hideQuakeOnFocusLoss")}));
     }
 
     void testVerticalTabsEnabled() {
@@ -274,6 +274,23 @@ private slots:
 
         QVERIFY(!windowGroup.isEmpty());
         QVERIFY(!option.isEmpty());
+        QCOMPARE(option.value(QStringLiteral("default")).toBool(), true);
+    }
+
+    void testReuseWindowDefaultAndConfig() {
+        auto *s = AppSettings::instance();
+        QCOMPARE(s->reuseWindow(), true);
+
+        QFile file(QStringLiteral(":/settings/default-config.json"));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        QVERIFY(doc.isObject());
+
+        const QJsonArray groups = doc.object().value(QStringLiteral("groups")).toArray();
+        const QJsonObject option = findOptionByKey(groups, QStringLiteral("reuseWindow"));
+
+        QVERIFY(!option.isEmpty());
+        QCOMPARE(option.value(QStringLiteral("type")).toString(), QStringLiteral("checkbox"));
         QCOMPARE(option.value(QStringLiteral("default")).toBool(), true);
     }
 

@@ -3708,7 +3708,8 @@ void TerminalWidget::setCursorBlinkEnabled(bool blink) {
 
 void TerminalWidget::setStartOptions(const PtySession::StartOptions &options) {
     m_startOptions = options;
-    m_hasStartOptions = !options.command.isEmpty() || !options.workingDirectory.isEmpty();
+    m_hasStartOptions =
+        !options.command.isEmpty() || !options.workingDirectory.isEmpty() || !options.environment.isEmpty();
 }
 
 void TerminalWidget::setScrollbackLines(int lines) {

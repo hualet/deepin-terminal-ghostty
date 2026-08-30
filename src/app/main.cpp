@@ -1,3 +1,4 @@
+#include "AppSettings.h"
 #include "ApplicationMetadata.h"
 #include "StartupOptions.h"
 #include "TerminalTrace.h"
@@ -7,7 +8,9 @@
 #include <DLog>
 #include <DWidgetUtil>
 #include <QCoreApplication>
+#include <QDir>
 #include <QLocale>
+#include <QProcessEnvironment>
 #include <QStringList>
 #include <QTranslator>
 
@@ -46,6 +49,44 @@ bool loadApplicationTranslation(QTranslator &translator) {
         if (translator.load(locale, QStringLiteral("deepin-terminal-ghostty"), QStringLiteral("_"), path))
             return true;
     }
+    return false;
+}
+
+bool forwardStartupToExistingInstance(const StartupOptions &options) {
+    // Quake launches manage their own window; embedders relying on
+    // --wait-for-child/--propagate-exit-code need a real local session, and
+    // --trace-vt expects the trace file from this very process.
+    if (options.quakeMode || options.waitForChild || !options.traceVtPath.isEmpty())
+        return false;
+    if (!AppSettings::instance()->reuseWindow())
+        return false;
+
+    QString workingDirectory = options.workingDirectory;
+    if (workingDirectory.isEmpty())
+        workingDirectory = QDir::currentPath();
+    else if (QDir::isRelativePath(workingDirectory))
+        workingDirectory = QDir::current().absoluteFilePath(workingDirectory);
+
+    QString error;
+    const auto outcome = TerminalControlService::forwardOpenTab(
+        workingDirectory, options.execute, QProcessEnvironment::systemEnvironment().toStringList(), 5000, &error);
+    if (outcome == TerminalControlService::ForwardOutcome::Forwarded) {
+        qCInfo(appLog) << "Opened a new tab in an existing terminal window";
+        return true;
+    }
+    if (outcome == TerminalControlService::ForwardOutcome::Indeterminate) {
+        // The request may still sit queued in the owner's blocked GUI thread,
+        // so replaying it locally could run --execute twice. NameHasOwner is
+        // answered by the bus daemon and stays reliable while the owner is
+        // unresponsive: only a definitively absent owner proves non-delivery.
+        if (TerminalControlService::serviceNameOwned()) {
+            qCInfo(appLog) << "Startup request stays with the existing instance" << error;
+            return true;
+        }
+        qCInfo(appLog) << "Existing instance is gone; starting an independent window:" << error;
+        return false;
+    }
+    qCInfo(appLog) << "Existing instance rejected the startup request:" << error;
     return false;
 }
 
@@ -93,17 +134,28 @@ int main(int argc, char *argv[]) {
 
     ServerConfigManager::instance()->initServerConfig();
 
-    TerminalControlService controlService([]() -> MainWindow * {
-        auto *window = new MainWindow;
+    TerminalControlService controlService([](const StartupOptions &options) -> MainWindow * {
+        auto *window = new MainWindow(options);
         window->setAttribute(Qt::WA_DeleteOnClose);
         window->show();
         Dtk::Widget::moveToCenter(window);
         qCInfo(appLog) << "Control service created main window";
         return window;
     });
-    QString controlError;
-    if (!controlService.registerOnSessionBus(&controlError))
-        qCWarning(appLog) << "Failed to register terminal control service:" << controlError;
+
+    // Wait-mode sessions must neither own the reuse service name nor receive
+    // forwarded tabs: the forwarded tab would outlive the embedder's
+    // --wait-for-child expectation and get killed with the startup session.
+    if (startupOptions.waitForChild) {
+        qCInfo(appLog) << "Skipping terminal control service for wait-mode session";
+    } else {
+        QString controlError;
+        if (!controlService.registerOnSessionBus(&controlError)) {
+            if (forwardStartupToExistingInstance(startupOptions))
+                return 0;
+            qCWarning(appLog) << "Failed to register terminal control service:" << controlError;
+        }
+    }
 
     std::unique_ptr<MainWindow> window = startupOptions.quakeMode ? std::make_unique<QuakeWindow>(startupOptions)
                                                                   : std::make_unique<MainWindow>(startupOptions);

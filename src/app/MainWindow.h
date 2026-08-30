@@ -41,6 +41,8 @@ public:
     QString controlWindowId() const;
     QJsonObject controlSnapshot() const;
     bool controlNewTab(QString *createdPaneId = nullptr);
+    bool controlOpenTab(const QString &workingDirectory, const QString &command, const QStringList &environment,
+                        QString *createdPaneId = nullptr);
     bool controlSplitPane(const QUuid &paneId, Qt::Orientation orientation, QString *createdPaneId = nullptr);
     bool controlSendText(const QUuid &paneId, const QString &text);
     bool controlExecuteCommand(const QUuid &paneId, const QString &command);

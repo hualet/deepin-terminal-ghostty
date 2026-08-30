@@ -7,6 +7,7 @@ void GenerateSettingTranslate() {
     auto advanced_session_sessionRestoreBehaviorName = QObject::tr("Restore behavior");
     auto advanced_session_sessionRestoreText = QObject::tr("Save and restore session");
     auto advanced_window_hideQuakeOnFocusLossText = QObject::tr("Hide Quake window after losing focus");
+    auto advanced_window_reuseWindowText = QObject::tr("Open new terminals in an existing window");
     auto basic_cursor_cursorBlinkText = QObject::tr("Cursor blink");
     auto basic_cursor_cursorShapeName = QObject::tr("Cursor shape");
     auto basic_interface_blurred_backgroundText = QObject::tr("Blur background");

@@ -27,6 +27,7 @@
 #include <QAbstractButton>
 #include <QAccessible>
 #include <QAction>
+#include <QDBusConnection>
 #include <QDir>
 #include <QFile>
 #include <QIcon>
@@ -38,6 +39,7 @@
 #include <QLineEdit>
 #include <QPointer>
 #include <QProgressBar>
+#include <QScopeGuard>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSignalSpy>
@@ -160,6 +162,13 @@ private slots:
     void testControlServiceListsWindowTabsPanesAndContent();
     void testControlServiceCreatesTabAndSplit();
     void testControlServiceSendsTextAndExecutesCommand();
+    void testControlServiceOpensTabWithWorkingDirectoryAndCommand();
+    void testControlServiceOpenTabForwardsCallerEnvironment();
+    void testControlServiceOpenTabFailsWithoutWindow();
+    void testControlServiceOpenTabCreatesWindowViaFactory();
+    void testControlServiceOpenTabWithEnvironmentSkipsSessionRestore();
+    void testControlServiceOpenTabSkipsQuakeWindow();
+    void testControlServiceReleasesNameWhenObjectRegistrationFails();
     void testPaneDividerColorsFollowTheme();
 
 private:
@@ -347,6 +356,21 @@ QString firstPaneIdFromControlResponse(const QJsonObject &response) {
     if (panes.isEmpty())
         return {};
     return panes.first().toObject().value(QStringLiteral("id")).toString();
+}
+
+bool paneContentContains(TerminalControlService &service, const QString &paneId, const QString &needle) {
+    const QJsonArray windows = parseControlResponse(service.list()).value(QStringLiteral("windows")).toArray();
+    for (const auto &windowValue : windows) {
+        for (const auto &tabValue : windowValue.toObject().value(QStringLiteral("tabs")).toArray()) {
+            for (const auto &paneValue : tabValue.toObject().value(QStringLiteral("panes")).toArray()) {
+                const QJsonObject paneObject = paneValue.toObject();
+                if (paneObject.value(QStringLiteral("id")).toString() == paneId
+                    && paneObject.value(QStringLiteral("content")).toString().contains(needle))
+                    return true;
+            }
+        }
+    }
+    return false;
 }
 
 QJsonObject shortcutViewerPayload(const QStringList &arguments) {
@@ -3203,6 +3227,179 @@ void TestMainWindow::testControlServiceSendsTextAndExecutesCommand() {
     QVERIFY(response.value(QStringLiteral("ok")).toBool());
     QTRY_VERIFY_WITH_TIMEOUT(spy.count() >= 1, 500);
     QCOMPARE(spy.takeFirst().at(0).toByteArray(), QByteArrayLiteral("printf control-ok\n"));
+}
+
+void TestMainWindow::testControlServiceOpensTabWithWorkingDirectoryAndCommand() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    TerminalControlService service;
+    const QJsonObject response = parseControlResponse(service.openTab(dir.path(), QStringLiteral("sleep 30")));
+    QVERIFY(response.value(QStringLiteral("ok")).toBool());
+    QVERIFY(!response.value(QStringLiteral("windowId")).toString().isEmpty());
+    QVERIFY(!response.value(QStringLiteral("paneId")).toString().isEmpty());
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 2);
+    QCOMPARE(tabs->currentIndex(), 1);
+
+    bool paneListed = false;
+    const QJsonArray windows = parseControlResponse(service.list()).value(QStringLiteral("windows")).toArray();
+    for (const auto &windowValue : windows) {
+        for (const auto &tabValue : windowValue.toObject().value(QStringLiteral("tabs")).toArray()) {
+            for (const auto &paneValue : tabValue.toObject().value(QStringLiteral("panes")).toArray()) {
+                if (paneValue.toObject().value(QStringLiteral("id")).toString()
+                    == response.value(QStringLiteral("paneId")).toString())
+                    paneListed = true;
+            }
+        }
+    }
+    QVERIFY(paneListed);
+
+    auto *term = currentTerminal(window);
+    QVERIFY(term);
+    auto *session = ptySession(term);
+    QVERIFY(session);
+    QTRY_COMPARE(session->workingDirectory(), dir.path());
+}
+
+void TestMainWindow::testControlServiceOpenTabFailsWithoutWindow() {
+    TerminalControlService service;
+    const QJsonObject response = parseControlResponse(service.openTab(QString(), QString()));
+    QVERIFY(!response.value(QStringLiteral("ok")).toBool());
+    QCOMPARE(response.value(QStringLiteral("error")).toString(), QStringLiteral("no terminal window available"));
+}
+
+void TestMainWindow::testControlServiceOpenTabForwardsCallerEnvironment() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    TerminalControlService service;
+    const QJsonObject response = parseControlResponse(
+        service.openTab(QString(), QStringLiteral("printf '%s' \"$QTGHOSTTY_ENV_MARKER\"; sleep 30"),
+                        QStringList{QStringLiteral("QTGHOSTTY_ENV_MARKER=forwarded-env-value")}));
+    QVERIFY(response.value(QStringLiteral("ok")).toBool());
+
+    const QString paneId = response.value(QStringLiteral("paneId")).toString();
+    QVERIFY(!paneId.isEmpty());
+
+    // The command runs inside the pane; its output must come from the
+    // forwarded environment rather than this process's (unset) one.
+    QTRY_VERIFY_WITH_TIMEOUT(paneContentContains(service, paneId, QStringLiteral("forwarded-env-value")), 5000);
+}
+
+void TestMainWindow::testControlServiceOpenTabCreatesWindowViaFactory() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    QPointer<MainWindow> createdWindow;
+    TerminalControlService service([&](const StartupOptions &options) {
+        auto *window = new MainWindow(options);
+        window->setAttribute(Qt::WA_DeleteOnClose);
+        createdWindow = window;
+        return window;
+    });
+
+    const QJsonObject response = parseControlResponse(service.openTab(dir.path(), QString(), QStringList{}));
+    QVERIFY(response.value(QStringLiteral("ok")).toBool());
+    QVERIFY(!createdWindow.isNull());
+    QVERIFY(!response.value(QStringLiteral("windowId")).toString().isEmpty());
+
+    // The requested session becomes the window's initial tab, not a second one.
+    auto *tabs = tabBar(*createdWindow);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    auto *term = currentTerminal(*createdWindow);
+    QVERIFY(term);
+    auto *session = ptySession(term);
+    QVERIFY(session);
+    QTRY_COMPARE(session->workingDirectory(), dir.path());
+
+    delete createdWindow;
+}
+
+void TestMainWindow::testControlServiceOpenTabWithEnvironmentSkipsSessionRestore() {
+    auto *settings = AppSettings::instance();
+    settings->dsettings()->setOption("advanced.session.sessionRestore", true);
+    settings->dsettings()->setOption("advanced.session.sessionRestoreBehavior", QStringLiteral("auto"));
+
+    SessionManager::instance().clearSnapshot();
+    WindowSnapshot snap;
+    snap.width = 800;
+    snap.height = 600;
+    snap.tabs.append({1, QStringLiteral("Tab A"), SplitNode::terminal("aaa-aaa", "/tmp", "sh")});
+    snap.tabs.append({2, QStringLiteral("Tab B"), SplitNode::terminal("bbb-bbb", "/tmp", "sh")});
+    QList<QPair<QString, TerminalWidget *>> noTerminals;
+    SessionManager::instance().save(snap, noTerminals);
+    QVERIFY(SessionManager::instance().hasSnapshot());
+
+    QPointer<MainWindow> createdWindow;
+    TerminalControlService service([&](const StartupOptions &options) {
+        auto *window = new MainWindow(options);
+        createdWindow = window;
+        return window;
+    });
+
+    // Environment-only forwarded request: the requested terminal must open
+    // as the single initial tab instead of restoring the two-tab snapshot.
+    const QJsonObject response = parseControlResponse(
+        service.openTab(QString(), QString(), QStringList{QStringLiteral("QTGHOSTTY_ENV_ONLY=1")}));
+    QVERIFY(response.value(QStringLiteral("ok")).toBool());
+    QVERIFY(!createdWindow.isNull());
+
+    auto *tabs = tabBar(*createdWindow);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 1);
+
+    SessionManager::instance().clearSnapshot();
+    delete createdWindow;
+}
+
+void TestMainWindow::testControlServiceOpenTabSkipsQuakeWindow() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QuakeWindow quakeWindow;
+
+    TerminalControlService service;
+    const QJsonObject response = parseControlResponse(service.openTab(QString(), QString()));
+    QVERIFY(response.value(QStringLiteral("ok")).toBool());
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 2);
+
+    auto *quakeStack = quakeWindow.findChild<QStackedWidget *>();
+    QVERIFY(quakeStack);
+    QCOMPARE(quakeStack->count(), 1);
+}
+
+void TestMainWindow::testControlServiceReleasesNameWhenObjectRegistrationFails() {
+    auto bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected())
+        QSKIP("A session D-Bus is required for this test");
+    // When another process owns the name, service registration fails before
+    // the object-registration path under test is ever reached.
+    if (TerminalControlService::serviceNameOwned())
+        QSKIP("The control service name is owned by another process");
+
+    QObject pathBlocker;
+    const QString objectPath = QStringLiteral("/org/deepin/TerminalGhostty/Control");
+    QVERIFY(bus.registerObject(objectPath, &pathBlocker));
+    const auto unregisterObject = qScopeGuard([&] { bus.unregisterObject(objectPath); });
+
+    TerminalControlService service;
+    QString error;
+    QVERIFY(!service.registerOnSessionBus(&error));
+    QVERIFY(!TerminalControlService::serviceNameOwned());
 }
 
 int main(int argc, char *argv[]) {

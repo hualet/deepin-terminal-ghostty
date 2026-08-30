@@ -354,6 +354,12 @@
                     "name": "Window",
                     "options": [
                         {
+                            "key": "reuseWindow",
+                            "text": "Open new terminals in an existing window",
+                            "type": "checkbox",
+                            "default": true
+                        },
+                        {
                             "key": "hideQuakeOnFocusLoss",
                             "text": "Hide Quake window after losing focus",
                             "type": "checkbox",

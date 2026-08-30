@@ -18,6 +18,9 @@ public:
     struct StartOptions {
         QString command;
         QString workingDirectory;
+        // "KEY=VALUE" entries used verbatim as the child environment; when
+        // empty the child inherits this process's environment.
+        QStringList environment;
     };
 
     explicit PtySession(QObject *parent = nullptr);

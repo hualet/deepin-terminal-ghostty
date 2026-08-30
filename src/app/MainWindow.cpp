@@ -178,8 +178,10 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent, bo
     ensureTabBar();
 
     bool restored = false;
+    // An explicit startup payload (command, directory, or environment) names
+    // the session this window is for; never substitute a restored snapshot.
     if (createInitialTab && AppSettings::instance()->sessionRestore() && m_startupOptions.execute.isEmpty()
-        && m_startupOptions.workingDirectory.isEmpty()) {
+        && m_startupOptions.workingDirectory.isEmpty() && m_startupOptions.environment.isEmpty()) {
         auto &mgr = SessionManager::instance();
         if (mgr.hasSnapshot()) {
             QString behavior = AppSettings::instance()->sessionRestoreBehavior();
@@ -206,11 +208,11 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent, bo
 
     if (!restored && createInitialTab) {
         std::optional<PtySession::StartOptions> initialSessionOptions;
-        if (!m_startupOptions.execute.isEmpty() || !m_startupOptions.workingDirectory.isEmpty()) {
-            initialSessionOptions = PtySession::StartOptions{
-                .command = m_startupOptions.execute,
-                .workingDirectory = m_startupOptions.workingDirectory,
-            };
+        if (!m_startupOptions.execute.isEmpty() || !m_startupOptions.workingDirectory.isEmpty()
+            || !m_startupOptions.environment.isEmpty()) {
+            initialSessionOptions = PtySession::StartOptions{.command = m_startupOptions.execute,
+                                                             .workingDirectory = m_startupOptions.workingDirectory,
+                                                             .environment = m_startupOptions.environment};
         }
         addTab(true, initialSessionOptions);
     }
@@ -826,6 +828,21 @@ QJsonObject MainWindow::controlSnapshot() const {
 
 bool MainWindow::controlNewTab(QString *createdPaneId) {
     addTab(true);
+    if (createdPaneId) {
+        if (auto *pane = currentPane())
+            *createdPaneId = pane->activePaneId().toString(QUuid::WithoutBraces);
+    }
+    return currentPane() != nullptr;
+}
+
+bool MainWindow::controlOpenTab(const QString &workingDirectory, const QString &command, const QStringList &environment,
+                                QString *createdPaneId) {
+    std::optional<PtySession::StartOptions> startOptions;
+    if (!command.isEmpty() || !workingDirectory.isEmpty() || !environment.isEmpty())
+        startOptions = PtySession::StartOptions{
+            .command = command, .workingDirectory = workingDirectory, .environment = environment};
+
+    addTab(true, startOptions);
     if (createdPaneId) {
         if (auto *pane = currentPane())
             *createdPaneId = pane->activePaneId().toString(QUuid::WithoutBraces);
