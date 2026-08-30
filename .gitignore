@@ -61,3 +61,5 @@ third_party/esctest/
 linglong/
 
 perf.data*
+
+.zcode/
