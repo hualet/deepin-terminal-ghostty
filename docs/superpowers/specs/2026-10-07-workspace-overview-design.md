@@ -94,3 +94,20 @@ Inspect actual rendered overview images at normal and narrow window sizes
 in light and dark palettes before reporting UI completion.
 
 No version change is part of this feature.
+
+## Transitions
+
+Entering morphs the current tab's pane into its card's preview while the
+overview fades in (240 ms, OutCubic). Exiting reverses it: the selected
+card's preview grows back to the pane while the overview fades out
+(200 ms, InOutCubic). When no card matches the tab, such as a newly added
+tab or a card scrolled out of view, only the cross-fade runs.
+
+`OverviewTransition` is a paint-only, mouse-transparent overlay on the
+content host that interpolates between two captured frames. Mode state,
+focus, and shortcut gating still switch immediately, so typing during
+the animation reaches the destination view. The destination frame is
+captured on the next event-loop turn so tab and layout changes settle.
+A new toggle or a content resize finishes the running transition first.
+The animation is skipped when DTK reports a non-special-effects
+environment or the window is not visible.

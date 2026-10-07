@@ -145,6 +145,7 @@ add_executable(test_main_window
   ${CMAKE_SOURCE_DIR}/src/app/TerminalControlService.cpp
   ${CMAKE_SOURCE_DIR}/src/app/VerticalTabSidebar.cpp
   ${CMAKE_SOURCE_DIR}/src/app/WorkspaceOverview.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/OverviewTransition.cpp
   ${CMAKE_SOURCE_DIR}/src/app/PageSearchBar.cpp
   ${CMAKE_SOURCE_DIR}/src/app/SessionManager.cpp
   ${CMAKE_SOURCE_DIR}/src/app/SessionSnapshot.cpp

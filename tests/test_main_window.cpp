@@ -1,6 +1,7 @@
 #include "AppSettings.h"
 #include "ApplicationMetadata.h"
 #include "MainWindow.h"
+#include "OverviewTransition.h"
 #include "PageSearchBar.h"
 #include "PtySession.h"
 #include "QuakeWindow.h"
@@ -98,6 +99,8 @@ private slots:
     void testOverviewHidesVerticalSidebar();
     void testOverviewScrollAreaEscape();
     void testOverviewCloseConfirmationUsesStableId();
+    void testOverviewAnimatesEnterAndExit_data();
+    void testOverviewAnimatesEnterAndExit();
     void testOverviewPreviewsAndLayout_data();
     void testOverviewPreviewsAndLayout();
     void testSingleTabCtrlDClosesWindow();
@@ -1369,6 +1372,12 @@ void TestMainWindow::testOverviewPreservesTerminalGeometry() {
     }
     for (auto *card : overviewCards(overview))
         QVERIFY(!card->icon().isNull());
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Escape);
+    QTest::qWait(400);
+    for (int i = 0; i < terminals.size(); ++i) {
+        QCOMPARE(terminals[i]->size(), sizes[i]);
+        QCOMPARE(QSize(terminals[i]->terminalColumns(), terminals[i]->terminalRows()), grids[i]);
+    }
 }
 
 void TestMainWindow::testOverviewTracksModeAndShortcutChanges() {
@@ -1629,6 +1638,57 @@ void TestMainWindow::testOverviewCloseConfirmationUsesStableId() {
     QTest::keyClick(QApplication::focusWidget(), Qt::Key_Escape);
     QTRY_VERIFY(!overview->isVisible());
     QTRY_VERIFY(currentTerminal(window)->hasFocus());
+}
+
+void TestMainWindow::testOverviewAnimatesEnterAndExit_data() {
+    QTest::addColumn<bool>("vertical");
+    QTest::newRow("horizontal") << false;
+    QTest::newRow("vertical") << true;
+}
+
+void TestMainWindow::testOverviewAnimatesEnterAndExit() {
+    QFETCH(bool, vertical);
+    if (!DGuiApplicationHelper::isSpecialEffectsEnvironment())
+        QSKIP("special effects are disabled");
+    AppSettings::instance()->setVerticalTabsEnabled(vertical);
+    MainWindow window;
+    window.resize(900, 600);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QVERIFY(window.controlNewTab());
+    auto *term = currentTerminal(window);
+    const QString outputDir = qEnvironmentVariable("OVERVIEW_QA_DIR");
+    const auto saveFrame = [&](const QString &name) {
+        if (!outputDir.isEmpty()) {
+            QVERIFY(QDir().mkpath(outputDir));
+            QVERIFY(window.grab().save(outputDir + "/transition-" + QTest::currentDataTag() + "-" + name + ".png"));
+        }
+    };
+
+    auto *overview = openOverview(window);
+    QVERIFY(overview && overview->isVisible());
+    QVERIFY(overview->isAncestorOf(QApplication::focusWidget()));
+    auto *transition = window.findChild<OverviewTransition *>(QStringLiteral("workspaceOverviewTransition"));
+    QVERIFY(transition && transition->isVisible());
+    QVERIFY(transition->testAttribute(Qt::WA_TransparentForMouseEvents));
+    QTRY_VERIFY(transition->progress() > 0.2 && transition->progress() < 0.8);
+    saveFrame("enter");
+    QTRY_VERIFY(!transition->isVisible());
+
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Escape);
+    QVERIFY(!overview->isVisible());
+    QVERIFY(transition->isVisible());
+    QTRY_VERIFY(term->hasFocus());
+    QTRY_VERIFY(transition->progress() > 0.2 && transition->progress() < 0.8);
+    saveFrame("exit");
+    QTRY_VERIFY(!transition->isVisible());
+
+    openOverview(window);
+    QVERIFY(transition->isVisible());
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Escape);
+    QVERIFY(!overview->isVisible());
+    QTRY_VERIFY(!transition->isVisible());
+    QVERIFY(term->hasFocus());
 }
 
 void TestMainWindow::testOverviewPreviewsAndLayout_data() {

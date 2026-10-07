@@ -25,6 +25,10 @@ public:
     explicit WorkspaceOverview(QWidget *parent = nullptr);
     void setEntries(const QList<Entry> &entries);
     void focusSearch();
+    void ensureTabVisible(int tabId);
+    // Where the tab's preview image is drawn, in overview coordinates;
+    // empty when the card is filtered out or scrolled out of view.
+    QRect previewRect(int tabId) const;
 
 signals:
     void tabActivated(int tabId);

@@ -30,6 +30,7 @@ class RemoteManagementPanel;
 class TermPane;
 class TerminalWidget;
 class VerticalTabSidebar;
+class OverviewTransition;
 class WorkspaceOverview;
 class QTimer;
 
@@ -109,6 +110,9 @@ private:
     void refreshWorkspaceOverview();
     void syncOverviewAction();
     void updateOverviewGeometry();
+    QPixmap grabOverviewFrame(QWidget *widget);
+    void beginOverviewTransition(bool entering, const QPixmap &currentFrame);
+    void startOverviewTransition(bool entering, const QPixmap &currentFrame);
     void updateShortcut(QShortcut *shortcut, const QString &name);
     void closeOtherTabs();
     void gotoTab(int index);
@@ -138,6 +142,8 @@ private:
     QAction *m_overviewAction = nullptr;
     QList<QPair<QPointer<QShortcut>, bool>> m_overviewShortcutStates;
     bool m_refreshingOverview = false;
+    OverviewTransition *m_overviewTransition = nullptr;
+    int m_overviewTransitionSerial = 0;
     VerticalTabSidebar *m_verticalSidebar = nullptr;
     QSplitter *m_mainSplitter = nullptr;
     QAction *m_verticalTabsAction = nullptr;

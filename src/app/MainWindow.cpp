@@ -2,6 +2,7 @@
 
 #include "AppSettings.h"
 #include "ApplicationMetadata.h"
+#include "OverviewTransition.h"
 #include "SessionManager.h"
 #include "SessionSnapshot.h"
 #include "SettingsDialog.h"
@@ -49,6 +50,45 @@
 #include <algorithm>
 
 namespace {
+
+constexpr int kOverviewEnterAnimationMs = 240;
+constexpr int kOverviewExitAnimationMs = 200;
+
+// QWidget::grab() delivers pending move/resize events across the whole
+// window, which would lay out never-shown splits in hidden tabs and resize
+// their PTYs. Defer those events until the widgets are actually shown.
+class HiddenGeometryEventGuard {
+public:
+    explicit HiddenGeometryEventGuard(QWidget *window) {
+        for (auto *widget : window->findChildren<QWidget *>()) {
+            if (widget->isVisible() || widget->isWindow())
+                continue;
+            const bool move = widget->testAttribute(Qt::WA_PendingMoveEvent);
+            const bool resize = widget->testAttribute(Qt::WA_PendingResizeEvent);
+            if (!move && !resize)
+                continue;
+            m_states.append({widget, move, resize});
+            widget->setAttribute(Qt::WA_PendingMoveEvent, false);
+            widget->setAttribute(Qt::WA_PendingResizeEvent, false);
+        }
+    }
+    ~HiddenGeometryEventGuard() {
+        for (const auto &state : m_states) {
+            if (!state.widget)
+                continue;
+            state.widget->setAttribute(Qt::WA_PendingMoveEvent, state.move);
+            state.widget->setAttribute(Qt::WA_PendingResizeEvent, state.resize);
+        }
+    }
+
+private:
+    struct State {
+        QPointer<QWidget> widget;
+        bool move = false;
+        bool resize = false;
+    };
+    QList<State> m_states;
+};
 
 void limitMenuHeightToScreen(QMenu *menu) {
     if (!menu)
@@ -1187,6 +1227,7 @@ void MainWindow::setWorkspaceOverviewVisible(bool visible) {
         if (m_remotePanel)
             m_remotePanel->hidePanel();
         updateOverviewGeometry();
+        const QPixmap terminalFrame = grabOverviewFrame(m_contentHost);
         refreshWorkspaceOverview();
         m_workspaceOverview->show();
         if (m_verticalTabsEnabled && m_mainSplitter)
@@ -1200,7 +1241,9 @@ void MainWindow::setWorkspaceOverviewVisible(bool visible) {
             m_overviewShortcutStates.append({shortcut, shortcut->isEnabled()});
             shortcut->setEnabled(false);
         }
+        beginOverviewTransition(true, terminalFrame);
     } else {
+        const QPixmap overviewFrame = grabOverviewFrame(m_workspaceOverview);
         m_workspaceOverview->hide();
         if (m_verticalTabsEnabled && m_mainSplitter)
             m_mainSplitter->show();
@@ -1212,8 +1255,65 @@ void MainWindow::setWorkspaceOverviewVisible(bool visible) {
         m_overviewShortcutStates.clear();
         if (auto *term = currentTerminal())
             term->setFocus(Qt::OtherFocusReason);
+        beginOverviewTransition(false, overviewFrame);
     }
     syncOverviewAction();
+}
+
+QPixmap MainWindow::grabOverviewFrame(QWidget *widget) {
+    const HiddenGeometryEventGuard guard(this);
+    const bool overlayVisible = m_overviewTransition && m_overviewTransition->isVisible();
+    if (overlayVisible)
+        m_overviewTransition->hide();
+    const QPixmap frame = widget->grab();
+    if (overlayVisible)
+        m_overviewTransition->show();
+    return frame;
+}
+
+void MainWindow::beginOverviewTransition(bool entering, const QPixmap &currentFrame) {
+    if (!isVisible() || currentFrame.isNull() || !DGuiApplicationHelper::isSpecialEffectsEnvironment())
+        return;
+    if (!m_overviewTransition)
+        m_overviewTransition = new OverviewTransition(m_contentHost);
+    if (entering)
+        m_overviewTransition->begin(currentFrame, QPixmap(), true);
+    else
+        m_overviewTransition->begin(QPixmap(), currentFrame, false);
+    // Capture the destination frame once pending layout and tab changes settle.
+    const int serial = ++m_overviewTransitionSerial;
+    QTimer::singleShot(0, m_overviewTransition, [this, serial, entering, currentFrame]() {
+        if (serial == m_overviewTransitionSerial)
+            startOverviewTransition(entering, currentFrame);
+    });
+}
+
+void MainWindow::startOverviewTransition(bool entering, const QPixmap &currentFrame) {
+    if (!m_workspaceOverview || m_workspaceOverview->isVisible() != entering) {
+        m_overviewTransition->finish();
+        return;
+    }
+    const int index = m_tabBar ? m_tabBar->currentIndex() : -1;
+    const int tabId = index >= 0 && index < m_tabs.size() ? m_tabs.at(index).id : 0;
+    QPixmap terminalFrame;
+    QPixmap overviewFrame;
+    if (entering) {
+        terminalFrame = currentFrame;
+        QCoreApplication::sendPostedEvents(m_workspaceOverview, QEvent::LayoutRequest);
+        m_workspaceOverview->ensureTabVisible(tabId);
+        overviewFrame = grabOverviewFrame(m_workspaceOverview);
+    } else {
+        overviewFrame = currentFrame;
+        terminalFrame = grabOverviewFrame(m_contentHost);
+    }
+    QRect paneRect;
+    if (auto *pane = currentPane())
+        paneRect = QRect(pane->mapTo(m_contentHost, QPoint()), pane->size()).intersected(m_contentHost->rect());
+    QRect cardRect = m_workspaceOverview->previewRect(tabId);
+    if (!cardRect.isEmpty())
+        cardRect.translate(m_workspaceOverview->pos());
+    m_overviewTransition->start(terminalFrame, overviewFrame, paneRect, cardRect,
+                                entering ? kOverviewEnterAnimationMs : kOverviewExitAnimationMs);
 }
 
 void MainWindow::activateOverviewTab(int tabId) {
@@ -1250,6 +1350,8 @@ void MainWindow::refreshWorkspaceOverview() {
 void MainWindow::updateOverviewGeometry() {
     if (!m_workspaceOverview)
         return;
+    if (m_overviewTransition)
+        m_overviewTransition->finish();
     m_workspaceOverview->setGeometry(m_contentHost->rect());
     if (m_workspaceOverview->isVisible())
         m_workspaceOverview->raise();

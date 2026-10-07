@@ -53,6 +53,15 @@ public:
 
     QToolButton *closeButton() const { return m_close; }
 
+    QRect previewRect() const {
+        const QRect imageRect = rect().adjusted(8, 8, -8, -44);
+        if (m_preview.isNull())
+            return imageRect;
+        const QSize scaled = m_preview.size().scaled(imageRect.size(), Qt::KeepAspectRatio);
+        return QRect(imageRect.center().x() - scaled.width() / 2, imageRect.center().y() - scaled.height() / 2,
+                     scaled.width(), scaled.height());
+    }
+
 protected:
     void resizeEvent(QResizeEvent *event) override {
         QAbstractButton::resizeEvent(event);
@@ -74,9 +83,7 @@ protected:
 
         const QRect imageRect = rect().adjusted(8, 8, -8, -44);
         if (!m_preview.isNull()) {
-            const QSize scaled = m_preview.size().scaled(imageRect.size(), Qt::KeepAspectRatio);
-            const QRect target(imageRect.center().x() - scaled.width() / 2,
-                               imageRect.center().y() - scaled.height() / 2, scaled.width(), scaled.height());
+            const QRect target = previewRect();
             QPainterPath clip;
             clip.addRoundedRect(QRectF(imageRect), 6, 6);
             painter.save();
@@ -200,6 +207,20 @@ void WorkspaceOverview::setEntries(const QList<Entry> &entries) {
 
 void WorkspaceOverview::focusSearch() {
     m_search->setFocus(Qt::OtherFocusReason);
+}
+
+void WorkspaceOverview::ensureTabVisible(int tabId) {
+    if (auto *card = m_cards.value(tabId); card && !card->isHidden())
+        m_scrollArea->ensureWidgetVisible(card);
+}
+
+QRect WorkspaceOverview::previewRect(int tabId) const {
+    auto *card = static_cast<OverviewCard *>(m_cards.value(tabId));
+    if (!card || card->isHidden())
+        return {};
+    const QRect rect(card->mapTo(this, card->previewRect().topLeft()), card->previewRect().size());
+    const QRect viewport(m_scrollArea->viewport()->mapTo(this, QPoint()), m_scrollArea->viewport()->size());
+    return viewport.contains(rect) ? rect : QRect();
 }
 
 QList<QAbstractButton *> WorkspaceOverview::matchingCards() const {
