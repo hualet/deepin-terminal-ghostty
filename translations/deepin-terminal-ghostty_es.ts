@@ -411,6 +411,10 @@
         <source>New Terminal</source>
         <translation>Nueva terminal</translation>
     </message>
+    <message>
+        <source>Workspace overview</source>
+        <translation>Vista general del espacio de trabajo</translation>
+    </message>
 </context>
 <context>
     <name>QObject</name>
@@ -759,6 +763,10 @@
         <location filename="../src/app/VerticalTabSidebar.cpp" line="187"/>
         <source>Shows whether the last command succeeded or failed.</source>
         <translation>Muestra si el último comando se completó correctamente o falló.</translation>
+    </message>
+    <message>
+        <source>Workspace overview</source>
+        <translation>Vista general del espacio de trabajo</translation>
     </message>
 </context>
 <context>
@@ -1362,6 +1370,52 @@
         <location filename="../src/app/VerticalTabSidebar.cpp" line="806"/>
         <source>Activate this terminal pane.</source>
         <translation>Activar este panel de terminal.</translation>
+    </message>
+</context>
+<context>
+    <name>WorkspaceOverview</name>
+    <message>
+        <source>Workspace overview</source>
+        <translation>Vista general del espacio de trabajo</translation>
+    </message>
+    <message>
+        <source>Exit workspace overview</source>
+        <translation>Salir de la vista general</translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation>Listo</translation>
+    </message>
+    <message>
+        <source>New tab</source>
+        <translation>Nueva pestaña</translation>
+    </message>
+    <message>
+        <source>Search tabs</source>
+        <translation>Buscar pestañas</translation>
+    </message>
+    <message>
+        <source>No matching tabs</source>
+        <translation>No hay pestañas coincidentes</translation>
+    </message>
+    <message>
+        <source>Close tab</source>
+        <translation>Cerrar pestaña</translation>
+    </message>
+    <message>
+        <source>Close tab: %1</source>
+        <translation>Cerrar pestaña: %1</translation>
+    </message>
+    <message>
+        <source>Terminal tab: %1</source>
+        <translation>Pestaña de terminal: %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n tab(s)</source>
+        <translation>
+            <numerusform>%n pestaña</numerusform>
+            <numerusform>%n pestañas</numerusform>
+        </translation>
     </message>
 </context>
 </TS>

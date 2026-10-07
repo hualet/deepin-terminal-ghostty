@@ -30,6 +30,8 @@ class RemoteManagementPanel;
 class TermPane;
 class TerminalWidget;
 class VerticalTabSidebar;
+class WorkspaceOverview;
+class QTimer;
 
 class MainWindow : public DMainWindow {
     Q_OBJECT
@@ -52,6 +54,7 @@ signals:
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
 
 private slots:
@@ -66,6 +69,7 @@ private slots:
     void onSettingsTriggered();
     void showTabContextMenu(int index);
     void closeOtherTabs(int keepIndex);
+    void toggleWorkspaceOverview();
 
 private:
     struct TabRecord {
@@ -100,6 +104,11 @@ private:
     void rebuildCentralLayout();
     void updateTitlebarPresentation();
     void setupShortcuts();
+    void setWorkspaceOverviewVisible(bool visible);
+    void activateOverviewTab(int tabId);
+    void refreshWorkspaceOverview();
+    void syncOverviewAction();
+    void updateOverviewGeometry();
     void updateShortcut(QShortcut *shortcut, const QString &name);
     void closeOtherTabs();
     void gotoTab(int index);
@@ -124,6 +133,11 @@ private:
     QStackedWidget *m_stackWidget = nullptr;
     QWidget *m_contentHost = nullptr;
     SettingsDialog *m_settingsDialog = nullptr;
+    WorkspaceOverview *m_workspaceOverview = nullptr;
+    QTimer *m_overviewRefreshTimer = nullptr;
+    QAction *m_overviewAction = nullptr;
+    QList<QPair<QPointer<QShortcut>, bool>> m_overviewShortcutStates;
+    bool m_refreshingOverview = false;
     VerticalTabSidebar *m_verticalSidebar = nullptr;
     QSplitter *m_mainSplitter = nullptr;
     QAction *m_verticalTabsAction = nullptr;
@@ -148,6 +162,7 @@ private:
     void onCompositorCapabilitiesChanged();
     QList<TerminalTheme> m_themes;
 
+    QShortcut *m_scWorkspaceOverview = nullptr;
     QShortcut *m_scNewTab = nullptr;
     QShortcut *m_scCloseTab = nullptr;
     QShortcut *m_scCloseOtherTabs = nullptr;

@@ -134,6 +134,12 @@
                     "name": "Tabs",
                     "options": [
                         {
+                            "key": "workspace_overview",
+                            "name": "Workspace overview",
+                            "type": "shortcut",
+                            "default": "Ctrl+Shift+O"
+                        },
+                        {
                             "key": "new_tab",
                             "name": "New tab",
                             "type": "shortcut",

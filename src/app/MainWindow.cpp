@@ -10,6 +10,7 @@
 #include "TerminalWidget.h"
 #include "ThemeLoader.h"
 #include "VerticalTabSidebar.h"
+#include "WorkspaceOverview.h"
 #include "logging/Logging.h"
 #include "remote/RemoteManagementPanel.h"
 #include "remote/ServerConfig.h"
@@ -37,11 +38,13 @@
 #include <QMenu>
 #include <QPalette>
 #include <QProcess>
+#include <QScopedValueRollback>
 #include <QScreen>
 #include <QShortcut>
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QStackedWidget>
+#include <QTimer>
 
 #include <algorithm>
 
@@ -95,6 +98,8 @@ MainWindow::MainWindow(const StartupOptions &startupOptions, QWidget *parent, bo
 
     // Central widget host keeps layout switching local to MainWindow.
     setCentralWidget(m_contentHost);
+    m_contentHost->installEventFilter(this);
+    m_stackWidget->installEventFilter(this);
     rebuildCentralLayout();
 
     // Hide remote panel when focus moves outside of it.
@@ -244,6 +249,10 @@ DTabBar *MainWindow::ensureTabBar() {
     connect(m_tabBar, &DTabBar::tabAddRequested, this, &MainWindow::onTabAddRequested);
     connect(m_tabBar, &DTabBar::tabCloseRequested, this, [this](int index) { onTabCloseRequested(index, false); });
     connect(m_tabBar, &DTabBar::currentChanged, this, &MainWindow::onTabCurrentChanged);
+    connect(m_tabBar, &DTabBar::tabBarClicked, this, [this](int index) {
+        if (m_workspaceOverview && m_workspaceOverview->isVisible() && index >= 0 && index < m_tabs.size())
+            activateOverviewTab(m_tabs.at(index).id);
+    });
     connect(m_tabBar, &DTabBar::tabMoved, this, &MainWindow::onTabMoved);
     connect(m_tabBar, &DTabBar::tabReleaseRequested, this, &MainWindow::onTabReleaseRequested);
     connect(static_cast<TabBar *>(m_tabBar.data()), &TabBar::tabMenuRequested, this, &MainWindow::showTabContextMenu);
@@ -308,6 +317,11 @@ void MainWindow::setupTitleBar() {
     ensureCompactTitlebarWidget();
 
     auto *menu = new QMenu(this);
+
+    m_overviewAction = menu->addAction(tr("Workspace overview"));
+    m_overviewAction->setObjectName(QStringLiteral("workspaceOverviewAction"));
+    m_overviewAction->setCheckable(true);
+    connect(m_overviewAction, &QAction::triggered, this, &MainWindow::toggleWorkspaceOverview);
 
     m_verticalTabsAction = menu->addAction(tr("Vertical Tabs"));
     m_verticalTabsAction->setObjectName(QStringLiteral("verticalTabsAction"));
@@ -427,6 +441,8 @@ void MainWindow::setupTitleBar() {
 
 void MainWindow::addTab(bool activate, const std::optional<PtySession::StartOptions> &startOptions) {
     qCInfo(appLog) << "Creating terminal tab" << m_nextTabId;
+    if (activate && m_workspaceOverview && m_workspaceOverview->isVisible())
+        setWorkspaceOverviewVisible(false);
     auto *pane = new TermPane(startOptions, m_stackWidget);
 
     connectPaneSignals(pane);
@@ -552,7 +568,9 @@ void MainWindow::adoptDetachedTab(TabRecord record, bool activate) {
     syncTabWidgetsFromRecords();
     if (activate) {
         m_tabBar->setCurrentIndex(tabIndex);
-        if (auto *term = pane->currentTerminal())
+        if (m_workspaceOverview && m_workspaceOverview->isVisible())
+            m_workspaceOverview->focusSearch();
+        else if (auto *term = pane->currentTerminal())
             term->setFocus();
     }
 }
@@ -600,6 +618,8 @@ void MainWindow::detachTabToNewWindow(int index) {
 }
 
 void MainWindow::onTabAddRequested() {
+    if (m_workspaceOverview && m_workspaceOverview->isVisible())
+        setWorkspaceOverviewVisible(false);
     std::optional<PtySession::StartOptions> options;
     if (auto *term = currentTerminal()) {
         QString cwd = term->workingDirectory();
@@ -624,8 +644,11 @@ void MainWindow::onTabCloseRequested(int index, bool hasConfirmed) {
                                             : tr("There are still %1 processes running in this terminal. "
                                                  "Closing the terminal will kill all of them.")
                                                   .arg(count);
-            showExitConfirmDialog(tr("Close this terminal?"), body,
-                                  [this, index]() { onTabCloseRequested(index, true); });
+            showExitConfirmDialog(tr("Close this terminal?"), body, [this, tabId = m_tabs.at(index).id]() {
+                const int currentIndex = indexOfTabId(tabId);
+                if (currentIndex >= 0)
+                    onTabCloseRequested(currentIndex, true);
+            });
             return;
         }
     }
@@ -686,7 +709,8 @@ void MainWindow::onTabCurrentChanged(int index) {
 
     if (auto *term = pane->currentTerminal()) {
         setWindowTitle(term->property("currentTitle").toString());
-        term->setFocus();
+        if (!m_workspaceOverview || !m_workspaceOverview->isVisible())
+            term->setFocus();
     }
 
     syncTabWidgetsFromRecords();
@@ -773,7 +797,8 @@ void MainWindow::onPaneTerminalChanged(TerminalWidget *term) {
     if (auto *record = tabRecordForPane(pane))
         refreshTabRecord(*record);
     syncTabWidgetsFromRecords();
-    term->setFocus();
+    if (!m_workspaceOverview || !m_workspaceOverview->isVisible())
+        term->setFocus();
 }
 
 void MainWindow::closePane(TermPane *pane) {
@@ -963,6 +988,11 @@ void MainWindow::syncTabWidgetsFromRecords() {
         setWindowTitle(QStringLiteral("deepin-terminal-ghostty"));
 
     refreshSidebar();
+    if (m_workspaceOverview && m_workspaceOverview->isVisible()) {
+        refreshWorkspaceOverview();
+        if (!m_workspaceOverview->isAncestorOf(QApplication::focusWidget()) && !QApplication::activeModalWidget())
+            m_workspaceOverview->focusSearch();
+    }
 }
 
 void MainWindow::refreshSidebar() {
@@ -1094,6 +1124,14 @@ void MainWindow::rebuildCentralLayout() {
 
     refreshTabRecords();
     refreshSidebar();
+    syncOverviewAction();
+    if (m_verticalTabsEnabled && m_mainSplitter)
+        m_mainSplitter->setVisible(!m_workspaceOverview || !m_workspaceOverview->isVisible());
+    if (m_workspaceOverview && m_workspaceOverview->isVisible()) {
+        updateOverviewGeometry();
+        m_workspaceOverview->raise();
+        m_workspaceOverview->focusSearch();
+    }
 }
 
 void MainWindow::updateTitlebarPresentation() {
@@ -1117,6 +1155,113 @@ void MainWindow::updateTitlebarPresentation() {
     }
 }
 
+void MainWindow::toggleWorkspaceOverview() {
+    setWorkspaceOverviewVisible(!m_workspaceOverview || !m_workspaceOverview->isVisible());
+}
+
+void MainWindow::setWorkspaceOverviewVisible(bool visible) {
+    if (visible && m_tabs.isEmpty())
+        return;
+    if (visible && !m_workspaceOverview) {
+        m_workspaceOverview = new WorkspaceOverview(m_contentHost);
+        m_workspaceOverview->hide();
+        m_overviewRefreshTimer = new QTimer(this);
+        m_overviewRefreshTimer->setInterval(500);
+        connect(m_overviewRefreshTimer, &QTimer::timeout, this, &MainWindow::refreshWorkspaceOverview);
+        connect(m_workspaceOverview, &WorkspaceOverview::dismissRequested, this,
+                [this]() { setWorkspaceOverviewVisible(false); });
+        connect(m_workspaceOverview, &WorkspaceOverview::tabActivated, this, &MainWindow::activateOverviewTab);
+        connect(m_workspaceOverview, &WorkspaceOverview::tabCloseRequested, this, [this](int tabId) {
+            const int index = indexOfTabId(tabId);
+            if (index >= 0)
+                onTabCloseRequested(index);
+        });
+        connect(m_workspaceOverview, &WorkspaceOverview::addTabRequested, this, [this]() {
+            setWorkspaceOverviewVisible(false);
+            onTabAddRequested();
+        });
+    }
+    if (!m_workspaceOverview || m_workspaceOverview->isVisible() == visible)
+        return;
+    if (visible) {
+        if (m_remotePanel)
+            m_remotePanel->hidePanel();
+        updateOverviewGeometry();
+        refreshWorkspaceOverview();
+        m_workspaceOverview->show();
+        if (m_verticalTabsEnabled && m_mainSplitter)
+            m_mainSplitter->hide();
+        m_workspaceOverview->raise();
+        m_workspaceOverview->focusSearch();
+        m_overviewRefreshTimer->start();
+        for (auto *shortcut : findChildren<QShortcut *>()) {
+            if (shortcut == m_scWorkspaceOverview)
+                continue;
+            m_overviewShortcutStates.append({shortcut, shortcut->isEnabled()});
+            shortcut->setEnabled(false);
+        }
+    } else {
+        m_workspaceOverview->hide();
+        if (m_verticalTabsEnabled && m_mainSplitter)
+            m_mainSplitter->show();
+        m_overviewRefreshTimer->stop();
+        for (const auto &state : m_overviewShortcutStates) {
+            if (state.first)
+                state.first->setEnabled(state.second);
+        }
+        m_overviewShortcutStates.clear();
+        if (auto *term = currentTerminal())
+            term->setFocus(Qt::OtherFocusReason);
+    }
+    syncOverviewAction();
+}
+
+void MainWindow::activateOverviewTab(int tabId) {
+    const int index = indexOfTabId(tabId);
+    if (index < 0)
+        return;
+    gotoTab(index);
+    setWorkspaceOverviewVisible(false);
+}
+
+void MainWindow::syncOverviewAction() {
+    const bool visible = m_workspaceOverview && m_workspaceOverview->isVisible();
+    if (m_overviewAction)
+        m_overviewAction->setChecked(visible);
+}
+
+void MainWindow::refreshWorkspaceOverview() {
+    if (!m_workspaceOverview || m_refreshingOverview)
+        return;
+    const QScopedValueRollback<bool> refreshing(m_refreshingOverview, true);
+    QList<WorkspaceOverview::Entry> entries;
+    for (int i = 0; i < m_tabs.size(); ++i) {
+        const auto &record = m_tabs[i];
+        QPixmap preview;
+        if (record.pane && !record.pane->size().isEmpty()) {
+            const QSize size = record.pane->size().scaled(QSize(640, 400), Qt::KeepAspectRatio);
+            preview = record.pane->renderPreview(size);
+        }
+        entries.append({record.id, record.title, preview, i == m_tabBar->currentIndex()});
+    }
+    m_workspaceOverview->setEntries(entries);
+}
+
+void MainWindow::updateOverviewGeometry() {
+    if (!m_workspaceOverview)
+        return;
+    m_workspaceOverview->setGeometry(m_contentHost->rect());
+    if (m_workspaceOverview->isVisible())
+        m_workspaceOverview->raise();
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
+    if ((watched == m_contentHost || watched == m_stackWidget)
+        && (event->type() == QEvent::Resize || event->type() == QEvent::Move))
+        updateOverviewGeometry();
+    return DMainWindow::eventFilter(watched, event);
+}
+
 void MainWindow::setupShortcuts() {
     auto createOnce = [this](QShortcut *&ptr, const auto &slot) {
         if (!ptr) {
@@ -1125,6 +1270,7 @@ void MainWindow::setupShortcuts() {
         }
     };
 
+    createOnce(m_scWorkspaceOverview, &MainWindow::toggleWorkspaceOverview);
     createOnce(m_scNewTab, &MainWindow::onTabAddRequested);
     createOnce(m_scCloseTab, [this]() {
         int idx = m_tabBar->currentIndex();
@@ -1203,16 +1349,19 @@ void MainWindow::setupShortcuts() {
     }
 
     auto *settings = AppSettings::instance();
-    static bool connected = false;
-    if (!connected) {
+    if (!m_scWorkspaceOverview->property("settingsConnected").toBool()) {
         connect(settings->dsettings(), &Dtk::Core::DSettings::valueChanged, this,
                 [this](const QString &key, const QVariant &) {
                     if (key.startsWith("shortcuts."))
                         setupShortcuts();
                 });
-        connected = true;
+        m_scWorkspaceOverview->setProperty("settingsConnected", true);
     }
 
+    updateShortcut(m_scWorkspaceOverview, "workspace_overview");
+    if (m_overviewAction)
+        m_overviewAction->setText(tr("Workspace overview") + QStringLiteral("\t")
+                                  + settings->shortcut("workspace_overview").toString());
     updateShortcut(m_scNewTab, "new_tab");
     updateShortcut(m_scCloseTab, "close_tab");
     updateShortcut(m_scCloseOtherTabs, "close_other_tabs");
@@ -1346,6 +1495,7 @@ void MainWindow::onShortcutDisplayShortcuts() {
     terminalItems << Item{tr("Select all"), settings->shortcut("select_all").toString()};
 
     QList<Item> tabItems;
+    tabItems << Item{tr("Workspace overview"), settings->shortcut("workspace_overview").toString()};
     tabItems << Item{tr("New tab"), settings->shortcut("new_tab").toString()};
     tabItems << Item{tr("Close tab"), settings->shortcut("close_tab").toString()};
     tabItems << Item{tr("Close other tabs"), settings->shortcut("close_other_tabs").toString()};
@@ -1570,6 +1720,10 @@ void MainWindow::showExitConfirmDialog(const QString &title, const QString &body
     QObject::connect(dlg, &DDialog::buttonClicked, dlg, [onConfirm = std::move(onConfirm)](int index) {
         if (index == 1)
             onConfirm();
+    });
+    connect(dlg, &QDialog::finished, this, [this]() {
+        if (m_workspaceOverview && m_workspaceOverview->isVisible())
+            m_workspaceOverview->focusSearch();
     });
     dlg->show();
 }

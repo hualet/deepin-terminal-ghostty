@@ -56,6 +56,7 @@ void GenerateSettingTranslate() {
     auto shortcuts_tab_switch_label_win_8Name = QObject::tr("Go to tab 8");
     auto shortcuts_tab_switch_label_win_9Name = QObject::tr("Go to tab 9");
     auto shortcuts_tab_vertical_splitName = QObject::tr("Vertical split");
+    auto shortcuts_tab_workspace_overviewName = QObject::tr("Workspace overview");
     auto shortcuts_terminal_copyName = QObject::tr("Copy");
     auto shortcuts_terminal_default_sizeName = QObject::tr("Default size");
     auto shortcuts_terminal_findName = QObject::tr("Find");

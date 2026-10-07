@@ -8,6 +8,7 @@
 #include <QJsonArray>
 #include <QList>
 #include <QPair>
+#include <QPixmap>
 #include <QPointer>
 #include <QUuid>
 #include <QWidget>
@@ -54,6 +55,7 @@ public:
     void setOpacity(qreal opacity);
     void connectToRemoteServer(const ServerConfig &config);
 
+    QPixmap renderPreview(const QSize &size) const;
     SplitNode buildSplitTree() const;
     QList<QPair<QString, TerminalWidget *>> restoreFromSplitTree(const SplitNode &node);
 

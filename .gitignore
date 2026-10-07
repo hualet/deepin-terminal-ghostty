@@ -63,3 +63,5 @@ linglong/
 perf.data*
 
 .zcode/
+
+.worktrees/

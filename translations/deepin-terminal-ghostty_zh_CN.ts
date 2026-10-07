@@ -411,6 +411,10 @@
         <source>New Terminal</source>
         <translation>新建终端</translation>
     </message>
+    <message>
+        <source>Workspace overview</source>
+        <translation>工作区预览</translation>
+    </message>
 </context>
 <context>
     <name>QObject</name>
@@ -759,6 +763,10 @@
         <location filename="../src/app/VerticalTabSidebar.cpp" line="187"/>
         <source>Shows whether the last command succeeded or failed.</source>
         <translation>显示上一条命令成功或失败。</translation>
+    </message>
+    <message>
+        <source>Workspace overview</source>
+        <translation>工作区预览</translation>
     </message>
 </context>
 <context>
@@ -1362,6 +1370,51 @@
         <location filename="../src/app/VerticalTabSidebar.cpp" line="806"/>
         <source>Activate this terminal pane.</source>
         <translation>激活此终端窗格。</translation>
+    </message>
+</context>
+<context>
+    <name>WorkspaceOverview</name>
+    <message>
+        <source>Workspace overview</source>
+        <translation>工作区预览</translation>
+    </message>
+    <message>
+        <source>Exit workspace overview</source>
+        <translation>退出工作区预览</translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation>完成</translation>
+    </message>
+    <message>
+        <source>New tab</source>
+        <translation>新建标签页</translation>
+    </message>
+    <message>
+        <source>Search tabs</source>
+        <translation>搜索标签页</translation>
+    </message>
+    <message>
+        <source>No matching tabs</source>
+        <translation>没有匹配的标签页</translation>
+    </message>
+    <message>
+        <source>Close tab</source>
+        <translation>关闭标签页</translation>
+    </message>
+    <message>
+        <source>Close tab: %1</source>
+        <translation>关闭标签页：%1</translation>
+    </message>
+    <message>
+        <source>Terminal tab: %1</source>
+        <translation>终端标签页：%1</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n tab(s)</source>
+        <translation>
+            <numerusform>%n 个标签页</numerusform>
+        </translation>
     </message>
 </context>
 </TS>

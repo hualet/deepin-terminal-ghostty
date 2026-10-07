@@ -20,6 +20,7 @@
 #include "remote/ServerConfigOptDlg.h"
 
 #include <DApplication>
+#include <DDialog>
 #include <DGuiApplicationHelper>
 #include <DSettings>
 #include <DTabBar>
@@ -46,10 +47,12 @@
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QStandardPaths>
+#include <QTabBar>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
 #include <QToolButton>
+#include <QTranslator>
 
 #include <algorithm>
 
@@ -75,6 +78,28 @@ private slots:
         DGuiApplicationHelper::instance()->setPaletteType(m_originalPaletteType);
     }
 
+    void testOverviewMenuAndShortcutEntries_data();
+    void testOverviewMenuAndShortcutEntries();
+    void testOverviewActivatesTabAndRestoresFocus_data();
+    void testOverviewActivatesTabAndRestoresFocus();
+    void testOverviewHorizontalTabClickMatchesCard_data();
+    void testOverviewHorizontalTabClickMatchesCard();
+    void testOverviewFiltersAndNavigates();
+    void testOverviewNewAndCloseTab();
+    void testOverviewSurvivesReorderAndSessionExit();
+    void testOverviewPreservesTerminalGeometry();
+    void testOverviewTracksModeAndShortcutChanges();
+    void testOverviewForegroundLaunchDismisses_data();
+    void testOverviewForegroundLaunchDismisses();
+    void testOverviewTabFocusStaysInside_data();
+    void testOverviewTabFocusStaysInside();
+    void testOverviewShortcutUpdatesAcrossWindows();
+    void testOverviewHidesVerticalSidebar_data();
+    void testOverviewHidesVerticalSidebar();
+    void testOverviewScrollAreaEscape();
+    void testOverviewCloseConfirmationUsesStableId();
+    void testOverviewPreviewsAndLayout_data();
+    void testOverviewPreviewsAndLayout();
     void testSingleTabCtrlDClosesWindow();
     void testClosedSessionRemovesOnlyCurrentTab();
     void testAltArrowWithKeypadModifierIsConsumedByPane();
@@ -1152,6 +1177,543 @@ void TestMainWindow::testVerticalTabsActionReflectsStartupSetting() {
     auto *action = window.findChild<QAction *>(QStringLiteral("verticalTabsAction"));
     QVERIFY(action);
     QVERIFY(action->isChecked());
+}
+
+namespace {
+QWidget *openOverview(MainWindow &window) {
+    auto *action = window.findChild<QAction *>(QStringLiteral("workspaceOverviewAction"));
+    if (!action)
+        return nullptr;
+    action->trigger();
+    return window.findChild<QWidget *>(QStringLiteral("workspaceOverview"));
+}
+
+QList<QAbstractButton *> overviewCards(QWidget *overview) {
+    return overview->findChildren<QAbstractButton *>(QStringLiteral("workspaceOverviewCard"));
+}
+} // namespace
+
+void TestMainWindow::testOverviewMenuAndShortcutEntries_data() {
+    QTest::addColumn<bool>("vertical");
+    QTest::newRow("horizontal") << false;
+    QTest::newRow("vertical") << true;
+}
+
+void TestMainWindow::testOverviewMenuAndShortcutEntries() {
+    QFETCH(bool, vertical);
+    AppSettings::instance()->setVerticalTabsEnabled(vertical);
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QVERIFY2(window.findChildren<QAbstractButton *>(QStringLiteral("workspaceOverviewButton")).isEmpty(),
+             "overview must only expose menu and shortcut entries");
+    auto *host = vertical ? static_cast<QWidget *>(sidebar(window)) : static_cast<QWidget *>(tabBar(window));
+    QVERIFY(host);
+    auto *add = host->findChild<QAbstractButton *>(vertical ? QStringLiteral("verticalAddTabButton")
+                                                            : QStringLiteral("AddButton"));
+    QVERIFY(add && add->isVisible());
+    auto *action = window.findChild<QAction *>(QStringLiteral("workspaceOverviewAction"));
+    QVERIFY(action && action->isCheckable());
+    QVERIFY(!action->isChecked());
+    auto *term = currentTerminal(window);
+    auto *overview = openOverview(window);
+    QVERIFY(overview && overview->isVisible());
+    QVERIFY(action->isChecked());
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Escape);
+    QTRY_VERIFY(!overview->isVisible());
+    QVERIFY(!action->isChecked());
+    QTRY_VERIFY(term->hasFocus());
+    QCOMPARE(AppSettings::instance()->shortcut("workspace_overview"), QKeySequence("Ctrl+Shift+O"));
+    QTest::keyClick(term, Qt::Key_O, Qt::ControlModifier | Qt::ShiftModifier);
+    QTRY_VERIFY(overview->isVisible());
+    QVERIFY(action->isChecked());
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_O, Qt::ControlModifier | Qt::ShiftModifier);
+    QTRY_VERIFY(!overview->isVisible());
+    QVERIFY(!action->isChecked());
+    QTRY_VERIFY(term->hasFocus());
+}
+
+void TestMainWindow::testOverviewActivatesTabAndRestoresFocus_data() {
+    QTest::addColumn<bool>("vertical");
+    QTest::newRow("horizontal") << false;
+    QTest::newRow("vertical") << true;
+}
+
+void TestMainWindow::testOverviewActivatesTabAndRestoresFocus() {
+    QFETCH(bool, vertical);
+    AppSettings::instance()->setVerticalTabsEnabled(vertical);
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    auto *first = currentPane(window);
+    first->splitCurrent(Qt::Horizontal);
+    auto *activeTerm = first->currentTerminal();
+    QVERIFY(window.controlNewTab());
+    auto *overview = openOverview(window);
+    QVERIFY(overview);
+    QCOMPARE(overviewCards(overview).size(), 2);
+    QTest::mouseClick(overviewCards(overview).first(), Qt::LeftButton);
+    QTRY_VERIFY(!overview->isVisible());
+    QCOMPARE(currentPane(window), first);
+    QCOMPARE(first->currentTerminal(), activeTerm);
+    QTRY_VERIFY(activeTerm->hasFocus());
+}
+
+void TestMainWindow::testOverviewFiltersAndNavigates() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    auto *first = currentPane(window);
+    first->setCustomTitle("Build");
+    QVERIFY(window.controlNewTab());
+    currentPane(window)->setCustomTitle("Logs");
+    auto *overview = openOverview(window);
+    QVERIFY(overview);
+    auto *search = overview->findChild<QLineEdit *>(QStringLiteral("workspaceOverviewSearch"));
+    QVERIFY(search);
+    search->setText("BUILD");
+    int visible = 0;
+    QAbstractButton *match = nullptr;
+    for (auto *card : overviewCards(overview)) {
+        if (card->isVisible()) {
+            ++visible;
+            match = card;
+        }
+    }
+    QCOMPARE(visible, 1);
+    QVERIFY(match->accessibleName().contains("Build"));
+    search->setText("no such tab");
+    auto *empty = overview->findChild<QLabel *>(QStringLiteral("workspaceOverviewEmpty"));
+    QVERIFY(empty && empty->isVisible());
+    search->clear();
+    QTest::keyClick(search, Qt::Key_Down);
+    auto *focused = qobject_cast<QAbstractButton *>(QApplication::focusWidget());
+    QVERIFY(focused && focused->objectName() == "workspaceOverviewCard");
+    QTest::keyClick(focused, Qt::Key_Left);
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Return);
+    QTRY_VERIFY(!overview->isVisible());
+    QCOMPARE(currentPane(window), first);
+}
+
+void TestMainWindow::testOverviewNewAndCloseTab() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    auto *overview = openOverview(window);
+    QVERIFY(overview);
+    auto *add = overview->findChild<QAbstractButton *>(QStringLiteral("workspaceOverviewNewTab"));
+    QVERIFY(add);
+    QTest::mouseClick(add, Qt::LeftButton);
+    QTRY_COMPARE(tabBar(window)->count(), 2);
+    QVERIFY(!overview->isVisible());
+    QTRY_VERIFY(currentTerminal(window)->hasFocus());
+    QVERIFY(openOverview(window));
+    const auto cards = overviewCards(overview);
+    QCOMPARE(cards.size(), 2);
+    auto *closeButton = cards.first()->findChild<QAbstractButton *>(QStringLiteral("workspaceOverviewCloseTab"));
+    QVERIFY(closeButton);
+    QTest::mouseClick(closeButton, Qt::LeftButton);
+    QTRY_COMPARE(tabBar(window)->count(), 1);
+    QTRY_COMPARE(overviewCards(overview).size(), 1);
+    QVERIFY(overview->isVisible());
+    QVERIFY(overview->isAncestorOf(QApplication::focusWidget()));
+}
+
+void TestMainWindow::testOverviewSurvivesReorderAndSessionExit() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    auto *first = currentPane(window);
+    QVERIFY(window.controlNewTab());
+    auto *second = currentPane(window);
+    auto *overview = openOverview(window);
+    QVERIFY(overview);
+    QPointer<QAbstractButton> firstCard = overviewCards(overview).first();
+    tabBar(window)->moveTab(0, 1);
+    QTest::mouseClick(firstCard, Qt::LeftButton);
+    QCOMPARE(currentPane(window), first);
+    QVERIFY(openOverview(window));
+    ptySession(second->currentTerminal())->write("exit\n");
+    QTRY_COMPARE(tabBar(window)->count(), 1);
+    QTRY_COMPARE(overviewCards(overview).size(), 1);
+    QVERIFY(overview->isAncestorOf(QApplication::focusWidget()));
+    QTest::mouseClick(overviewCards(overview).first(), Qt::LeftButton);
+    QCOMPARE(currentPane(window), first);
+}
+
+void TestMainWindow::testOverviewPreservesTerminalGeometry() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    auto *first = currentPane(window);
+    first->splitCurrent(Qt::Horizontal);
+    QVERIFY(window.controlNewTab());
+    QTest::qWait(100);
+    const auto terminals = window.findChildren<TerminalWidget *>();
+    QList<QSize> sizes;
+    QList<QSize> grids;
+    QList<PtySession *> sessions;
+    for (auto *term : terminals) {
+        sizes.append(term->size());
+        grids.append(QSize(term->terminalColumns(), term->terminalRows()));
+        sessions.append(ptySession(term));
+    }
+    auto *overview = openOverview(window);
+    QVERIFY(overview);
+    QTest::qWait(650);
+    QCOMPARE(window.findChildren<TerminalWidget *>(), terminals);
+    for (int i = 0; i < terminals.size(); ++i) {
+        QCOMPARE(terminals[i]->size(), sizes[i]);
+        QCOMPARE(QSize(terminals[i]->terminalColumns(), terminals[i]->terminalRows()), grids[i]);
+        QCOMPARE(ptySession(terminals[i]), sessions[i]);
+    }
+    for (auto *card : overviewCards(overview))
+        QVERIFY(!card->icon().isNull());
+}
+
+void TestMainWindow::testOverviewTracksModeAndShortcutChanges() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    auto *overview = openOverview(window);
+    QVERIFY(overview);
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+    QTRY_VERIFY(overview->isVisible());
+    QTRY_VERIFY(!sidebar(window)->isVisible());
+    QCOMPARE(overview->geometry(), overview->parentWidget()->rect());
+    QVERIFY(overview->isAncestorOf(QApplication::focusWidget()));
+    QVERIFY(window.findChildren<QAbstractButton *>(QStringLiteral("workspaceOverviewButton")).isEmpty());
+    QVERIFY(openOverview(window));
+    QTRY_VERIFY(!overview->isVisible());
+    AppSettings::instance()->setShortcut("workspace_overview", QKeySequence("Ctrl+Shift+U"));
+    QTest::keyClick(currentTerminal(window), Qt::Key_U, Qt::ControlModifier | Qt::ShiftModifier);
+    QTRY_VERIFY(overview->isVisible());
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Escape);
+    QTRY_VERIFY(!overview->isVisible());
+}
+
+void TestMainWindow::testOverviewForegroundLaunchDismisses_data() {
+    QTest::addColumn<bool>("vertical");
+    QTest::addColumn<QString>("route");
+    for (bool vertical : {false, true}) {
+        const QByteArray prefix = vertical ? "vertical-" : "horizontal-";
+        for (const QString &route : {QStringLiteral("new"), QStringLiteral("open"), QStringLiteral("service")})
+            QTest::newRow((prefix + route.toLatin1()).constData()) << vertical << route;
+    }
+}
+
+void TestMainWindow::testOverviewForegroundLaunchDismisses() {
+    QFETCH(bool, vertical);
+    QFETCH(QString, route);
+    AppSettings::instance()->setVerticalTabsEnabled(vertical);
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    auto *first = currentPane(window);
+    auto *overview = openOverview(window);
+    QVERIFY(overview && overview->isVisible());
+    if (route == QStringLiteral("new")) {
+        QVERIFY(window.controlNewTab());
+    } else if (route == QStringLiteral("open")) {
+        QVERIFY(window.controlOpenTab(QString(), QString(), {}));
+    } else {
+        TerminalControlService service;
+        const auto response = parseControlResponse(service.openTab(QString(), QString(), {}));
+        QVERIFY(response.value(QStringLiteral("ok")).toBool());
+        const auto activeId = currentPane(window)->activePaneId().toString(QUuid::WithoutBraces);
+        QCOMPARE(response.value(QStringLiteral("paneId")).toString(), activeId);
+    }
+    QCOMPARE(tabBar(window)->count(), 2);
+    QVERIFY(currentPane(window) != first);
+    QVERIFY2(!overview->isVisible(), "foreground launches must dismiss the overview");
+    auto *term = currentTerminal(window);
+    QVERIFY(term && term->isVisible());
+    QTRY_VERIFY(term->hasFocus());
+    QVERIFY(!window.findChild<QAction *>("workspaceOverviewAction")->isChecked());
+    if (vertical)
+        QVERIFY(sidebar(window)->isVisible());
+    auto *session = ptySession(term);
+    QSignalSpy writes(session, &PtySession::dataWritten);
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_X);
+    QTRY_COMPARE(writes.count(), 1);
+    QCOMPARE(writes.first().first().toByteArray(), QByteArray("x"));
+}
+
+void TestMainWindow::testOverviewTabFocusStaysInside_data() {
+    QTest::addColumn<bool>("vertical");
+    QTest::addColumn<bool>("forward");
+    QTest::newRow("horizontal-tab") << false << true;
+    QTest::newRow("horizontal-backtab") << false << false;
+    QTest::newRow("vertical-tab") << true << true;
+    QTest::newRow("vertical-backtab") << true << false;
+}
+
+void TestMainWindow::testOverviewTabFocusStaysInside() {
+    QFETCH(bool, vertical);
+    QFETCH(bool, forward);
+    AppSettings::instance()->setVerticalTabsEnabled(vertical);
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QVERIFY(window.controlNewTab());
+    auto *overview = openOverview(window);
+    QVERIFY(overview && overview->isVisible());
+    auto *search = overview->findChild<QLineEdit *>("workspaceOverviewSearch");
+    QVERIFY(search);
+    QSignalSpy writes(ptySession(currentTerminal(window)), &PtySession::dataWritten);
+    for (int i = 0; i < 32; ++i) {
+        auto *focus = QApplication::focusWidget();
+        QVERIFY(focus);
+        QTest::keyClick(focus, Qt::Key_Tab, forward ? Qt::NoModifier : Qt::ShiftModifier);
+        focus = QApplication::focusWidget();
+        QVERIFY2(focus && overview->isAncestorOf(focus),
+                 qPrintable(QStringLiteral("focus escaped at step %1 to %2 (%3)")
+                                .arg(i)
+                                .arg(focus ? focus->metaObject()->className() : "null")
+                                .arg(focus ? focus->objectName() : QString())));
+        QTest::keyClick(focus, Qt::Key_X);
+        QCOMPARE(writes.count(), 0);
+        QVERIFY(overview->isVisible());
+        search->clear();
+    }
+    search->setFocus();
+    search->setText("unmatched-overview-test-title");
+    QTest::keyClick(search, Qt::Key_Return);
+    QCOMPARE(writes.count(), 0);
+    QVERIFY(overview->isVisible());
+    QTest::keyClick(search, Qt::Key_Escape);
+    QTRY_VERIFY(!overview->isVisible());
+    QTRY_VERIFY(currentTerminal(window)->hasFocus());
+}
+
+void TestMainWindow::testOverviewShortcutUpdatesAcrossWindows() {
+    MainWindow first;
+    MainWindow second;
+    first.show();
+    second.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&first));
+    QVERIFY(QTest::qWaitForWindowExposed(&second));
+    AppSettings::instance()->setShortcut("workspace_overview", QKeySequence("Ctrl+Shift+U"));
+    for (auto *window : {&first, &second}) {
+        window->activateWindow();
+        currentTerminal(*window)->setFocus();
+        QTRY_VERIFY(currentTerminal(*window)->hasFocus());
+        QTest::keyClick(currentTerminal(*window), Qt::Key_U, Qt::ControlModifier | Qt::ShiftModifier);
+        auto *overview = window->findChild<QWidget *>(QStringLiteral("workspaceOverview"));
+        QVERIFY(overview && overview->isVisible());
+        QTest::keyClick(QApplication::focusWidget(), Qt::Key_Escape);
+        QTRY_VERIFY(!overview->isVisible());
+    }
+}
+
+void TestMainWindow::testOverviewHidesVerticalSidebar_data() {
+    QTest::addColumn<int>("windowWidth");
+    QTest::newRow("normal") << 960;
+    QTest::newRow("narrow") << 480;
+}
+
+void TestMainWindow::testOverviewHidesVerticalSidebar() {
+    QFETCH(int, windowWidth);
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+    MainWindow window;
+    window.resize(windowWidth, 640);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    auto *verticalSidebar = sidebar(window);
+    auto *splitter = window.findChild<QSplitter *>("verticalTabsSplitter");
+    auto *term = currentTerminal(window);
+    QVERIFY(verticalSidebar && splitter && term);
+    QVERIFY(verticalSidebar->isVisible());
+    QTest::qWait(100);
+    const auto splitterSizes = splitter->sizes();
+    const QSize terminalSize = term->size();
+    const QSize gridSize(term->terminalColumns(), term->terminalRows());
+    auto *overview = openOverview(window);
+    QVERIFY(overview && overview->isVisible());
+    QTest::qWait(650);
+    QVERIFY2(!verticalSidebar->isVisible(), "vertical navigation must be hidden during overview");
+    QCOMPARE(overview->geometry(), overview->parentWidget()->rect());
+    QCOMPARE(term->size(), terminalSize);
+    QCOMPARE(QSize(term->terminalColumns(), term->terminalRows()), gridSize);
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Escape);
+    QTRY_VERIFY(!overview->isVisible());
+    QTRY_VERIFY(verticalSidebar->isVisible());
+    QCOMPARE(splitter->sizes(), splitterSizes);
+    QCOMPARE(term->size(), terminalSize);
+    QTRY_VERIFY(term->hasFocus());
+    QVERIFY(AppSettings::instance()->verticalTabsEnabled());
+}
+
+void TestMainWindow::testOverviewHorizontalTabClickMatchesCard_data() {
+    QTest::addColumn<bool>("clickCurrent");
+    QTest::addColumn<bool>("reorder");
+    QTest::newRow("different-tab") << false << false;
+    QTest::newRow("current-tab") << true << false;
+    QTest::newRow("reordered-tab") << false << true;
+}
+
+void TestMainWindow::testOverviewHorizontalTabClickMatchesCard() {
+    QFETCH(bool, clickCurrent);
+    QFETCH(bool, reorder);
+    AppSettings::instance()->setVerticalTabsEnabled(false);
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    auto *first = currentPane(window);
+    first->splitCurrent(Qt::Horizontal);
+    auto *firstTerm = first->currentTerminal();
+    QVERIFY(window.controlNewTab());
+    auto *second = currentPane(window);
+    auto *secondTerm = second->currentTerminal();
+    auto *overview = openOverview(window);
+    QVERIFY(overview);
+    auto *tabs = tabBar(window);
+    if (reorder) {
+        tabs->moveTab(0, 1);
+        QVERIFY(overview->isVisible());
+    }
+    const int targetIndex = clickCurrent ? tabs->currentIndex() : (reorder ? 1 : 0);
+    auto *innerTabs = tabs->findChild<QTabBar *>();
+    QVERIFY(innerTabs);
+    QSignalSpy clicks(tabs, &DTabBar::tabBarClicked);
+    QTest::mouseClick(innerTabs, Qt::LeftButton, Qt::NoModifier, innerTabs->tabRect(targetIndex).center());
+    QCOMPARE(clicks.count(), 1);
+    QTRY_VERIFY(!overview->isVisible());
+    QCOMPARE(currentPane(window), clickCurrent ? second : first);
+    QCOMPARE(currentTerminal(window), clickCurrent ? secondTerm : firstTerm);
+    QTRY_VERIFY(currentTerminal(window)->hasFocus());
+    QVERIFY(!window.findChild<QAction *>("workspaceOverviewAction")->isChecked());
+}
+
+void TestMainWindow::testOverviewScrollAreaEscape() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    auto *overview = openOverview(window);
+    QVERIFY(overview);
+    auto *area = overview->findChild<QScrollArea *>();
+    QVERIFY(area);
+    area->setFocus();
+    QTRY_VERIFY(area->hasFocus());
+    QTest::keyClick(area, Qt::Key_Escape);
+    QTRY_VERIFY(!overview->isVisible());
+    QTRY_VERIFY(currentTerminal(window)->hasFocus());
+}
+
+void TestMainWindow::testOverviewCloseConfirmationUsesStableId() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QPointer<TermPane> first = currentPane(window);
+    QTRY_VERIFY(!first->currentTerminal()->hasRunningProcess());
+    first->executeCommand("sleep 30");
+    QTRY_VERIFY(first->currentTerminal()->visibleText().contains("sleep 30"));
+    QTest::qWait(150);
+    QTRY_VERIFY(first->runningTerminalCount() > 0);
+    QVERIFY(window.controlNewTab());
+    auto *second = currentPane(window);
+    auto *overview = openOverview(window);
+    QVERIFY(overview);
+    auto *close = overviewCards(overview).first()->findChild<QAbstractButton *>("workspaceOverviewCloseTab");
+    QVERIFY(close);
+    QTest::mouseClick(close, Qt::LeftButton);
+    auto *dialog = window.findChild<DDialog *>();
+    QVERIFY(dialog);
+    tabBar(window)->moveTab(0, 1);
+    QTest::mouseClick(dialog->getButton(1), Qt::LeftButton);
+    QTRY_COMPARE(tabBar(window)->count(), 1);
+    QTRY_VERIFY(first.isNull());
+    QCOMPARE(currentPane(window), second);
+    window.activateWindow();
+    QTRY_VERIFY(overview->isAncestorOf(QApplication::focusWidget()));
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Escape);
+    QTRY_VERIFY(!overview->isVisible());
+    QTRY_VERIFY(currentTerminal(window)->hasFocus());
+}
+
+void TestMainWindow::testOverviewPreviewsAndLayout_data() {
+    QTest::addColumn<bool>("dark");
+    QTest::addColumn<int>("windowWidth");
+    QTest::addColumn<bool>("vertical");
+    QTest::newRow("light") << false << 960 << false;
+    QTest::newRow("dark") << true << 960 << false;
+    QTest::newRow("narrow") << false << 480 << false;
+    QTest::newRow("vertical") << true << 960 << true;
+}
+
+void TestMainWindow::testOverviewPreviewsAndLayout() {
+    QFETCH(bool, dark);
+    QFETCH(int, windowWidth);
+    QFETCH(bool, vertical);
+    QTranslator qaTranslator;
+    const QString qaLanguage = qEnvironmentVariable("OVERVIEW_QA_LANGUAGE");
+    if (!qaLanguage.isEmpty()) {
+        QVERIFY(qaTranslator.load(QCoreApplication::applicationDirPath()
+                                  + QStringLiteral("/../deepin-terminal-ghostty_%1.qm").arg(qaLanguage)));
+        QVERIFY(qApp->installTranslator(&qaTranslator));
+    }
+    const auto removeTranslator = qScopeGuard([&qaTranslator]() { qApp->removeTranslator(&qaTranslator); });
+    AppSettings::instance()->setColorScheme(dark ? QStringLiteral("dark") : QStringLiteral("light"));
+    AppSettings::instance()->setVerticalTabsEnabled(vertical);
+    MainWindow window;
+    window.resize(windowWidth, 640);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    auto *first = currentPane(window);
+    first->splitCurrent(Qt::Horizontal);
+    QTest::qWait(150);
+    const auto splitTerminals = first->findChildren<TerminalWidget *>();
+    QCOMPARE(splitTerminals.size(), 2);
+    for (int i = 0; i < splitTerminals.size(); ++i) {
+        const QByteArray output =
+            i == 0 ? "\033[2J\033[H\033[41m BUILD PREVIEW \033[K\r\n" : "\033[2J\033[H\033[42m LOG PREVIEW \033[K\r\n";
+        QVERIFY(QMetaObject::invokeMethod(ptySession(splitTerminals[i]), "dataReceived", Qt::DirectConnection,
+                                          Q_ARG(QByteArray, output)));
+    }
+    QTRY_VERIFY(splitTerminals.first()->visibleText().contains("PREVIEW"));
+    first->setCustomTitle("Build and logs");
+    QVERIFY(window.controlNewTab());
+    QTest::qWait(100);
+    currentPane(window)->setCustomTitle("Server");
+    const QSize sourceSize = first->size();
+    const auto preview = first->renderPreview(sourceSize.scaled(QSize(640, 400), Qt::KeepAspectRatio)).toImage();
+    QVERIFY(!preview.isNull());
+    bool hasRed = false;
+    bool hasGreen = false;
+    for (int y = 0; y < preview.height(); ++y) {
+        for (int x = 0; x < preview.width(); ++x) {
+            const QColor color = preview.pixelColor(x, y);
+            hasRed |= color.red() > color.green() * 1.5 && color.red() > color.blue() * 1.5;
+            hasGreen |= color.green() > color.red() * 1.5 && color.green() > color.blue() * 1.5;
+        }
+    }
+    QVERIFY2(hasRed && hasGreen, "hidden split preview must contain output from both terminals");
+    auto *overview = openOverview(window);
+    QVERIFY(overview);
+    if (vertical)
+        QVERIFY(!sidebar(window)->isVisible());
+    QTest::qWait(100);
+    const auto cards = overviewCards(overview);
+    QCOMPARE(cards.size(), 2);
+    QCOMPARE(overview->palette().color(QPalette::Window),
+             DGuiApplicationHelper::instance()->applicationPalette().color(QPalette::Window));
+    QCOMPARE(currentTerminal(window)->debugAppliedIsDark(), dark);
+    cards.first()->setFocus();
+    QTest::qWait(650);
+    QVERIFY(cards.first()->hasFocus());
+    auto *area = overview->findChild<QScrollArea *>();
+    QVERIFY(area);
+    QCOMPARE(area->horizontalScrollBar()->maximum(), 0);
+    for (auto *card : cards)
+        QVERIFY(card->width() <= area->viewport()->width());
+    if (windowWidth < 600)
+        QVERIFY(cards.first()->mapTo(overview, QPoint()).y() < cards.last()->mapTo(overview, QPoint()).y());
+    const QString outputDir = qEnvironmentVariable("OVERVIEW_QA_DIR");
+    if (!outputDir.isEmpty()) {
+        QVERIFY(QDir().mkpath(outputDir));
+        QVERIFY(window.grab().save(outputDir + "/overview-" + QTest::currentDataTag() + ".png"));
+        QVERIFY(preview.save(outputDir + "/split-preview-" + QTest::currentDataTag() + ".png"));
+    }
 }
 
 void TestMainWindow::testVerticalSidebarShowsTabsAndPanes() {

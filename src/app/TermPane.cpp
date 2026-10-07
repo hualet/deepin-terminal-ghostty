@@ -22,6 +22,7 @@
 #include <QKeyEvent>
 #include <QMap>
 #include <QMenu>
+#include <QPainter>
 #include <QProcess>
 #include <QRandomGenerator>
 #include <QResizeEvent>
@@ -1038,6 +1039,58 @@ void TermPane::connectToRemoteServer(const ServerConfig &config) {
     // Set custom title to reflect remote connection
     if (!config.m_serverName.isEmpty())
         setCustomTitle(config.m_serverName);
+}
+
+QPixmap TermPane::renderPreview(const QSize &size) const {
+    if (!m_rootWidget || size.isEmpty())
+        return {};
+    QPixmap preview(size);
+    preview.fill(palette().color(QPalette::Window));
+    QPainter painter(&preview);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    const auto paintNode = [&](auto &&self, QWidget *widget, const QRect &target) -> void {
+        if (target.isEmpty())
+            return;
+        if (auto *splitter = qobject_cast<QSplitter *>(widget)) {
+            const auto sizes = splitter->sizes();
+            int total = 0;
+            for (int value : sizes)
+                total += value;
+            const bool horizontal = splitter->orientation() == Qt::Horizontal;
+            const int length = horizontal ? target.width() : target.height();
+            int position = 0;
+            int cumulative = 0;
+            for (int i = 0; i < splitter->count(); ++i) {
+                cumulative += total > 0 ? sizes.value(i) : 1;
+                const int end = i == splitter->count() - 1
+                                    ? length
+                                    : qRound(qreal(length) * cumulative / (total > 0 ? total : splitter->count()));
+                QRect childTarget = target;
+                if (horizontal) {
+                    childTarget.setLeft(target.left() + position);
+                    childTarget.setWidth(qMax(0, end - position));
+                } else {
+                    childTarget.setTop(target.top() + position);
+                    childTarget.setHeight(qMax(0, end - position));
+                }
+                self(self, splitter->widget(i), childTarget);
+                if (i > 0) {
+                    painter.setPen(palette().color(QPalette::Mid));
+                    if (horizontal)
+                        painter.drawLine(childTarget.topLeft(), childTarget.bottomLeft());
+                    else
+                        painter.drawLine(childTarget.topLeft(), childTarget.topRight());
+                }
+                position = end;
+            }
+        } else if (auto *term = firstTerminalWidget(widget)) {
+            const auto image = term->renderSnapshot(target.size());
+            if (!image.isNull())
+                painter.drawImage(target, image);
+        }
+    };
+    paintNode(paintNode, m_rootWidget, preview.rect());
+    return preview;
 }
 
 SplitNode TermPane::buildSplitTree() const {

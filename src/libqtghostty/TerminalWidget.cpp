@@ -2198,6 +2198,22 @@ void TerminalWidget::updateHyperlinkHoverState(const QPoint &pos, bool changeCur
     }
 }
 
+QImage TerminalWidget::renderSnapshot(const QSize &maximumSize) {
+    if (!m_terminal || !m_renderState || size().isEmpty() || maximumSize.isEmpty())
+        return {};
+    const QSize imageSize = size().scaled(maximumSize, Qt::KeepAspectRatio);
+    if (imageSize.isEmpty())
+        return {};
+    QImage image(imageSize, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    painter.scale(qreal(imageSize.width()) / width(), qreal(imageSize.height()) / height());
+    painter.setFont(m_font);
+    renderTerminal(painter);
+    renderOverlays(painter);
+    return image;
+}
+
 void TerminalWidget::paintEvent(QPaintEvent *event) {
     (void)event;
     if (!m_terminal || !m_renderState)
