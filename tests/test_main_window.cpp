@@ -86,7 +86,7 @@ private slots:
     void testOverviewHorizontalTabClickMatchesCard_data();
     void testOverviewHorizontalTabClickMatchesCard();
     void testOverviewFiltersAndNavigates();
-    void testOverviewNewAndCloseTab();
+    void testOverviewCloseTab();
     void testOverviewSurvivesReorderAndSessionExit();
     void testOverviewPreservesTerminalGeometry();
     void testOverviewTracksModeAndShortcutChanges();
@@ -1299,19 +1299,14 @@ void TestMainWindow::testOverviewFiltersAndNavigates() {
     QCOMPARE(currentPane(window), first);
 }
 
-void TestMainWindow::testOverviewNewAndCloseTab() {
+void TestMainWindow::testOverviewCloseTab() {
     MainWindow window;
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QVERIFY(window.controlNewTab());
     auto *overview = openOverview(window);
     QVERIFY(overview);
-    auto *add = overview->findChild<QAbstractButton *>(QStringLiteral("workspaceOverviewNewTab"));
-    QVERIFY(add);
-    QTest::mouseClick(add, Qt::LeftButton);
-    QTRY_COMPARE(tabBar(window)->count(), 2);
-    QVERIFY(!overview->isVisible());
-    QTRY_VERIFY(currentTerminal(window)->hasFocus());
-    QVERIFY(openOverview(window));
+    QVERIFY(!overview->findChild<QAbstractButton *>(QStringLiteral("workspaceOverviewNewTab")));
     const auto cards = overviewCards(overview);
     QCOMPARE(cards.size(), 2);
     auto *closeButton = cards.first()->findChild<QAbstractButton *>(QStringLiteral("workspaceOverviewCloseTab"));

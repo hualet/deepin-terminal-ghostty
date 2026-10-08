@@ -1221,10 +1221,6 @@ void MainWindow::setWorkspaceOverviewVisible(bool visible) {
             if (index >= 0)
                 onTabCloseRequested(index);
         });
-        connect(m_workspaceOverview, &WorkspaceOverview::addTabRequested, this, [this]() {
-            setWorkspaceOverviewVisible(false);
-            onTabAddRequested();
-        });
     }
     if (!m_workspaceOverview || m_workspaceOverview->isVisible() == visible)
         return;

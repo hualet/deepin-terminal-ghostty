@@ -118,12 +118,19 @@ WorkspaceOverview::WorkspaceOverview(QWidget *parent) : QWidget(parent) {
     layout->setContentsMargins(24, 20, 24, 20);
     layout->setSpacing(16);
     auto *header = new QHBoxLayout;
+    header->setSpacing(12);
     auto *title = new QLabel(tr("Workspace overview"), this);
     QFont titleFont = title->font();
     titleFont.setPointSize(titleFont.pointSize() + 3);
     titleFont.setBold(true);
     title->setFont(titleFont);
     m_count = new QLabel(this);
+    m_search = new QLineEdit(this);
+    m_search->setObjectName(QStringLiteral("workspaceOverviewSearch"));
+    m_search->setPlaceholderText(tr("Search tabs"));
+    m_search->setAccessibleName(tr("Search tabs"));
+    m_search->setClearButtonEnabled(true);
+    m_search->setMaximumWidth(360);
     auto *done = new QPushButton(tr("Done"), this);
     done->setObjectName(QStringLiteral("workspaceOverviewDone"));
     done->setAccessibleName(tr("Exit workspace overview"));
@@ -131,23 +138,9 @@ WorkspaceOverview::WorkspaceOverview(QWidget *parent) : QWidget(parent) {
     header->addWidget(title);
     header->addWidget(m_count);
     header->addStretch();
+    header->addWidget(m_search, 1);
     header->addWidget(done);
     layout->addLayout(header);
-
-    auto *tools = new QHBoxLayout;
-    m_search = new QLineEdit(this);
-    m_search->setObjectName(QStringLiteral("workspaceOverviewSearch"));
-    m_search->setPlaceholderText(tr("Search tabs"));
-    m_search->setAccessibleName(tr("Search tabs"));
-    m_search->setClearButtonEnabled(true);
-    auto *add = new QPushButton(tr("New tab"), this);
-    add->setObjectName(QStringLiteral("workspaceOverviewNewTab"));
-    add->setAccessibleName(tr("New tab"));
-    add->setIcon(QIcon::fromTheme(QStringLiteral("list-add")));
-    connect(add, &QPushButton::clicked, this, &WorkspaceOverview::addTabRequested);
-    tools->addWidget(m_search, 1);
-    tools->addWidget(add);
-    layout->addLayout(tools);
 
     m_empty = new QLabel(tr("No matching tabs"), this);
     m_empty->setObjectName(QStringLiteral("workspaceOverviewEmpty"));
@@ -167,7 +160,7 @@ WorkspaceOverview::WorkspaceOverview(QWidget *parent) : QWidget(parent) {
     m_scrollArea->setWidget(m_gridHost);
     layout->addWidget(m_scrollArea, 1);
     connect(m_search, &QLineEdit::textChanged, this, &WorkspaceOverview::reflow);
-    for (auto *widget : {static_cast<QWidget *>(m_search), static_cast<QWidget *>(add), static_cast<QWidget *>(done)})
+    for (auto *widget : {static_cast<QWidget *>(m_search), static_cast<QWidget *>(done)})
         widget->installEventFilter(this);
     m_empty->hide();
 }

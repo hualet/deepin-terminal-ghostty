@@ -33,7 +33,6 @@ public:
 signals:
     void tabActivated(int tabId);
     void tabCloseRequested(int tabId);
-    void addTabRequested();
     void dismissRequested();
 
 protected:
