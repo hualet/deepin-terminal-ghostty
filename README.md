@@ -13,6 +13,9 @@ Emoji Support:
 Builtin Themes:
 ![Show Case Themes](./resources/showcase_themes.png)
 
+Workspace Overview:
+![Show Case Workspace Overview](./resources/showcase_overview.png)
+
 ## Overview
 
 This project is a Linux terminal emulator built with:
@@ -44,6 +47,7 @@ The current development branch already includes:
 - session save and restore — preserves tabs, split layouts, working directories, and terminal content (including colors) across restarts
 - split panes inside a tab
 - tabbed terminal workflow with horizontal and vertical tab modes
+- workspace overview with live tab previews, search, and keyboard navigation
 - Quake / drop-down terminal mode with focus-loss auto-hide
 - D-Bus control service and `dtermctl` CLI for scriptable windows, tabs, splits, and command execution
 - minimal storage footprint
