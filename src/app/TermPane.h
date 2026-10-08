@@ -31,6 +31,8 @@ public:
         QString iconName;
         bool isActive = false;
         TerminalWidget::CommandState commandState = TerminalWidget::CommandState::Idle;
+        // The most urgent OSC 7501 record, if the pane reports any.
+        std::optional<ProgramStatus> programStatus;
     };
 
     explicit TermPane(const std::optional<PtySession::StartOptions> &initialSessionOptions = std::nullopt,
@@ -71,6 +73,7 @@ signals:
     void activePaneChanged(const QUuid &paneId);
     void paneTitleChanged(const QUuid &paneId, const QString &title);
     void paneCommandStateChanged(const QUuid &paneId, TerminalWidget::CommandState state);
+    void paneProgramStatusChanged(const QUuid &paneId);
     void terminalTitleChanged(const QString &title);
     void desktopNotificationRequested(const QString &title, const QString &body);
     void startupSessionExited(int exitCode);

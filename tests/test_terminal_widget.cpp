@@ -44,6 +44,11 @@ private slots:
     void testTitleChanged();
     void testDesktopNotificationCallbacks();
     void testProgressReportCallbacks();
+    void testProgramStatusReports();
+    void testProgramStatusClearedAtShellPrompt();
+    void testProgramStatusStripsFormatCharacters();
+    void testProgramStatusStoreEvictsOldestRecord();
+    void testProgramStatusAnswersSupportQuery();
     void testNormalOutputDoesNotReportVtProcessingError();
     void testShellIntegrationCommandDetection();
     void testGridSize();
@@ -672,6 +677,161 @@ void TestTerminalWidget::testProgressReportCallbacks() {
     QCOMPARE(spy.at(3).at(1).toInt(), 7);
     QCOMPARE(spy.at(4).at(0).value<TerminalWidget::ProgressState>(), TerminalWidget::ProgressState::Remove);
     QCOMPARE(spy.at(4).at(1).toInt(), -1);
+}
+
+namespace {
+
+QByteArray programStatusSequence(const QByteArray &body) {
+    return QByteArray("\033]7501;") + body + QByteArray("\033\\");
+}
+
+// Keeps a live shell's own prompts from clearing the records under test.
+bool initializeQuietTerminal(TerminalWidget &widget) {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+    widget.setStartOptions(options);
+    return widget.initialize();
+}
+
+} // namespace
+
+void TestTerminalWidget::testProgramStatusReports() {
+    CountingTerminalWidget widget;
+    QVERIFY(initializeQuietTerminal(widget));
+    QSignalSpy spy(&widget, &TerminalWidget::programStatusChanged);
+    QVERIFY(spy.isValid());
+
+    feedTerminalOutput(widget,
+                       programStatusSequence("state=blocked:kind=permission:app=terraform:progress=40:msg=QXBwbHk/"));
+    QCOMPARE(spy.count(), 1);
+    QList<ProgramStatus> records = widget.programStatuses();
+    QCOMPARE(records.size(), 1);
+    QCOMPARE(records.at(0).id, QString());
+    QCOMPARE(records.at(0).state, ProgramStatus::State::Blocked);
+    QCOMPARE(records.at(0).kind, ProgramStatus::Kind::Permission);
+    QCOMPARE(records.at(0).progress, 40);
+    QCOMPARE(records.at(0).app, QStringLiteral("terraform"));
+    QCOMPARE(records.at(0).message, QStringLiteral("Apply?"));
+
+    // A report replaces the whole record; omitted keys are dropped.
+    feedTerminalOutput(widget, programStatusSequence("state=working"));
+    records = widget.programStatuses();
+    QCOMPARE(records.size(), 1);
+    QCOMPARE(records.at(0).state, ProgramStatus::State::Working);
+    QCOMPARE(records.at(0).kind, ProgramStatus::Kind::None);
+    QCOMPARE(records.at(0).progress, -1);
+    QCOMPARE(records.at(0).app, QString());
+    QCOMPARE(records.at(0).message, QString());
+
+    feedTerminalOutput(widget, programStatusSequence("state=working:id=build"));
+    feedTerminalOutput(widget, programStatusSequence("state=error:id=build/test"));
+    feedTerminalOutput(widget, programStatusSequence("state=done:id=builder"));
+    QCOMPARE(widget.programStatuses().size(), 4);
+
+    // Clearing a record also clears its children, but not ids that only
+    // share a prefix.
+    feedTerminalOutput(widget, programStatusSequence("state=clear:id=build"));
+    records = widget.programStatuses();
+    QCOMPARE(records.size(), 2);
+    QCOMPARE(records.at(0).id, QString());
+    QCOMPARE(records.at(1).id, QStringLiteral("builder"));
+
+    // A full reset removes every record.
+    const int signalsBeforeReset = spy.count();
+    feedTerminalOutput(widget, QByteArray("\033c"));
+    QVERIFY(widget.programStatuses().isEmpty());
+    QCOMPARE(spy.count(), signalsBeforeReset + 1);
+}
+
+void TestTerminalWidget::testProgramStatusClearedAtShellPrompt() {
+    CountingTerminalWidget widget;
+    QVERIFY(initializeQuietTerminal(widget));
+
+    // The report and the prompt arrive in one chunk: the report must still
+    // be applied before the prompt clears it.
+    feedTerminalOutput(widget, programStatusSequence("state=working") + programStatusSequence("state=blocked:id=ask")
+                                   + programStatusSequence("state=done:id=result")
+                                   + QByteArray("\033]777;ShellCommand=\033\\$ "));
+    QList<ProgramStatus> records = widget.programStatuses();
+    QCOMPARE(records.size(), 1);
+    QCOMPARE(records.at(0).id, QStringLiteral("result"));
+    QCOMPARE(records.at(0).state, ProgramStatus::State::Done);
+
+    // Reports sent after the prompt in the same chunk survive it.
+    const bool invoked = QMetaObject::invokeMethod(
+        &widget, "onPtyDataReceived", Qt::DirectConnection,
+        Q_ARG(QByteArray, QByteArray("\033]777;ShellCommand=\033\\") + programStatusSequence("state=working")));
+    QVERIFY(invoked);
+    QTRY_COMPARE_WITH_TIMEOUT(widget.programStatuses().size(), 2, 500);
+
+    // OSC 133 prompts from other shell integrations clear active records too.
+    feedTerminalOutput(widget, QByteArray("\033]133;A\007"));
+    records = widget.programStatuses();
+    QCOMPARE(records.size(), 1);
+    QCOMPARE(records.at(0).id, QStringLiteral("result"));
+
+    QSignalSpy spy(&widget, &TerminalWidget::programStatusChanged);
+    widget.acknowledgeProgramStatuses();
+    QVERIFY(widget.programStatuses().isEmpty());
+    QCOMPARE(spy.count(), 1);
+    widget.acknowledgeProgramStatuses();
+    QCOMPARE(spy.count(), 1);
+}
+
+void TestTerminalWidget::testProgramStatusStripsFormatCharacters() {
+    CountingTerminalWidget widget;
+    QVERIFY(initializeQuietTerminal(widget));
+
+    const QByteArray message = QStringLiteral("Approve\u202Eexe.txt\u200B?").toUtf8().toBase64();
+    feedTerminalOutput(widget, programStatusSequence("state=blocked:kind=question:msg=" + message));
+
+    const QList<ProgramStatus> records = widget.programStatuses();
+    QCOMPARE(records.size(), 1);
+    QCOMPARE(records.at(0).kind, ProgramStatus::Kind::Question);
+    QCOMPARE(records.at(0).message, QStringLiteral("Approveexe.txt?"));
+}
+
+void TestTerminalWidget::testProgramStatusStoreEvictsOldestRecord() {
+    ProgramStatusStore store;
+    for (int i = 0; i < ProgramStatusStore::kMaxRecords; ++i) {
+        ProgramStatus status;
+        status.id = QStringLiteral("r%1").arg(i);
+        status.state = ProgramStatus::State::Working;
+        QVERIFY(store.apply(status));
+    }
+
+    // Updating r0 makes r1 the least recently updated record.
+    ProgramStatus refreshed;
+    refreshed.id = QStringLiteral("r0");
+    refreshed.state = ProgramStatus::State::Done;
+    QVERIFY(store.apply(refreshed));
+    QVERIFY(!store.apply(refreshed));
+
+    ProgramStatus extra;
+    extra.id = QStringLiteral("extra");
+    QVERIFY(store.apply(extra));
+    QCOMPARE(store.size(), ProgramStatusStore::kMaxRecords);
+
+    QStringList ids;
+    for (const ProgramStatus &record : store.records())
+        ids.append(record.id);
+    QVERIFY(ids.contains(QStringLiteral("r0")));
+    QVERIFY(!ids.contains(QStringLiteral("r1")));
+    QVERIFY(ids.contains(QStringLiteral("extra")));
+}
+
+void TestTerminalWidget::testProgramStatusAnswersSupportQuery() {
+    // The child sends the support query and prints the reply it reads back.
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sh -c \"stty raw -echo; printf '\\033]7501;?\\007'; "
+                                     "reply=\\$(dd bs=1 count=9 2>/dev/null | tr -d '\\033\\007'); "
+                                     "stty sane; echo REPLY:\\$reply:END; sleep 5\"");
+
+    CountingTerminalWidget widget;
+    widget.setStartOptions(options);
+    QVERIFY(widget.initialize());
+
+    QTRY_VERIFY_WITH_TIMEOUT(widget.visibleText().contains(QStringLiteral("REPLY:]7501;?:END")), 5000);
 }
 
 void TestTerminalWidget::testNormalOutputDoesNotReportVtProcessingError() {

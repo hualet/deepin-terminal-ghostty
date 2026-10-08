@@ -280,6 +280,47 @@ TermPane::TermPane(const std::optional<PtySession::StartOptions> &initialSession
     connect(m_searchBar, &PageSearchBar::closeSearchBar, this, &TermPane::hideSearchBar);
 }
 
+namespace {
+
+int programStatusUrgency(ProgramStatus::State state) {
+    switch (state) {
+        case ProgramStatus::State::Blocked:
+            return 4;
+        case ProgramStatus::State::Error:
+            return 3;
+        case ProgramStatus::State::Working:
+            return 2;
+        case ProgramStatus::State::Done:
+            return 1;
+        case ProgramStatus::State::Idle:
+            break;
+    }
+    return 0;
+}
+
+std::optional<ProgramStatus> mostUrgentProgramStatus(const QList<ProgramStatus> &records) {
+    std::optional<ProgramStatus> result;
+    for (const ProgramStatus &record : records) {
+        if (!result) {
+            result = record;
+            continue;
+        }
+        const int urgency = programStatusUrgency(record.state);
+        const int currentUrgency = programStatusUrgency(result->state);
+        if (urgency > currentUrgency || (urgency == currentUrgency && record.sequence > result->sequence))
+            result = record;
+    }
+    return result;
+}
+
+void acknowledgeProgramStatusesIfSeen(TerminalWidget *term) {
+    // done and error records only need to stay until the user has seen them.
+    if (term && term->hasFocus() && term->isVisible())
+        term->acknowledgeProgramStatuses();
+}
+
+} // namespace
+
 QList<TermPane::PaneInfo> TermPane::paneInfos() const {
     QList<PaneInfo> infos;
     const QList<TerminalWidget *> terminals = terminalsInVisualOrder();
@@ -291,6 +332,7 @@ QList<TermPane::PaneInfo> TermPane::paneInfos() const {
         info.iconName = iconNameForPane(term);
         info.isActive = (term == m_currentTerm);
         info.commandState = static_cast<TerminalWidget::CommandState>(term->property("commandState").toInt());
+        info.programStatus = mostUrgentProgramStatus(term->programStatuses());
         infos.append(info);
     }
     return infos;
@@ -405,6 +447,10 @@ void TermPane::setupTerminalConnections(TerminalWidget *term) {
     connect(term, &TerminalWidget::commandStateChanged, this, [this, term](TerminalWidget::CommandState state) {
         Q_EMIT paneCommandStateChanged(ensurePaneId(term), state);
     });
+    connect(term, &TerminalWidget::programStatusChanged, this, [this, term]() {
+        acknowledgeProgramStatusesIfSeen(term);
+        Q_EMIT paneProgramStatusChanged(ensurePaneId(term));
+    });
     connect(term, &TerminalWidget::desktopNotificationRequested, this,
             [this, term](const QString &title, const QString &body) {
                 QString summary = title;
@@ -415,7 +461,10 @@ void TermPane::setupTerminalConnections(TerminalWidget *term) {
                 Q_EMIT desktopNotificationRequested(summary, body);
             });
     connect(term, &TerminalWidget::sessionClosed, this, [this, term]() { removeTerminal(term); });
-    connect(term, &TerminalWidget::focusGained, this, [this, term]() { setCurrentTerminal(term); });
+    connect(term, &TerminalWidget::focusGained, this, [this, term]() {
+        setCurrentTerminal(term);
+        term->acknowledgeProgramStatuses();
+    });
     connect(term, &TerminalWidget::linkActivated, this,
             [](const QString &uri) { QDesktopServices::openUrl(QUrl::fromUserInput(uri)); });
 }

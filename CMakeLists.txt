@@ -64,6 +64,7 @@ set(APP_TRANSLATABLE_SOURCES
   src/app/remote/ServerConfigOptDlg.cpp
   src/app/remote/RemoteManagementPanel.cpp
   src/app/remote/ServerListItem.cpp
+  src/libqtghostty/ProgramStatus.cpp
   src/libqtghostty/TerminalWidget.cpp
   ${APP_SETTINGS_I18N_SOURCES}
 )
@@ -210,6 +211,7 @@ add_library(qtghostty SHARED
   src/logging/Logging.cpp
   src/libqtghostty/PtySession.cpp
   src/libqtghostty/TerminalTrace.cpp
+  src/libqtghostty/ProgramStatus.cpp
   src/libqtghostty/TerminalWidget.cpp
 )
 
@@ -333,6 +335,7 @@ install(FILES ${GHOSTTY_SOURCE_LIBRARY}
 )
 
 install(FILES
+  src/libqtghostty/ProgramStatus.h
   src/libqtghostty/PtySession.h
   src/libqtghostty/TerminalWidget.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/qtghostty

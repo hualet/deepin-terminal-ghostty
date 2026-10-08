@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ProgramStatus.h"
 #include "PtySession.h"
 #include "TerminalTheme.h"
 
@@ -90,6 +91,11 @@ public:
     QString hyperlinkUriAtPosition(const QPoint &pos) const;
     QString linkUriAtPosition(const QPoint &pos) const;
 
+    // Program status records reported via OSC 7501, sorted by id.
+    QList<ProgramStatus> programStatuses() const;
+    // Drops done and error records once the user has seen them.
+    void acknowledgeProgramStatuses();
+
 #ifdef QTGHOSTTY_TESTING
     int debugLastFrameRenderedRowCount() const;
     int debugLastFrameDirtyRowCount() const;
@@ -146,6 +152,7 @@ signals:
     void linkActivated(const QString &uri);
     void desktopNotificationRequested(const QString &title, const QString &body);
     void progressChanged(ProgressState state, int progress);
+    void programStatusChanged();
     void vtProcessingErrorDetected();
 
 protected:
@@ -237,7 +244,10 @@ private:
     void checkVtProcessingError();
     void scheduleScrollbackCompression();
     void runScrollbackCompressionStep();
-    void scanShellIntegrationSequences(const QByteArray &data);
+    int scanShellIntegrationSequences(const QByteArray &data);
+    void applyProgramStatusReport(const ProgramStatus &report);
+    void clearProgramStatus(const QString &id);
+    void clearActiveProgramStatuses();
     void setShellCommand(const QString &command);
     void setShellCommandResult(int exitCode);
     void updateCommandState(CommandState newState);
@@ -294,6 +304,7 @@ private:
     QString m_terminalWorkingDirectory;
     int m_pendingExitCode = -1;
     CommandState m_commandState = CommandState::Idle;
+    ProgramStatusStore m_programStatus;
     QByteArray m_pendingPtyData;
     QHash<uint32_t, QImage> m_kittyImageCache;
     std::optional<uint64_t> m_kittyGraphicsGeneration;
@@ -413,5 +424,9 @@ private:
     friend GhosttyString effectXtversion(GhosttyTerminal terminal, void *userdata);
     friend void effectTitleChanged(GhosttyTerminal terminal, void *userdata);
     friend void effectPwdChanged(GhosttyTerminal terminal, void *userdata);
+    friend void effectProgramStatus(GhosttyTerminal terminal, void *userdata,
+                                    const GhosttyTerminalProgramStatus *report);
+    friend void effectSemanticPrompt(GhosttyTerminal terminal, void *userdata,
+                                     const GhosttyTerminalSemanticPrompt *event);
     friend bool effectColorScheme(GhosttyTerminal terminal, void *userdata, GhosttyColorScheme *out_scheme);
 };

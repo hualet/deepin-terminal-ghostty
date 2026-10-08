@@ -176,6 +176,7 @@ private slots:
     void testCommandStatusDotNotShownAfterSwitchingFromTabWhereCommandRan();
     void testCommandStatusDotShownWhenCommandFinishesInBackgroundTab();
     void testCommandStatusDotNotShownForInactivePaneInCurrentTab();
+    void testProgramStatusDotShownForBackgroundTab();
     void testPaneActivationDoesNotClearCommandState();
     void testQuakeWindowUsesTopScreenGeometry();
     void testQuakeWindowPresentationFlags();
@@ -3448,6 +3449,71 @@ void TestMainWindow::testCommandStatusDotShownWhenCommandFinishesInBackgroundTab
     QTRY_VERIFY_WITH_TIMEOUT(verticalSidebar->items().size() > static_cast<int>(firstTabIndex)
                                  && verticalSidebar->items().at(firstTabIndex).hasPendingCommandResult,
                              1000);
+}
+
+namespace {
+
+QList<int> visibleStatusDotTones(VerticalTabSidebar *sidebar) {
+    QList<int> tones;
+    for (auto *dot : sidebar->findChildren<QLabel *>(QStringLiteral("commandStatusDot"))) {
+        if (dot->isVisible())
+            tones.append(dot->property("statusTone").toInt());
+    }
+    return tones;
+}
+
+} // namespace
+
+void TestMainWindow::testProgramStatusDotShownForBackgroundTab() {
+    // Matches the order of StatusDotTone in VerticalTabSidebar.cpp.
+    constexpr int kSuccessTone = 1;
+    constexpr int kAttentionTone = 4;
+
+    AppSettings::instance()->setVerticalTabsEnabled(true);
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *backgroundPane = currentPane(window);
+    QVERIFY(backgroundPane);
+    auto *backgroundTerminal = backgroundPane->currentTerminal();
+    QVERIFY(backgroundTerminal);
+    // Let the shell draw its first prompt, which would clear blocked records.
+    QTRY_VERIFY_WITH_TIMEOUT(!backgroundTerminal->visibleText().trimmed().isEmpty(), 5000);
+    QTest::qWait(200);
+
+    auto *tabs = tabBar(window);
+    QVERIFY(tabs);
+    QVERIFY(QMetaObject::invokeMethod(&window, "onTabAddRequested", Qt::DirectConnection));
+    QVERIFY(waitForTabCount(tabs, 2));
+    QVERIFY(currentPane(window) != backgroundPane);
+
+    auto *verticalSidebar = sidebar(window);
+    QVERIFY(verticalSidebar);
+
+    const QByteArray blocked = "\033]7501;state=blocked:kind=permission:app=claude\033\\";
+    QVERIFY(QMetaObject::invokeMethod(backgroundTerminal, "onPtyDataReceived", Qt::DirectConnection,
+                                      Q_ARG(QByteArray, blocked)));
+    QTRY_COMPARE_WITH_TIMEOUT(visibleStatusDotTones(verticalSidebar), QList<int>{kAttentionTone}, 1000);
+
+    const QByteArray done = "\033]7501;state=done:app=claude\033\\";
+    QVERIFY(QMetaObject::invokeMethod(backgroundTerminal, "onPtyDataReceived", Qt::DirectConnection,
+                                      Q_ARG(QByteArray, done)));
+    QTRY_COMPARE_WITH_TIMEOUT(visibleStatusDotTones(verticalSidebar), QList<int>{kSuccessTone}, 1000);
+
+    // Viewing the tab hides the dot and acknowledges the finished record.
+    const int backgroundIndex = window.findChild<QStackedWidget *>()->indexOf(backgroundPane);
+    for (int i = 0; i < tabs->count(); ++i) {
+        if (tabs->tabData(i).toInt() == backgroundIndex)
+            tabs->setCurrentIndex(i);
+    }
+    QTRY_COMPARE_WITH_TIMEOUT(currentPane(window), backgroundPane, 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(visibleStatusDotTones(verticalSidebar).isEmpty(), 1000);
+
+    window.activateWindow();
+    backgroundTerminal->setFocus();
+    QTRY_VERIFY_WITH_TIMEOUT(backgroundTerminal->programStatuses().isEmpty(), 1000);
 }
 
 void TestMainWindow::testCommandStatusDotNotShownForInactivePaneInCurrentTab() {

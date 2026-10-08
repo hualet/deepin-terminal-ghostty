@@ -70,6 +70,7 @@ add_executable(test_terminal_widget
   ${CMAKE_SOURCE_DIR}/src/logging/Logging.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/PtySession.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalTrace.cpp
+  ${CMAKE_SOURCE_DIR}/src/libqtghostty/ProgramStatus.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalWidget.cpp
 )
 
@@ -104,6 +105,7 @@ add_executable(emoji_render_probe
   ${CMAKE_SOURCE_DIR}/src/logging/Logging.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/PtySession.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalTrace.cpp
+  ${CMAKE_SOURCE_DIR}/src/libqtghostty/ProgramStatus.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalWidget.cpp
 )
 
@@ -156,6 +158,7 @@ add_executable(test_main_window
   ${CMAKE_SOURCE_DIR}/src/app/settings/resources.qrc
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/PtySession.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalTrace.cpp
+  ${CMAKE_SOURCE_DIR}/src/libqtghostty/ProgramStatus.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalWidget.cpp
 )
 
@@ -232,6 +235,7 @@ add_executable(test_session_manager
   ${CMAKE_SOURCE_DIR}/src/logging/Logging.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/PtySession.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalTrace.cpp
+  ${CMAKE_SOURCE_DIR}/src/libqtghostty/ProgramStatus.cpp
   ${CMAKE_SOURCE_DIR}/src/libqtghostty/TerminalWidget.cpp
 )
 

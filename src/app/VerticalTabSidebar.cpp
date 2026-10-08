@@ -136,32 +136,71 @@ QLabel *createProcessBadge(const QString &objectName, QWidget *parent, const QSt
     return badge;
 }
 
-using DotKey = QPair<TerminalWidget::CommandState, QPair<bool, int>>;
+enum class StatusDotTone { Hidden, Success, Failure, Working, Attention };
+
+// OSC 7501 program status wins over the shell's command result, since it is
+// what the program itself says. Nothing shows on the current tab.
+StatusDotTone statusDotTone(TerminalWidget::CommandState commandState,
+                            const std::optional<ProgramStatus> &programStatus, bool isCurrent, bool hasPending) {
+    if (isCurrent)
+        return StatusDotTone::Hidden;
+
+    if (programStatus) {
+        switch (programStatus->state) {
+            case ProgramStatus::State::Blocked:
+                return StatusDotTone::Attention;
+            case ProgramStatus::State::Error:
+                return StatusDotTone::Failure;
+            case ProgramStatus::State::Working:
+                return StatusDotTone::Working;
+            case ProgramStatus::State::Done:
+                return StatusDotTone::Success;
+            case ProgramStatus::State::Idle:
+                break;
+        }
+    }
+
+    if (!hasPending)
+        return StatusDotTone::Hidden;
+    if (commandState == TerminalWidget::CommandState::Succeeded)
+        return StatusDotTone::Success;
+    if (commandState == TerminalWidget::CommandState::Failed)
+        return StatusDotTone::Failure;
+    return StatusDotTone::Hidden;
+}
+
+using DotKey = QPair<StatusDotTone, QPair<bool, int>>;
 
 QHash<DotKey, QPixmap> &statusDotCache() {
     static QHash<DotKey, QPixmap> cache;
     return cache;
 }
 
-QPixmap cachedStatusDotPixmap(TerminalWidget::CommandState state, qreal dpr) {
+QPixmap cachedStatusDotPixmap(StatusDotTone tone, qreal dpr) {
     const auto *helper = DGuiApplicationHelper::instance();
     const bool isDark = helper->themeType() == DGuiApplicationHelper::DarkType;
     const int dprKey = qRound(dpr * 1000);
-    DotKey key(state, qMakePair(isDark, dprKey));
+    DotKey key(tone, qMakePair(isDark, dprKey));
 
     auto &cache = statusDotCache();
     if (cache.contains(key))
         return cache.value(key);
 
     QColor color;
-    switch (state) {
-        case TerminalWidget::CommandState::Succeeded:
+    switch (tone) {
+        case StatusDotTone::Success:
             color = isDark ? QColor(46, 213, 115) : QColor(34, 170, 91);
             break;
-        case TerminalWidget::CommandState::Failed:
+        case StatusDotTone::Failure:
             color = isDark ? QColor(255, 71, 87) : QColor(210, 55, 70);
             break;
-        default:
+        case StatusDotTone::Working:
+            color = isDark ? QColor(64, 169, 255) : QColor(24, 125, 220);
+            break;
+        case StatusDotTone::Attention:
+            color = isDark ? QColor(255, 176, 32) : QColor(224, 132, 0);
+            break;
+        case StatusDotTone::Hidden:
             return {};
     }
 
@@ -180,25 +219,38 @@ QPixmap cachedStatusDotPixmap(TerminalWidget::CommandState state, qreal dpr) {
     return pixmap;
 }
 
-QLabel *createCommandStatusDot(QWidget *parent, TerminalWidget::CommandState state, bool isActive, bool hasPending) {
+QString statusDotDescription(StatusDotTone tone) {
+    switch (tone) {
+        case StatusDotTone::Success:
+            return QObject::tr("Finished successfully.");
+        case StatusDotTone::Failure:
+            return QObject::tr("Failed.");
+        case StatusDotTone::Working:
+            return QObject::tr("Working.");
+        case StatusDotTone::Attention:
+            return QObject::tr("Waiting for your input.");
+        case StatusDotTone::Hidden:
+            break;
+    }
+    return QObject::tr("Shows whether the last command succeeded or failed.");
+}
+
+void applyStatusDotTone(QLabel *dot, StatusDotTone tone) {
+    dot->setProperty("statusTone", static_cast<int>(tone));
+    dot->setAccessibleDescription(statusDotDescription(tone));
+    if (tone == StatusDotTone::Hidden) {
+        dot->setVisible(false);
+        return;
+    }
+    dot->setPixmap(cachedStatusDotPixmap(tone, dot->devicePixelRatioF()));
+}
+
+QLabel *createCommandStatusDot(QWidget *parent, StatusDotTone tone) {
     auto *dot = new QLabel(parent);
     dot->setObjectName(QStringLiteral("commandStatusDot"));
     dot->setAccessibleName(QObject::tr("Command status"));
-    dot->setAccessibleDescription(QObject::tr("Shows whether the last command succeeded or failed."));
     dot->setFixedSize(kStatusDotSize, kStatusDotSize);
-
-    if (!hasPending || isActive || state == TerminalWidget::CommandState::Idle
-        || state == TerminalWidget::CommandState::Running) {
-        dot->setVisible(false);
-        return dot;
-    }
-
-    if (state != TerminalWidget::CommandState::Succeeded && state != TerminalWidget::CommandState::Failed) {
-        dot->setVisible(false);
-        return dot;
-    }
-
-    dot->setPixmap(cachedStatusDotPixmap(state, dot->devicePixelRatioF()));
+    applyStatusDotTone(dot, tone);
     return dot;
 }
 
@@ -811,8 +863,8 @@ void buildPaneList(ClickableSection *section, const VerticalTabSidebar::TabItem 
         paneButton->setProperty("active", pane.isActive);
         paneButton->setAttribute(Qt::WA_TransparentForMouseEvents, true);
 
-        auto *paneStatusDot = createCommandStatusDot(paneRow, pane.commandState, tab.isCurrent,
-                                                     !tab.isCurrent && tab.hasPendingCommandResult);
+        auto *paneStatusDot = createCommandStatusDot(
+            paneRow, statusDotTone(pane.commandState, pane.programStatus, tab.isCurrent, tab.hasPendingCommandResult));
         paneStatusDot->setAttribute(Qt::WA_TransparentForMouseEvents, true);
 
         paneRowLayout->addWidget(paneBadge, 0, Qt::AlignVCenter);
@@ -879,10 +931,11 @@ ClickableSection *buildSection(VerticalTabSidebar *sidebar, const VerticalTabSid
     tabBadge->setVisible(!isMultiPane);
     tabBadge->setAttribute(Qt::WA_TransparentForMouseEvents, true);
 
-    TerminalWidget::CommandState tabCommandState = TerminalWidget::CommandState::Idle;
+    StatusDotTone tabTone = StatusDotTone::Hidden;
     if (paneCount == 1)
-        tabCommandState = tab.panes.first().commandState;
-    auto *tabStatusDot = createCommandStatusDot(header, tabCommandState, tab.isCurrent, tab.hasPendingCommandResult);
+        tabTone = statusDotTone(tab.panes.first().commandState, tab.panes.first().programStatus, tab.isCurrent,
+                                tab.hasPendingCommandResult);
+    auto *tabStatusDot = createCommandStatusDot(header, tabTone);
     if (isMultiPane)
         tabStatusDot->setVisible(false);
     tabStatusDot->setAttribute(Qt::WA_TransparentForMouseEvents, true);
@@ -933,6 +986,7 @@ QByteArray paneListFingerprint(const QList<TermPane::PaneInfo> &panes, bool expa
         fp.append(p.title.toUtf8());
         fp.append(p.iconName.toUtf8());
         fp.append(reinterpret_cast<const char *>(&p.commandState), sizeof(p.commandState));
+        fp.append(static_cast<char>(p.programStatus ? static_cast<int>(p.programStatus->state) + 1 : 0));
         fp.append(static_cast<char>(p.isActive ? 1 : 0));
     }
     fp.append(static_cast<char>(expanded ? 1 : 0));
@@ -977,20 +1031,13 @@ void updateSectionHeader(ClickableSection *section, const VerticalTabSidebar::Ta
     auto dots = section->findChildren<QLabel *>(QStringLiteral("commandStatusDot"), Qt::FindChildrenRecursively);
     if (!dots.isEmpty()) {
         auto *dot = dots.first();
-        TerminalWidget::CommandState cmdState = TerminalWidget::CommandState::Idle;
+        StatusDotTone tone = StatusDotTone::Hidden;
         if (paneCount == 1)
-            cmdState = tab.panes.first().commandState;
-        bool shouldShow = tab.hasPendingCommandResult && !tab.isCurrent
-                          && cmdState != TerminalWidget::CommandState::Idle
-                          && cmdState != TerminalWidget::CommandState::Running;
-        if (shouldShow
-            && (cmdState == TerminalWidget::CommandState::Succeeded
-                || cmdState == TerminalWidget::CommandState::Failed)) {
-            dot->setPixmap(cachedStatusDotPixmap(cmdState, dot->devicePixelRatioF()));
+            tone = statusDotTone(tab.panes.first().commandState, tab.panes.first().programStatus, tab.isCurrent,
+                                 tab.hasPendingCommandResult);
+        applyStatusDotTone(dot, tone);
+        if (tone != StatusDotTone::Hidden)
             dot->setVisible(!isMultiPane);
-        } else {
-            dot->setVisible(false);
-        }
     }
 
     auto buttons =

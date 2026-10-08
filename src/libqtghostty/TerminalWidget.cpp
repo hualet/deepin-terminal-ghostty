@@ -775,6 +775,22 @@ std::optional<QString> commandFromQtGhosttyShellCommand(const QByteArray &payloa
     return QString::fromUtf8(QByteArray::fromBase64(payload.mid(kPrefix.size()))).trimmed();
 }
 
+bool isQtGhosttyPromptBoundary(const QByteArray &payload) {
+    // The shell integration clears the command right before each prompt.
+    return payload == QByteArrayView("777;ShellCommand=");
+}
+
+// Program status text is untrusted. Drop invisible formatting characters,
+// such as bidi overrides, so it cannot disguise itself outside the terminal.
+QString programStatusText(const GhosttyString &text) {
+    if (!text.ptr || text.len == 0 || text.len > static_cast<size_t>(std::numeric_limits<int>::max()))
+        return {};
+
+    QString result = QString::fromUtf8(reinterpret_cast<const char *>(text.ptr), static_cast<int>(text.len));
+    result.removeIf([](QChar ch) { return ch.category() == QChar::Other_Format; });
+    return result;
+}
+
 std::optional<int> commandResultFromQtGhosttyShellCommandResult(const QByteArray &payload) {
     static constexpr QByteArrayView kPrefix("777;ShellCommandResult=");
     if (!payload.startsWith(kPrefix))
@@ -1192,6 +1208,74 @@ void effectProgressReport(GhosttyTerminal terminal, void *userdata, const Ghostt
     Q_EMIT widget->progressChanged(state, report->progress);
 }
 
+void effectProgramStatus(GhosttyTerminal terminal, void *userdata, const GhosttyTerminalProgramStatus *report) {
+    (void)terminal;
+    if (!userdata || !report || report->size < sizeof(GhosttyTerminalProgramStatus))
+        return;
+
+    auto *widget = static_cast<TerminalWidget *>(userdata);
+    const QString id = programStatusText(report->id);
+
+    ProgramStatus status;
+    switch (report->state) {
+        case GHOSTTY_PROGRAM_STATUS_STATE_CLEAR:
+            widget->clearProgramStatus(id);
+            return;
+        case GHOSTTY_PROGRAM_STATUS_STATE_IDLE:
+            status.state = ProgramStatus::State::Idle;
+            break;
+        case GHOSTTY_PROGRAM_STATUS_STATE_WORKING:
+            status.state = ProgramStatus::State::Working;
+            break;
+        case GHOSTTY_PROGRAM_STATUS_STATE_DONE:
+            status.state = ProgramStatus::State::Done;
+            break;
+        case GHOSTTY_PROGRAM_STATUS_STATE_BLOCKED:
+            status.state = ProgramStatus::State::Blocked;
+            break;
+        case GHOSTTY_PROGRAM_STATUS_STATE_ERROR:
+            status.state = ProgramStatus::State::Error;
+            break;
+        default:
+            return;
+    }
+
+    switch (report->kind) {
+        case GHOSTTY_PROGRAM_STATUS_KIND_PERMISSION:
+            status.kind = ProgramStatus::Kind::Permission;
+            break;
+        case GHOSTTY_PROGRAM_STATUS_KIND_QUESTION:
+            status.kind = ProgramStatus::Kind::Question;
+            break;
+        case GHOSTTY_PROGRAM_STATUS_KIND_AUTH:
+            status.kind = ProgramStatus::Kind::Auth;
+            break;
+        default:
+            status.kind = ProgramStatus::Kind::None;
+            break;
+    }
+
+    status.id = id;
+    status.progress = report->progress >= 0 && report->progress <= 100 ? report->progress : -1;
+    status.app = programStatusText(report->app);
+    status.title = programStatusText(report->title);
+    status.message = programStatusText(report->message);
+    widget->applyProgramStatusReport(status);
+}
+
+void effectSemanticPrompt(GhosttyTerminal terminal, void *userdata, const GhosttyTerminalSemanticPrompt *event) {
+    (void)terminal;
+    if (!userdata || !event || event->size < sizeof(GhosttyTerminalSemanticPrompt))
+        return;
+
+    // Shells without our integration (fish, remote hosts) may still mark
+    // prompts with OSC 133.
+    if (event->kind == GHOSTTY_SEMANTIC_PROMPT_PROMPT_START
+        && event->prompt_kind == GHOSTTY_SEMANTIC_PROMPT_PROMPT_PRIMARY) {
+        static_cast<TerminalWidget *>(userdata)->clearActiveProgramStatuses();
+    }
+}
+
 bool effectSize(GhosttyTerminal terminal, void *userdata, GhosttySizeReportSize *out_size) {
     (void)terminal;
     auto *widget = static_cast<TerminalWidget *>(userdata);
@@ -1523,6 +1607,7 @@ void TerminalWidget::importVtContent(const QByteArray &data) {
         Q_EMIT workingDirectoryChanged(workingDirectory());
     }
     Q_EMIT progressChanged(ProgressState::Remove, -1);
+    clearProgramStatus(QString());
     m_kittyImageCache.clear();
     m_kittyGraphicsGeneration.reset();
     invalidateLinkScanCache();
@@ -1782,6 +1867,11 @@ bool TerminalWidget::setupTerminal() {
                          reinterpret_cast<const void *>(effectDesktopNotification));
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_PROGRESS_REPORT,
                          reinterpret_cast<const void *>(effectProgressReport));
+    // Also makes the terminal answer the OSC 7501 support query.
+    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_PROGRAM_STATUS,
+                         reinterpret_cast<const void *>(effectProgramStatus));
+    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_SEMANTIC_PROMPT,
+                         reinterpret_cast<const void *>(effectSemanticPrompt));
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_SIZE, reinterpret_cast<const void *>(effectSize));
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_DEVICE_ATTRIBUTES,
                          reinterpret_cast<const void *>(effectDeviceAttributes));
@@ -3879,30 +3969,49 @@ void TerminalWidget::onPtyDataReceived(const QByteArray &data) {
     if (!m_terminal || data.isEmpty())
         return;
 
-    scanShellIntegrationSequences(data);
-    m_pendingPtyData.append(data);
+    const int promptEnd = scanShellIntegrationSequences(data);
+    if (promptEnd >= 0) {
+        // Feed reports sent before the prompt first, so the prompt clears them
+        // instead of them outliving it.
+        m_pendingPtyData.append(data.left(promptEnd));
+        if (m_pendingPtyData.contains("\033]7501;"))
+            flushPendingPtyData();
+        clearActiveProgramStatuses();
+        m_pendingPtyData.append(data.mid(promptEnd));
+    } else {
+        m_pendingPtyData.append(data);
+    }
     scheduleTerminalRepaint();
 }
 
-void TerminalWidget::scanShellIntegrationSequences(const QByteArray &data) {
+int TerminalWidget::scanShellIntegrationSequences(const QByteArray &data) {
+    // Offset of m_oscScanBuffer's first byte within data; negative while the
+    // buffer still starts with bytes carried over from earlier chunks.
+    int bufferStartInData = -static_cast<int>(m_oscScanBuffer.size());
+    int promptEnd = -1;
+
     m_oscScanBuffer.append(data);
-    if (m_oscScanBuffer.size() > kMaxOscScanBufferBytes)
+    if (m_oscScanBuffer.size() > kMaxOscScanBufferBytes) {
+        bufferStartInData += m_oscScanBuffer.size() - kMaxOscScanBufferBytes;
         m_oscScanBuffer = m_oscScanBuffer.right(kMaxOscScanBufferBytes);
+    }
 
     while (true) {
         const int oscStart = m_oscScanBuffer.indexOf("\033]");
         if (oscStart < 0) {
             m_oscScanBuffer = m_oscScanBuffer.endsWith('\033') ? QByteArray("\033") : QByteArray();
-            return;
+            return promptEnd;
         }
 
-        if (oscStart > 0)
+        if (oscStart > 0) {
             m_oscScanBuffer.remove(0, oscStart);
+            bufferStartInData += oscStart;
+        }
 
         const int belEnd = m_oscScanBuffer.indexOf('\a', 2);
         const int stEnd = m_oscScanBuffer.indexOf("\033\\", 2);
         if (belEnd < 0 && stEnd < 0)
-            return;
+            return promptEnd;
 
         const bool useBel = belEnd >= 0 && (stEnd < 0 || belEnd < stEnd);
         const int payloadEnd = useBel ? belEnd : stEnd;
@@ -3918,7 +4027,11 @@ void TerminalWidget::scanShellIntegrationSequences(const QByteArray &data) {
                 setShellCommand(command.value());
         }
 
+        if (isQtGhosttyPromptBoundary(payload))
+            promptEnd = qMax(0, bufferStartInData + sequenceEnd);
+
         m_oscScanBuffer.remove(0, sequenceEnd);
+        bufferStartInData += sequenceEnd;
     }
 }
 
@@ -3948,6 +4061,30 @@ void TerminalWidget::setShellCommandResult(int exitCode) {
     m_pendingExitCode = exitCode;
 }
 
+QList<ProgramStatus> TerminalWidget::programStatuses() const {
+    return m_programStatus.records();
+}
+
+void TerminalWidget::acknowledgeProgramStatuses() {
+    if (m_programStatus.clearCompleted())
+        Q_EMIT programStatusChanged();
+}
+
+void TerminalWidget::applyProgramStatusReport(const ProgramStatus &report) {
+    if (m_programStatus.apply(report))
+        Q_EMIT programStatusChanged();
+}
+
+void TerminalWidget::clearProgramStatus(const QString &id) {
+    if (m_programStatus.clear(id))
+        Q_EMIT programStatusChanged();
+}
+
+void TerminalWidget::clearActiveProgramStatuses() {
+    if (m_programStatus.clearActive())
+        Q_EMIT programStatusChanged();
+}
+
 void TerminalWidget::updateCommandState(CommandState newState) {
     if (m_commandState == newState)
         return;
@@ -3960,6 +4097,7 @@ void TerminalWidget::updateCommandState(CommandState newState) {
 void TerminalWidget::onPtySessionClosed() {
     flushPendingPtyData();
     m_oscScanBuffer.clear();
+    clearActiveProgramStatuses();
     if (m_renderTimer)
         m_renderTimer->stop();
     Q_EMIT sessionClosed();

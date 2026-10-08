@@ -570,6 +570,11 @@ void MainWindow::connectPaneSignals(TermPane *pane) {
                 }
                 syncTabWidgetsFromRecords();
             });
+    connect(pane, &TermPane::paneProgramStatusChanged, this, [this, pane](const QUuid &) {
+        if (auto *record = tabRecordForPane(pane))
+            refreshTabRecord(*record);
+        syncTabWidgetsFromRecords();
+    });
     connect(pane, &TermPane::requestSettings, this, &MainWindow::onSettingsTriggered);
 }
 
