@@ -56,6 +56,31 @@ The current development branch already includes:
 - drag-and-drop file paths into the terminal
 - saved SSH server configurations with quick-connect panel
 
+## Supported OSC Sequences
+
+Operating System Command (OSC) sequences let programs talk to the terminal.
+Parsing is handled by `libghostty-vt`; the sequences below are wired into the
+application.
+
+| Sequence | Purpose | Notes |
+| --- | --- | --- |
+| `OSC 0` / `OSC 2` | Window and tab title | Keeps tab text and window title in sync |
+| `OSC 4`, `10`, `11`, `12`, `104`, `110`–`112` | Query, set, and reset palette, foreground, background, and cursor colors | Queries answer with the active theme colors |
+| `OSC 7` | Report working directory | Used for new tabs/splits and session restore |
+| `OSC 8` | Explicit hyperlinks | Ctrl+click to open |
+| `OSC 9` | Desktop notification (body only) | Sent through `org.freedesktop.Notifications` |
+| `OSC 9;4` | Progress report (ConEmu) | Thin progress bar at the bottom of the pane |
+| `OSC 52` | Write to the clipboard | Reading the clipboard is not supported |
+| `OSC 133` | Semantic prompts (FinalTerm) | Prompt start clears active OSC 7501 records; `cmdline_url` sets the running command |
+| `OSC 633;E` | Running command (VS Code shell integration) | Drives the pane's process icon |
+| `OSC 777;notify` | Desktop notification with title (rxvt) | Sent through `org.freedesktop.Notifications` |
+| `OSC 1337;SetUserVar=WEZTERM_PROG` | Running command (WezTerm shell integration) | Drives the pane's process icon |
+| `OSC 7501` | [Program status protocol](https://www.superlogical.com/rex/docs/build/program-status) | Answers the `OSC 7501;?` support query; status shows as a dot on background tabs in the vertical sidebar: orange (blocked), blue (working), green (done), red (error) |
+
+The built-in bash/zsh shell integration also uses a few private
+`OSC 777;ShellCommand…` sequences to track running commands and their exit
+codes. See [Custom OSC Sequences](docs/custom-osc.md).
+
 ## Project Status
 
 This project is under active development.
