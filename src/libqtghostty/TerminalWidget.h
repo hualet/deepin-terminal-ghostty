@@ -289,6 +289,7 @@ private:
     GhosttyRenderState m_renderState = nullptr;
     GhosttyRenderStateRowIterator m_rowIter = nullptr;
     GhosttyRenderStateRowCells m_rowCells = nullptr;
+    QVector<uint32_t> m_rowCodepoints;
     GhosttyKittyGraphicsPlacementIterator m_kittyPlacementIter = nullptr;
     GhosttyKeyEncoder m_keyEncoder = nullptr;
     GhosttyKeyEvent m_keyEvent = nullptr;

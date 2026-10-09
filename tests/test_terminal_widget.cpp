@@ -77,6 +77,7 @@ private slots:
     void testFallbackGlyphDoesNotOverlapNextCell();
     void testSingleCodepointFallbackGlyphDoesNotClip();
     void testOverflowingSingleCodepointGlyphFitsCell();
+    void testSymbolGlyphUsesBlankNeighborCell();
     void testBrailleSpinnerKeepsStableDotGeometry();
     void testKimiBlockLogoKeepsCellFillingGeometry();
     void testZoomedAsciiNotReshapedPerCharacter();
@@ -1645,6 +1646,50 @@ void TestTerminalWidget::testOverflowingSingleCodepointGlyphFitsCell() {
              "overflowing single-codepoint glyph should be fitted and centered instead of clipped");
     QCOMPARE(countChangedPixels(before, after, followingCell), 0);
     QCOMPARE(widget.debugLastFrameEmojiFallbackDrawCount(), 0);
+}
+
+void TestTerminalWidget::testSymbolGlyphUsesBlankNeighborCell() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 5");
+
+    CountingTerminalWidget widget;
+    widget.setStartOptions(options);
+    QVERIFY(widget.initialize());
+
+    widget.resize(960, 640);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    QApplication::processEvents();
+
+    const QString circledOne = QStringLiteral("\u2460");
+    const QFontMetricsF metrics(widget.terminalFont());
+    if (metrics.tightBoundingRect(circledOne).width() <= metrics.horizontalAdvance(QLatin1Char('M')))
+        QSKIP("the resolved fallback font draws U+2460 within one cell");
+
+    feedTerminalOutput(widget, QByteArray("\033[?25l"));
+
+    QInputMethodQueryEvent queryEvent(Qt::ImCursorRectangle);
+    QApplication::sendEvent(&widget, &queryEvent);
+    const QRect cursorRect = queryEvent.value(Qt::ImCursorRectangle).toRect();
+    QVERIFY(cursorRect.isValid());
+    const int cellWidth = cursorRect.width();
+    const QRect firstLineSpan(cursorRect.topLeft(), QSize(cellWidth * 2, cursorRect.height()));
+    const QRect secondLineCell = cursorRect.translated(0, cursorRect.height());
+
+    const QImage before = renderWidgetImage(widget);
+    feedTerminalOutput(widget,
+                       (circledOne + QStringLiteral(" x\r\n") + circledOne + QStringLiteral("\uFF1A")).toUtf8());
+    const QImage after = renderWidgetImage(widget);
+
+    // A blank following cell lets the symbol keep its natural size across two cells.
+    const QRect spanBounds = changedBounds(before.copy(firstLineSpan), after.copy(firstLineSpan));
+    QVERIFY(spanBounds.isValid());
+    QVERIFY2(spanBounds.width() > cellWidth, "symbol before a blank cell should extend into that cell");
+
+    // An occupied following cell constrains it to one cell, but it should fill that cell.
+    const QRect cellBounds = changedBounds(before.copy(secondLineCell), after.copy(secondLineCell));
+    QVERIFY(cellBounds.isValid());
+    QVERIFY2(cellBounds.width() >= cellWidth - 1, "one-cell symbol should use the full cell width");
 }
 
 void TestTerminalWidget::testBrailleSpinnerKeepsStableDotGeometry() {

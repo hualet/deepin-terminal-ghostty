@@ -247,6 +247,40 @@ bool isBraillePatternCodepoint(QStringView text) {
     return codepoint >= 0x2800 && codepoint <= 0x28FF;
 }
 
+// Mirrors Ghostty's renderer notion of "symbol-like" codepoints: private use
+// areas plus a few symbol blocks whose glyphs fallback fonts often draw wider
+// than one cell even though they occupy a single terminal column.
+bool isSymbolCodepoint(uint32_t codepoint) {
+    return (codepoint >= 0xE000 && codepoint <= 0xF8FF) || (codepoint >= 0xF0000 && codepoint <= 0xFFFFD)
+           || (codepoint >= 0x100000 && codepoint <= 0x10FFFD) || (codepoint >= 0x2190 && codepoint <= 0x21FF)
+           || (codepoint >= 0x2460 && codepoint <= 0x24FF) || (codepoint >= 0x2600 && codepoint <= 0x27BF)
+           || (codepoint >= 0x1F100 && codepoint <= 0x1F1FF) || (codepoint >= 0x1F300 && codepoint <= 0x1F64F)
+           || (codepoint >= 0x1F680 && codepoint <= 0x1F6FF);
+}
+
+bool isGraphicsElementCodepoint(uint32_t codepoint) {
+    return (codepoint >= 0x2500 && codepoint <= 0x259F) || (codepoint >= 0x1FB00 && codepoint <= 0x1FBFF)
+           || (codepoint >= 0x1CC00 && codepoint <= 0x1CEBF) || (codepoint >= 0xE0B0 && codepoint <= 0xE0D7);
+}
+
+// Ghostty's constraintWidth(): a narrow symbol may use two cells when the
+// following cell is blank and the previous cell is not another symbol, so that
+// glyphs such as U+2460 keep a legible size instead of being squeezed into one
+// cell.
+int symbolGlyphCellSpan(const QVector<uint32_t> &rowCodepoints, int col) {
+    if (col < 0 || col >= rowCodepoints.size() || !isSymbolCodepoint(rowCodepoints.at(col)))
+        return 0;
+    if (col + 1 >= rowCodepoints.size())
+        return 1;
+    if (col > 0) {
+        const uint32_t previous = rowCodepoints.at(col - 1);
+        if (isSymbolCodepoint(previous) && !isGraphicsElementCodepoint(previous))
+            return 1;
+    }
+    const uint32_t next = rowCodepoints.at(col + 1);
+    return next == 0 || next == 0x20 || next == 0x2002 ? 2 : 1;
+}
+
 bool isEmojiCodepoint(uint32_t codepoint) {
     return (codepoint >= 0x1F000 && codepoint <= 0x1FAFF) || (codepoint >= 0x2600 && codepoint <= 0x27BF);
 }
@@ -2757,6 +2791,22 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
 
     const bool drawBackground = pass == RowRenderPass::Background || pass == RowRenderPass::Full;
     const bool drawText = pass == RowRenderPass::Text || pass == RowRenderPass::Full;
+    m_rowCodepoints.clear();
+    if (drawText) {
+        // Symbol glyph sizing looks at neighboring cells, so collect the row's
+        // codepoints first. Re-fetching the cells handle rewinds the iterator.
+        while (ghostty_render_state_row_cells_next(m_rowCells)) {
+            GhosttyCell rawCell = 0;
+            uint32_t codepoint = 0;
+            if (ghostty_render_state_row_cells_get(m_rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW, &rawCell)
+                == GHOSTTY_SUCCESS)
+                ghostty_cell_get(rawCell, GHOSTTY_CELL_DATA_CODEPOINT, &codepoint);
+            m_rowCodepoints.append(codepoint);
+        }
+        if (ghostty_render_state_row_get(m_rowIter, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &m_rowCells)
+            != GHOSTTY_SUCCESS)
+            return;
+    }
     const QColor defaultBackground(colors.background.r, colors.background.g, colors.background.b,
                                    qRound(m_opacity * 255));
     const QColor defaultForeground(colors.foreground.r, colors.foreground.g, colors.foreground.b);
@@ -2845,9 +2895,12 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
     const auto drawClippedCellText = [&](int textX, int cells, const QString &text) {
         painter.save();
         const std::optional<uint32_t> emojiCodepoint = firstEmojiCodepoint(QStringView(text));
+        const int symbolCells = cells == 1 && !emojiCodepoint && isSingleNonAsciiCodepoint(QStringView(text))
+                                    ? symbolGlyphCellSpan(m_rowCodepoints, textX / m_cellWidth)
+                                    : 0;
         const int visibleCells = emojiRenderMode() == EmojiRenderMode::CustomFallback && emojiCodepoint
                                      ? fallbackEmojiCellSpan(cells > 1)
-                                     : cells;
+                                     : qMax(cells, symbolCells);
         const QRect cellRect(textX, y, visibleCells * m_cellWidth, m_cellHeight);
         painter.setClipRect(cellRect, Qt::IntersectClip);
         if (emojiVariationSelectorPlaceholderCodepoint(QStringView(text))) {
@@ -2878,16 +2931,22 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         // non-ASCII single codepoints, and truly overflowing multi-code-unit graphemes still
         // need fitting; everything else keeps the native advance with the cellRect clip above
         // guarding against overflow into the next cell.
+        const int fitWidth = qMax(1, symbolCells) * m_cellWidth;
         const bool overflowsCell =
-            metrics.horizontalAdvance(fitReference) > m_cellWidth || fitInkBounds.width() > m_cellWidth;
+            metrics.horizontalAdvance(fitReference) > fitWidth || fitInkBounds.width() > fitWidth;
         const bool overflowingSingleCodepoint = isSingleNonAsciiCodepoint(QStringView(text))
                                                 && !isBlockElementCodepoint(QStringView(text)) && overflowsCell;
         const bool needsFit = isEmojiText || overflowingSingleCodepoint || (text.size() > 1 && overflowsCell);
         if (cells == 1 && needsFit) {
-            const qreal targetWidth = qMax<qreal>(1.0, cellRect.width() - 2.0);
+            // Symbols already lose most of their size to a one-cell fit, so they
+            // use the full cell width and are only ever shrunk.
+            const qreal horizontalInset = symbolCells > 0 ? 0.0 : 2.0;
+            const qreal targetWidth = qMax<qreal>(1.0, cellRect.width() - horizontalInset);
             const qreal targetHeight = qMax<qreal>(1.0, m_cellHeight - 2.0);
-            const qreal scale = qMin(targetWidth / qMax<qreal>(1.0, fitInkBounds.width()),
-                                     targetHeight / qMax<qreal>(1.0, fitInkBounds.height()));
+            qreal scale = qMin(targetWidth / qMax<qreal>(1.0, fitInkBounds.width()),
+                               targetHeight / qMax<qreal>(1.0, fitInkBounds.height()));
+            if (symbolCells > 0)
+                scale = qMin<qreal>(scale, 1.0);
             if (drawFont.pixelSize() > 0) {
                 drawFont.setPixelSize(qMax(1, static_cast<int>(std::floor(drawFont.pixelSize() * scale))));
             } else {
