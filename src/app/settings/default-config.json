@@ -74,6 +74,24 @@
                             "default": false
                         }
                     ]
+                },
+                {
+                    "key": "tab_title",
+                    "name": "Tab titles",
+                    "options": [
+                        {
+                            "key": "tab_title_format",
+                            "name": "Tab title format",
+                            "type": "tabtitleformat",
+                            "default": "%w"
+                        },
+                        {
+                            "key": "remote_tab_title_format",
+                            "name": "Remote tab title format",
+                            "type": "remotetabtitleformat",
+                            "default": "%U%h"
+                        }
+                    ]
                 }
             ]
         },

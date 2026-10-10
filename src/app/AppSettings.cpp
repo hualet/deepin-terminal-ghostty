@@ -22,6 +22,8 @@ constexpr auto kCursorShapePath = "basic.cursor.cursorShape";
 constexpr auto kCursorBlinkPath = "basic.cursor.cursorBlink";
 constexpr auto kScrollbackLinesPath = "advanced.scrolling.scrollbackLines";
 constexpr auto kVerticalTabsPath = "basic.layout.verticalTabs";
+constexpr auto kTabTitleFormatPath = "basic.tab_title.tab_title_format";
+constexpr auto kRemoteTabTitleFormatPath = "basic.tab_title.remote_tab_title_format";
 constexpr auto kColorSchemePath = "basic.interface.colorScheme";
 constexpr auto kOpacityPath = "basic.interface.opacity";
 constexpr auto kBackgroundBlurPath = "basic.interface.blurred_background";
@@ -145,6 +147,8 @@ void AppSettings::init() {
             emit scrollbackLinesChanged(scrollbackLines());
         else if (key == kVerticalTabsPath)
             emit verticalTabsEnabledChanged(verticalTabsEnabled());
+        else if (key == kTabTitleFormatPath || key == kRemoteTabTitleFormatPath)
+            emit tabTitleFormatChanged();
         else if (key == kColorSchemePath)
             emit colorSchemeChanged(colorScheme());
         else if (key == kOpacityPath)
@@ -222,6 +226,14 @@ void AppSettings::setVerticalTabsEnabled(bool enabled) {
 
     m_dsettings->setOption(kVerticalTabsPath, enabled);
     m_dsettings->sync();
+}
+
+QString AppSettings::tabTitleFormat() const {
+    return m_dsettings->value(kTabTitleFormatPath).toString();
+}
+
+QString AppSettings::remoteTabTitleFormat() const {
+    return m_dsettings->value(kRemoteTabTitleFormatPath).toString();
 }
 
 QSize AppSettings::windowSize() const {

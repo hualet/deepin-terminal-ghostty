@@ -53,6 +53,7 @@ public:
     bool hasRunningProcess() const;
     bool hasVtProcessingError() const;
     QString workingDirectory() const;
+    QString foregroundProcessName() const;
 
     void setTerminalFont(const QFont &font);
     QFont terminalFont() const;

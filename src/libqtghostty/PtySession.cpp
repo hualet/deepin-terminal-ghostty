@@ -439,6 +439,20 @@ QString PtySession::workingDirectory() const {
     return QString::fromUtf8(buf);
 }
 
+QString PtySession::foregroundProcessName() const {
+    if (m_childPid <= 0)
+        return {};
+
+    pid_t pid = m_masterFd >= 0 ? ::tcgetpgrp(m_masterFd) : -1;
+    if (pid <= 0)
+        pid = m_childPid;
+
+    QFile commFile(QStringLiteral("/proc/%1/comm").arg(pid));
+    if (!commFile.open(QIODevice::ReadOnly))
+        return {};
+    return QString::fromUtf8(commFile.readAll()).trimmed();
+}
+
 void PtySession::write(const QByteArray &data) {
     if (m_masterFd < 0 || data.isEmpty()) {
         return;

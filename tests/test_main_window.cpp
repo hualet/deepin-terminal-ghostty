@@ -10,6 +10,7 @@
 #include "SettingsDialog.h"
 #include "StartupOptions.h"
 #include "TabBar.h"
+#include "TabTitleFormat.h"
 #include "TermPane.h"
 #include "TerminalControlService.h"
 #include "TerminalScrollContainer.h"
@@ -24,6 +25,7 @@
 #include <DDialog>
 #include <DGuiApplicationHelper>
 #include <DSettings>
+#include <DSettingsOption>
 #include <DTabBar>
 #include <DTitlebar>
 #include <QAbstractButton>
@@ -41,6 +43,7 @@
 #include <QLineEdit>
 #include <QPointer>
 #include <QProgressBar>
+#include <QRegularExpression>
 #include <QScopeGuard>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -79,6 +82,8 @@ private slots:
         DGuiApplicationHelper::instance()->setPaletteType(m_originalPaletteType);
     }
 
+    void testTabTitleFormatExpandsVariables();
+    void testTermPaneAppliesTabTitleFormats();
     void testOverviewMenuAndShortcutEntries_data();
     void testOverviewMenuAndShortcutEntries();
     void testOverviewActivatesTabAndRestoresFocus_data();
@@ -595,6 +600,66 @@ void TestMainWindow::testAltArrowWithKeypadModifierIsConsumedByPane() {
 
     QKeyEvent keyPress(QEvent::KeyPress, Qt::Key_Left, Qt::AltModifier | Qt::KeypadModifier);
     QVERIFY(pane.eventFilter(sourceTerminal, &keyPress));
+}
+
+void TestMainWindow::testTabTitleFormatExpandsVariables() {
+    TabTitleContext context;
+    context.programName = QStringLiteral("vim");
+    context.workingDirectory = QStringLiteral("/home/user/src/");
+    context.shellTitle = QStringLiteral("100% done");
+    context.userName = QStringLiteral("user");
+    context.hostName = QStringLiteral("box");
+    context.sessionNumber = 3;
+
+    QCOMPARE(formatTabTitle(QStringLiteral("%n:%d"), context), QStringLiteral("vim:src"));
+    QCOMPARE(formatTabTitle(QStringLiteral("%D"), context), QStringLiteral("/home/user/src/"));
+    QCOMPARE(formatTabTitle(QStringLiteral("[%#] %U%h"), context), QStringLiteral("[3] user@box"));
+    // Substituted values are not expanded again; unknown and escaped tokens stay literal.
+    QCOMPARE(formatTabTitle(QStringLiteral("%w %x %%d %"), context), QStringLiteral("100% done %x %d %"));
+
+    context.workingDirectory = QStringLiteral("/");
+    context.userName.clear();
+    QCOMPARE(formatTabTitle(QStringLiteral("%d|%U"), context), QStringLiteral("/|"));
+}
+
+void TestMainWindow::testTermPaneAppliesTabTitleFormats() {
+    auto *settings = AppSettings::instance();
+    QPointer<Dtk::Core::DSettingsOption> option =
+        settings->dsettings()->option(QStringLiteral("basic.tab_title.tab_title_format"));
+    QVERIFY(option);
+    QCOMPARE(option->defaultValue().toString(), QStringLiteral("%w"));
+    const auto restoreFormat = qScopeGuard([option]() { option->setValue(option->defaultValue()); });
+
+    TermPane pane;
+    pane.resize(800, 600);
+    pane.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&pane));
+
+    const auto activeTitle = [&pane]() {
+        for (const auto &info : pane.paneInfos()) {
+            if (info.isActive)
+                return info.title;
+        }
+        return QString();
+    };
+
+    pane.setTabTitleFormats(QStringLiteral("#%# %h"), std::nullopt);
+    QCOMPARE(pane.tabTitleFormat(), QStringLiteral("#%# %h"));
+    QVERIFY(QRegularExpression(QStringLiteral("^#[1-9][0-9]* ")).match(activeTitle()).hasMatch());
+    QVERIFY(activeTitle().endsWith(localHostName()));
+
+    // Clearing the per-tab override follows the global setting, including live changes.
+    pane.setTabTitleFormats(std::nullopt, std::nullopt);
+    QSignalSpy titleSpy(&pane, &TermPane::terminalTitleChanged);
+    QVERIFY(titleSpy.isValid());
+    option->setValue(QStringLiteral("global %%"));
+    QCOMPARE(pane.tabTitleFormat(), QStringLiteral("global %%"));
+    QTRY_COMPARE(activeTitle(), QStringLiteral("global %"));
+    QVERIFY(!titleSpy.isEmpty());
+    QCOMPARE(titleSpy.last().at(0).toString(), QStringLiteral("global %"));
+
+    pane.setCustomTitle(QStringLiteral("50% %d"));
+    QCOMPARE(activeTitle(), QStringLiteral("50% %d"));
 }
 
 void TestMainWindow::testTermPaneReportsPaneSnapshotsAfterSplit() {

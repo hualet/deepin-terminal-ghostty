@@ -53,6 +53,12 @@ public:
     bool controlSplitPane(const QUuid &paneId, Qt::Orientation orientation, QUuid *newPaneId = nullptr);
     bool sendTextToPane(const QUuid &paneId, const QString &text);
     bool executeCommandInPane(const QUuid &paneId, const QString &command);
+    // Per-terminal tab title formats for the active terminal; an empty
+    // optional falls back to the global format from settings.
+    void setTabTitleFormats(const std::optional<QString> &format, const std::optional<QString> &remoteFormat);
+    QString tabTitleFormat() const;
+    QString remoteTabTitleFormat() const;
+    // Shows a literal title by turning it into a format without variables.
     void setCustomTitle(const QString &title);
     void setOpacity(qreal opacity);
     void connectToRemoteServer(const ServerConfig &config);
@@ -85,6 +91,7 @@ private:
     TerminalWidget *createTerminal(const std::optional<PtySession::StartOptions> &options = std::nullopt);
     void setupTerminalConnections(TerminalWidget *term);
     void setCurrentTerminal(TerminalWidget *term);
+    void refreshTerminalTitle(TerminalWidget *term, bool forceNotify = false);
     void removeTerminal(TerminalWidget *term);
     QSplitter *createPaneSplitter(Qt::Orientation orientation);
     QList<TerminalWidget *> terminalsInVisualOrder() const;

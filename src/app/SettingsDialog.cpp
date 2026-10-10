@@ -1,6 +1,7 @@
 #include "SettingsDialog.h"
 
 #include "AppSettings.h"
+#include "TabTitleFormat.h"
 
 #include <DKeySequenceEdit>
 #include <DSettingsOption>
@@ -26,10 +27,29 @@ static QPair<QWidget *, QWidget *> createShortcutEditHandle(QObject *opt) {
     return DSettingsWidgetFactory::createStandardItem(QByteArray(), option, edit);
 }
 
+static QPair<QWidget *, QWidget *> createTabTitleFormatHandle(QObject *opt, bool remote) {
+    auto *option = qobject_cast<Dtk::Core::DSettingsOption *>(opt);
+    auto *edit = new TabTitleFormatEdit(remote);
+    edit->setText(option->value().toString());
+
+    QObject::connect(edit, &TabTitleFormatEdit::editingFinished, edit,
+                     [edit, option]() { option->setValue(edit->text()); });
+    QObject::connect(option, &Dtk::Core::DSettingsOption::valueChanged, edit, [edit](const QVariant &value) {
+        if (edit->text() != value.toString())
+            edit->setText(value.toString());
+    });
+
+    return DSettingsWidgetFactory::createStandardItem(QByteArray(), option, edit);
+}
+
 SettingsDialog::SettingsDialog(QWidget *parent) : DSettingsDialog(parent) {
     setWindowTitle(tr("Settings"));
     setAccessibleName(tr("Settings"));
     setAccessibleDescription(tr("Configure terminal appearance, behavior, and shortcuts."));
     widgetFactory()->registerWidget("shortcut", createShortcutEditHandle);
+    widgetFactory()->registerWidget("tabtitleformat",
+                                    [](QObject *opt) { return createTabTitleFormatHandle(opt, false); });
+    widgetFactory()->registerWidget("remotetabtitleformat",
+                                    [](QObject *opt) { return createTabTitleFormatHandle(opt, true); });
     updateSettings(AppSettings::instance()->dsettings());
 }

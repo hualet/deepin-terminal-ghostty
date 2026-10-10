@@ -39,6 +39,9 @@ public:
     bool verticalTabsEnabled() const;
     void setVerticalTabsEnabled(bool enabled);
 
+    QString tabTitleFormat() const;
+    QString remoteTabTitleFormat() const;
+
     QString colorScheme() const;
     void setColorScheme(const QString &scheme);
 
@@ -63,6 +66,7 @@ signals:
     void cursorBlinkChanged(bool blink);
     void scrollbackLinesChanged(int lines);
     void verticalTabsEnabledChanged(bool enabled);
+    void tabTitleFormatChanged();
     void colorSchemeChanged(const QString &scheme);
     void opacityChanged(qreal opacity);
     void backgroundBlurChanged(bool enabled);

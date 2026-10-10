@@ -7,6 +7,7 @@
 #include "SessionSnapshot.h"
 #include "SettingsDialog.h"
 #include "TabBar.h"
+#include "TabTitleFormat.h"
 #include "TermPane.h"
 #include "TerminalWidget.h"
 #include "ThemeLoader.h"
@@ -36,6 +37,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
+#include <QLabel>
 #include <QMenu>
 #include <QPalette>
 #include <QProcess>
@@ -46,6 +48,7 @@
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QTimer>
+#include <QVBoxLayout>
 
 #include <algorithm>
 
@@ -1546,23 +1549,41 @@ void MainWindow::renameTabTitle(int index) {
     if (!pane)
         return;
 
-    QString currentText = m_tabBar->tabText(index);
-
     DDialog dlg(tr("Rename title"), QString(), this);
-    auto *edit = new DLineEdit(&dlg);
-    edit->setText(currentText);
-    edit->setMinimumWidth(280);
+    dlg.setAccessibleName(tr("Rename title"));
+
+    auto *content = new QWidget(&dlg);
+    auto *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(6);
+
+    auto *formatLabel = new QLabel(tr("Tab title format"), content);
+    auto *formatEdit = new TabTitleFormatEdit(false, content);
+    formatEdit->setText(pane->tabTitleFormat());
+    formatEdit->setMinimumWidth(320);
+    formatLabel->setBuddy(formatEdit->lineEdit());
+
+    auto *remoteLabel = new QLabel(tr("Remote tab title format"), content);
+    auto *remoteEdit = new TabTitleFormatEdit(true, content);
+    remoteEdit->setText(pane->remoteTabTitleFormat());
+    remoteLabel->setBuddy(remoteEdit->lineEdit());
+
+    layout->addWidget(formatLabel);
+    layout->addWidget(formatEdit);
+    layout->addSpacing(6);
+    layout->addWidget(remoteLabel);
+    layout->addWidget(remoteEdit);
+
     dlg.addSpacing(8);
-    dlg.addContent(edit);
+    dlg.addContent(content);
     dlg.addSpacing(8);
     dlg.addButton(tr("Cancel", "button"), false, DDialog::ButtonNormal);
     dlg.addButton(tr("Confirm", "button"), true, DDialog::ButtonRecommend);
+    formatEdit->lineEdit()->lineEdit()->selectAll();
+    formatEdit->lineEdit()->setFocus();
 
-    if (dlg.exec() == QDialog::Accepted) {
-        QString text = edit->text();
-        if (!text.isEmpty())
-            pane->setCustomTitle(text);
-    }
+    if (dlg.exec() == QDialog::Accepted)
+        pane->setTabTitleFormats(formatEdit->text(), remoteEdit->text());
 }
 
 void MainWindow::onShortcutDisplayShortcuts() {

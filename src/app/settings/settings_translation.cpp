@@ -16,6 +16,8 @@ void GenerateSettingTranslate() {
     auto basic_interface_fontSizeName = QObject::tr("Font size");
     auto basic_interface_opacityName = QObject::tr("Opacity");
     auto basic_layout_verticalTabsText = QObject::tr("Vertical Tabs");
+    auto basic_tab_title_remote_tab_title_formatName = QObject::tr("Remote tab title format");
+    auto basic_tab_title_tab_title_formatName = QObject::tr("Tab title format");
     auto group_advancedName = QObject::tr("Advanced");
     auto group_advanced_scrollingName = QObject::tr("Scrolling");
     auto group_advanced_sessionName = QObject::tr("Session Management");
@@ -24,6 +26,7 @@ void GenerateSettingTranslate() {
     auto group_basic_cursorName = QObject::tr("Cursor");
     auto group_basic_interfaceName = QObject::tr("Interface");
     auto group_basic_layoutName = QObject::tr("Layout");
+    auto group_basic_tab_titleName = QObject::tr("Tab titles");
     auto group_shortcutsName = QObject::tr("Shortcuts");
     auto group_shortcuts_advancedName = QObject::tr("Advanced");
     auto group_shortcuts_tabName = QObject::tr("Tabs");

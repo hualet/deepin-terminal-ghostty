@@ -1677,6 +1677,10 @@ QString TerminalWidget::workingDirectory() const {
     return m_ptySession->workingDirectory();
 }
 
+QString TerminalWidget::foregroundProcessName() const {
+    return m_ptySession ? m_ptySession->foregroundProcessName() : QString();
+}
+
 bool TerminalWidget::hasVtProcessingError() const {
     bool processingError = false;
     return m_terminal

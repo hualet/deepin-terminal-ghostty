@@ -3,6 +3,7 @@
 #include "AppSettings.h"
 #include "PageSearchBar.h"
 #include "PtySession.h"
+#include "TabTitleFormat.h"
 #include "TerminalScrollContainer.h"
 #include "TerminalWidget.h"
 #include "ThemeLoader.h"
@@ -29,6 +30,7 @@
 #include <QScreen>
 #include <QSplitter>
 #include <QStandardPaths>
+#include <QTimer>
 #include <QUrl>
 #include <QUuid>
 #include <QVBoxLayout>
@@ -83,6 +85,49 @@ QUuid ensurePaneId(TerminalWidget *term) {
 
 QString paneTitle(TerminalWidget *term) {
     return term->property("currentTitle").toString();
+}
+
+constexpr auto kTabTitleFormatProperty = "tabTitleFormat";
+constexpr auto kRemoteTabTitleFormatProperty = "remoteTabTitleFormat";
+
+int nextSessionNumber() {
+    static int sessionNumber = 0;
+    return ++sessionNumber;
+}
+
+QString effectiveTabTitleFormat(const TerminalWidget *term, bool remote) {
+    const QVariant value = term->property(remote ? kRemoteTabTitleFormatProperty : kTabTitleFormatProperty);
+    if (value.isValid())
+        return value.toString();
+    auto *settings = AppSettings::instance();
+    return remote ? settings->remoteTabTitleFormat() : settings->tabTitleFormat();
+}
+
+// Remote connections from the server manager run through an expect script,
+// which stays the PTY's foreground process while the session is alive.
+bool isInRemoteSession(const TerminalWidget *term) {
+    return !term->property("remoteHost").toString().isEmpty()
+           && term->foregroundProcessName() == QStringLiteral("expect");
+}
+
+QString computeTabTitle(const TerminalWidget *term) {
+    TabTitleContext context;
+    context.shellTitle = term->property("shellTitle").toString();
+    context.sessionNumber = term->property("sessionNumber").toInt();
+
+    const bool remote = isInRemoteSession(term);
+    if (remote) {
+        context.userName = term->property("remoteUser").toString();
+        context.hostName = term->property("remoteHost").toString();
+    } else {
+        context.programName = term->foregroundProcessName();
+        context.workingDirectory = term->workingDirectory();
+        context.userName = localUserName();
+        context.hostName = localHostName();
+    }
+
+    const QString title = formatTabTitle(effectiveTabTitleFormat(term, remote), context);
+    return title.trimmed().isEmpty() ? QString() : title;
 }
 
 QString commandIconName(const QString &command) {
@@ -278,6 +323,11 @@ TermPane::TermPane(const std::optional<PtySession::StartOptions> &initialSession
     connect(m_searchBar, &PageSearchBar::findPrev, this, &TermPane::onSearchFindPrev);
     connect(m_searchBar, &PageSearchBar::keywordChanged, this, &TermPane::onSearchKeywordChanged);
     connect(m_searchBar, &PageSearchBar::closeSearchBar, this, &TermPane::hideSearchBar);
+
+    connect(AppSettings::instance(), &AppSettings::tabTitleFormatChanged, this, [this]() {
+        for (auto *term : findChildren<TerminalWidget *>())
+            refreshTerminalTitle(term);
+    });
 }
 
 namespace {
@@ -399,6 +449,8 @@ TerminalWidget *TermPane::createTerminal(const std::optional<PtySession::StartOp
         term->setStartOptions(*options);
     }
     term->initialize();
+    term->setProperty("sessionNumber", nextSessionNumber());
+    term->setProperty("currentTitle", computeTabTitle(term));
 
     auto *settings = AppSettings::instance();
     term->setTerminalFont(settings->terminalFont());
@@ -428,23 +480,23 @@ TerminalWidget *TermPane::createTerminal(const std::optional<PtySession::StartOp
 
 void TermPane::setupTerminalConnections(TerminalWidget *term) {
     connect(term, &TerminalWidget::terminalTitleChanged, this, [this, term](const QString &title) {
-        QString displayTitle = term->property("customTitle").toString();
-        if (displayTitle.isEmpty())
-            displayTitle = title;
-        term->setProperty("currentTitle", displayTitle);
-        Q_EMIT paneTitleChanged(ensurePaneId(term), displayTitle);
-        if (m_currentTerm == term)
-            Q_EMIT terminalTitleChanged(displayTitle);
+        term->setProperty("shellTitle", title);
+        refreshTerminalTitle(term);
     });
+    connect(term, &TerminalWidget::workingDirectoryChanged, this,
+            [this, term](const QString &) { refreshTerminalTitle(term); });
     connect(term, &TerminalWidget::sessionExited, this, [this, term](int exitCode) {
         if (term == m_startupTerminal) {
             m_startupTerminal = nullptr;
             Q_EMIT startupSessionExited(exitCode);
         }
     });
-    connect(term, &TerminalWidget::shellCommandChanged, this,
-            [this, term](const QString &) { Q_EMIT paneTitleChanged(ensurePaneId(term), paneTitle(term)); });
+    connect(term, &TerminalWidget::shellCommandChanged, this, [this, term](const QString &) {
+        // Always notify so the pane icon follows the new command.
+        refreshTerminalTitle(term, true);
+    });
     connect(term, &TerminalWidget::commandStateChanged, this, [this, term](TerminalWidget::CommandState state) {
+        refreshTerminalTitle(term);
         Q_EMIT paneCommandStateChanged(ensurePaneId(term), state);
     });
     connect(term, &TerminalWidget::programStatusChanged, this, [this, term]() {
@@ -1018,13 +1070,39 @@ bool TermPane::executeCommandInPane(const QUuid &paneId, const QString &command)
     return sendTextToPane(paneId, command + QLatin1Char('\n'));
 }
 
-void TermPane::setCustomTitle(const QString &title) {
+void TermPane::refreshTerminalTitle(TerminalWidget *term, bool forceNotify) {
+    if (!term)
+        return;
+    const QString title = computeTabTitle(term);
+    if (!forceNotify && term->property("currentTitle").toString() == title)
+        return;
+    term->setProperty("currentTitle", title);
+    Q_EMIT paneTitleChanged(ensurePaneId(term), title);
+    if (m_currentTerm == term)
+        Q_EMIT terminalTitleChanged(title);
+}
+
+void TermPane::setTabTitleFormats(const std::optional<QString> &format, const std::optional<QString> &remoteFormat) {
     if (!m_currentTerm)
         return;
-    m_currentTerm->setProperty("customTitle", title);
-    m_currentTerm->setProperty("currentTitle", title);
-    Q_EMIT paneTitleChanged(ensurePaneId(m_currentTerm), title);
-    Q_EMIT terminalTitleChanged(title);
+    m_currentTerm->setProperty(kTabTitleFormatProperty, format ? QVariant(*format) : QVariant());
+    m_currentTerm->setProperty(kRemoteTabTitleFormatProperty, remoteFormat ? QVariant(*remoteFormat) : QVariant());
+    refreshTerminalTitle(m_currentTerm, true);
+}
+
+QString TermPane::tabTitleFormat() const {
+    return m_currentTerm ? effectiveTabTitleFormat(m_currentTerm, false) : AppSettings::instance()->tabTitleFormat();
+}
+
+QString TermPane::remoteTabTitleFormat() const {
+    return m_currentTerm ? effectiveTabTitleFormat(m_currentTerm, true)
+                         : AppSettings::instance()->remoteTabTitleFormat();
+}
+
+void TermPane::setCustomTitle(const QString &title) {
+    QString format = title;
+    format.replace(QLatin1Char('%'), QStringLiteral("%%"));
+    setTabTitleFormats(format, format);
 }
 
 void TermPane::setOpacity(qreal opacity) {
@@ -1085,9 +1163,10 @@ void TermPane::connectToRemoteServer(const ServerConfig &config) {
     QString expectCmd = QString("expect -f %1 %2\n").arg(toFileStr, strArgs);
     executeCommand(expectCmd.trimmed());
 
-    // Set custom title to reflect remote connection
-    if (!config.m_serverName.isEmpty())
-        setCustomTitle(config.m_serverName);
+    // The remote tab title format applies while the expect session runs.
+    m_currentTerm->setProperty("remoteUser", config.m_userName);
+    m_currentTerm->setProperty("remoteHost", config.m_address.trimmed());
+    QTimer::singleShot(500, m_currentTerm, [this, term = m_currentTerm]() { refreshTerminalTitle(term); });
 }
 
 QPixmap TermPane::renderPreview(const QSize &size) const {
@@ -1160,6 +1239,8 @@ TerminalWidget *TermPane::createTerminalWithUuid(const QString &uuid,
         term->setStartOptions(*options);
     }
     term->initialize();
+    term->setProperty("sessionNumber", nextSessionNumber());
+    term->setProperty("currentTitle", computeTabTitle(term));
 
     auto *settings = AppSettings::instance();
     term->setTerminalFont(settings->terminalFont());

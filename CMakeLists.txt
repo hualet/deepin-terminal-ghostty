@@ -49,6 +49,7 @@ set(APP_TRANSLATABLE_SOURCES
   src/app/ApplicationMetadata.cpp
   src/app/MainWindow.cpp
   src/app/TabBar.cpp
+  src/app/TabTitleFormat.cpp
   src/app/QuakeWindow.cpp
   src/app/AppSettings.cpp
   src/app/SettingsDialog.cpp
@@ -246,6 +247,7 @@ add_executable(deepin-terminal-ghostty
   src/app/main.cpp
   src/app/MainWindow.cpp
   src/app/TabBar.cpp
+  src/app/TabTitleFormat.cpp
   src/app/QuakeWindow.cpp
   src/app/AppSettings.cpp
   src/app/ThemeLoader.cpp

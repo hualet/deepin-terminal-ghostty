@@ -1,5 +1,6 @@
 #include "AppSettings.h"
 
+#include <DSettings>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -158,8 +159,8 @@ private slots:
         QVERIFY(!basic.isEmpty());
         QVERIFY(!shortcuts.isEmpty());
         QVERIFY(!advanced.isEmpty());
-        QCOMPARE(groupKeys(basic),
-                 QStringList({QStringLiteral("interface"), QStringLiteral("cursor"), QStringLiteral("layout")}));
+        QCOMPARE(groupKeys(basic), QStringList({QStringLiteral("interface"), QStringLiteral("cursor"),
+                                                QStringLiteral("layout"), QStringLiteral("tab_title")}));
         QCOMPARE(groupKeys(shortcuts),
                  QStringList({QStringLiteral("terminal"), QStringLiteral("tab"), QStringLiteral("advanced")}));
         QCOMPARE(groupKeys(advanced),
@@ -172,12 +173,26 @@ private slots:
                  QStringList({QStringLiteral("cursorShape"), QStringLiteral("cursorBlink")}));
         QCOMPARE(optionKeys(findGroupByKey(groups, QStringLiteral("layout"))),
                  QStringList({QStringLiteral("verticalTabs")}));
+        QCOMPARE(optionKeys(findGroupByKey(groups, QStringLiteral("tab_title"))),
+                 QStringList({QStringLiteral("tab_title_format"), QStringLiteral("remote_tab_title_format")}));
         QCOMPARE(optionKeys(findGroupByKey(groups, QStringLiteral("session"))),
                  QStringList({QStringLiteral("sessionRestore"), QStringLiteral("sessionRestoreBehavior")}));
         QCOMPARE(optionKeys(findGroupByKey(groups, QStringLiteral("scrolling"))),
                  QStringList({QStringLiteral("scrollbackLines")}));
         QCOMPARE(optionKeys(findGroupByKey(groups, QStringLiteral("window"))),
                  QStringList({QStringLiteral("reuseWindow"), QStringLiteral("hideQuakeOnFocusLoss")}));
+    }
+
+    void testTabTitleFormatDefaults() {
+        auto *s = AppSettings::instance();
+        QCOMPARE(s->tabTitleFormat(), QStringLiteral("%w"));
+        QCOMPARE(s->remoteTabTitleFormat(), QStringLiteral("%U%h"));
+
+        QSignalSpy spy(s, &AppSettings::tabTitleFormatChanged);
+        s->dsettings()->setOption(QStringLiteral("basic.tab_title.tab_title_format"), QStringLiteral("%n:%d"));
+        QCOMPARE(s->tabTitleFormat(), QStringLiteral("%n:%d"));
+        QCOMPARE(spy.count(), 1);
+        s->dsettings()->setOption(QStringLiteral("basic.tab_title.tab_title_format"), QStringLiteral("%w"));
     }
 
     void testVerticalTabsEnabled() {
