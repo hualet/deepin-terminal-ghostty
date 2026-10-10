@@ -1465,9 +1465,6 @@ void MainWindow::setupShortcuts() {
     }
 
     updateShortcut(m_scWorkspaceOverview, "workspace_overview");
-    if (m_overviewAction)
-        m_overviewAction->setText(tr("Workspace overview") + QStringLiteral("\t")
-                                  + settings->shortcut("workspace_overview").toString());
     updateShortcut(m_scNewTab, "new_tab");
     updateShortcut(m_scCloseTab, "close_tab");
     updateShortcut(m_scCloseOtherTabs, "close_other_tabs");
