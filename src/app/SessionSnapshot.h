@@ -5,6 +5,8 @@
 #include <QString>
 #include <QtGlobal>
 
+#include <optional>
+
 struct SplitNode {
     enum class Type { Terminal, Split };
     Type type = Type::Terminal;
@@ -12,6 +14,9 @@ struct SplitNode {
     QString uuid;
     QString workingDirectory;
     QString title;
+    // Per-terminal tab title format overrides; unset follows the global setting.
+    std::optional<QString> tabTitleFormat;
+    std::optional<QString> remoteTabTitleFormat;
 
     Qt::Orientation orientation = Qt::Horizontal;
     QList<int> sizes;

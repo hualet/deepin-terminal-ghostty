@@ -79,6 +79,12 @@ QString formatTabTitle(const QString &format, const TabTitleContext &context) {
     return result;
 }
 
+std::optional<QString> tabTitleFormatOverride(const QString &text, const QString &globalFormat) {
+    if (text.trimmed().isEmpty() || text == globalFormat)
+        return std::nullopt;
+    return text;
+}
+
 QList<TabTitleVariable> tabTitleVariables(bool remote) {
     if (remote) {
         return {
@@ -101,9 +107,13 @@ QList<TabTitleVariable> tabTitleVariables(bool remote) {
 }
 
 QString localUserName() {
-    if (const passwd *pw = ::getpwuid(::getuid()); pw && pw->pw_name)
-        return QString::fromLocal8Bit(pw->pw_name);
-    return qEnvironmentVariable("USER");
+    // The user cannot change for the lifetime of the process.
+    static const QString userName = []() {
+        if (const passwd *pw = ::getpwuid(::getuid()); pw && pw->pw_name)
+            return QString::fromLocal8Bit(pw->pw_name);
+        return qEnvironmentVariable("USER");
+    }();
+    return userName;
 }
 
 QString localHostName() {

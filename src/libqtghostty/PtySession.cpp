@@ -443,14 +443,22 @@ QString PtySession::foregroundProcessName() const {
     if (m_childPid <= 0)
         return {};
 
-    pid_t pid = m_masterFd >= 0 ? ::tcgetpgrp(m_masterFd) : -1;
-    if (pid <= 0)
-        pid = m_childPid;
+    const auto readComm = [](pid_t pid) -> QString {
+        QFile commFile(QStringLiteral("/proc/%1/comm").arg(pid));
+        if (!commFile.open(QIODevice::ReadOnly))
+            return {};
+        return QString::fromUtf8(commFile.readAll()).trimmed();
+    };
 
-    QFile commFile(QStringLiteral("/proc/%1/comm").arg(pid));
-    if (!commFile.open(QIODevice::ReadOnly))
-        return {};
-    return QString::fromUtf8(commFile.readAll()).trimmed();
+    // The group leader may already have exited (e.g. the first command of
+    // a pipeline); fall back to the shell rather than reporting nothing.
+    const pid_t fgPgid = m_masterFd >= 0 ? ::tcgetpgrp(m_masterFd) : -1;
+    if (fgPgid > 0 && fgPgid != m_childPid) {
+        const QString name = readComm(fgPgid);
+        if (!name.isEmpty())
+            return name;
+    }
+    return readComm(m_childPid);
 }
 
 void PtySession::write(const QByteArray &data) {

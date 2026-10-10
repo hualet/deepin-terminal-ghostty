@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
+#include <QFileInfo>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -72,6 +73,7 @@ private slots:
     void testHasRunningProcessReturnsFalseForShell();
     void testHasRunningProcessTracksForegroundCommand();
     void testHasRunningProcessReturnsFalseAfterExit();
+    void testForegroundProcessName();
     void testWriteWhenNotStartedIsIgnored();
     void testResizeWhenNotStartedIsIgnored();
 };
@@ -569,6 +571,34 @@ void TestPtySession::testHasRunningProcessReturnsFalseForShell() {
     // foreground commands such as `git --version`; wait for it to settle at
     // its prompt before asserting the idle state.
     QTRY_VERIFY_WITH_TIMEOUT(!session.hasRunningProcess(), 10000);
+}
+
+void TestPtySession::testForegroundProcessName() {
+    // A plain /bin/sh keeps user rc files and prompt themes out of the way.
+    ScopedShellEnvironment guard;
+    qputenv("SHELL", "/bin/sh");
+
+    PtySession session;
+    QCOMPARE(session.foregroundProcessName(), QString());
+    QVERIFY(session.start(80, 24));
+    // Until exec() completes the forked child still carries our own name.
+    const QString selfName = QFileInfo(QCoreApplication::applicationFilePath()).fileName().left(15);
+    QTRY_VERIFY_WITH_TIMEOUT(session.foregroundProcessName() != selfName, 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!session.hasRunningProcess(), 10000);
+    const QString shellName = session.foregroundProcessName();
+    QVERIFY(!shellName.isEmpty());
+
+    session.write("sleep 60\n");
+    QTRY_COMPARE_WITH_TIMEOUT(session.foregroundProcessName(), QStringLiteral("sleep"), 10000);
+    session.write("\x03");
+    QTRY_COMPARE_WITH_TIMEOUT(session.foregroundProcessName(), shellName, 10000);
+
+    // The pipeline's group leader exits at once; the name must not go empty.
+    session.write("true | sleep 60\n");
+    QTRY_VERIFY_WITH_TIMEOUT(session.hasRunningProcess(), 10000);
+    QTest::qWait(300);
+    QVERIFY(!session.foregroundProcessName().isEmpty());
+    session.write("\x03");
 }
 
 void TestPtySession::testHasRunningProcessTracksForegroundCommand() {

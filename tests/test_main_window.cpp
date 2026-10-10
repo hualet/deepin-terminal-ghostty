@@ -620,6 +620,11 @@ void TestMainWindow::testTabTitleFormatExpandsVariables() {
     context.workingDirectory = QStringLiteral("/");
     context.userName.clear();
     QCOMPARE(formatTabTitle(QStringLiteral("%d|%U"), context), QStringLiteral("/|"));
+
+    QCOMPARE(tabTitleFormatOverride(QStringLiteral("%w"), QStringLiteral("%w")), std::nullopt);
+    QCOMPARE(tabTitleFormatOverride(QStringLiteral("  "), QStringLiteral("%w")), std::nullopt);
+    QCOMPARE(tabTitleFormatOverride(QStringLiteral("%n"), QStringLiteral("%w")),
+             std::optional<QString>(QStringLiteral("%n")));
 }
 
 void TestMainWindow::testTermPaneAppliesTabTitleFormats() {
@@ -660,6 +665,17 @@ void TestMainWindow::testTermPaneAppliesTabTitleFormats() {
 
     pane.setCustomTitle(QStringLiteral("50% %d"));
     QCOMPARE(activeTitle(), QStringLiteral("50% %d"));
+
+    // Per-terminal overrides survive a snapshot round trip.
+    const SplitNode snapshot = pane.buildSplitTree();
+    QCOMPARE(snapshot.tabTitleFormat, std::optional<QString>(QStringLiteral("50%% %%d")));
+    TermPane restored;
+    restored.restoreFromSplitTree(snapshot);
+    QCOMPARE(restored.tabTitleFormat(), QStringLiteral("50%% %%d"));
+    QCOMPARE(restored.paneInfos().first().title, QStringLiteral("50% %d"));
+
+    pane.setTabTitleFormats(std::nullopt, std::nullopt);
+    QVERIFY(!pane.buildSplitTree().tabTitleFormat);
 }
 
 void TestMainWindow::testTermPaneReportsPaneSnapshotsAfterSplit() {

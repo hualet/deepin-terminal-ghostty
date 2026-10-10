@@ -1560,12 +1560,14 @@ void MainWindow::renameTabTitle(int index) {
     auto *formatLabel = new QLabel(tr("Tab title format"), content);
     auto *formatEdit = new TabTitleFormatEdit(false, content);
     formatEdit->setText(pane->tabTitleFormat());
+    formatEdit->lineEdit()->setPlaceholderText(AppSettings::instance()->tabTitleFormat());
     formatEdit->setMinimumWidth(320);
     formatLabel->setBuddy(formatEdit->lineEdit());
 
     auto *remoteLabel = new QLabel(tr("Remote tab title format"), content);
     auto *remoteEdit = new TabTitleFormatEdit(true, content);
     remoteEdit->setText(pane->remoteTabTitleFormat());
+    remoteEdit->lineEdit()->setPlaceholderText(AppSettings::instance()->remoteTabTitleFormat());
     remoteLabel->setBuddy(remoteEdit->lineEdit());
 
     layout->addWidget(formatLabel);
@@ -1582,8 +1584,12 @@ void MainWindow::renameTabTitle(int index) {
     formatEdit->lineEdit()->lineEdit()->selectAll();
     formatEdit->lineEdit()->setFocus();
 
-    if (dlg.exec() == QDialog::Accepted)
-        pane->setTabTitleFormats(formatEdit->text(), remoteEdit->text());
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+
+    auto *settings = AppSettings::instance();
+    pane->setTabTitleFormats(tabTitleFormatOverride(formatEdit->text(), settings->tabTitleFormat()),
+                             tabTitleFormatOverride(remoteEdit->text(), settings->remoteTabTitleFormat()));
 }
 
 void MainWindow::onShortcutDisplayShortcuts() {

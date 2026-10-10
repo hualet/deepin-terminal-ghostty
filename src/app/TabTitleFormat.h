@@ -4,6 +4,8 @@
 #include <QString>
 #include <QWidget>
 
+#include <optional>
+
 namespace Dtk::Widget {
 class DLineEdit;
 }
@@ -29,6 +31,9 @@ struct TabTitleVariable {
 };
 
 QString formatTabTitle(const QString &format, const TabTitleContext &context);
+// Maps user input to a per-tab override. Empty input or the global format
+// means "follow the setting", so confirming unchanged never pins a value.
+std::optional<QString> tabTitleFormatOverride(const QString &text, const QString &globalFormat);
 QList<TabTitleVariable> tabTitleVariables(bool remote);
 QString localUserName();
 QString localHostName();

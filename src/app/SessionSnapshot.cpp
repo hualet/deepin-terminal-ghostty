@@ -10,6 +10,10 @@ QJsonObject splitNodeToJson(const SplitNode &node) {
         obj["uuid"] = node.uuid;
         obj["workingDirectory"] = node.workingDirectory;
         obj["title"] = node.title;
+        if (node.tabTitleFormat)
+            obj["tabTitleFormat"] = *node.tabTitleFormat;
+        if (node.remoteTabTitleFormat)
+            obj["remoteTabTitleFormat"] = *node.remoteTabTitleFormat;
     } else {
         obj["type"] = "split";
         obj["orientation"] = node.orientation == Qt::Horizontal ? "horizontal" : "vertical";
@@ -28,7 +32,13 @@ QJsonObject splitNodeToJson(const SplitNode &node) {
 SplitNode splitNodeFromJson(const QJsonObject &obj) {
     QString type = obj["type"].toString();
     if (type == "terminal") {
-        return SplitNode::terminal(obj["uuid"].toString(), obj["workingDirectory"].toString(), obj["title"].toString());
+        SplitNode node =
+            SplitNode::terminal(obj["uuid"].toString(), obj["workingDirectory"].toString(), obj["title"].toString());
+        if (obj.contains("tabTitleFormat"))
+            node.tabTitleFormat = obj["tabTitleFormat"].toString();
+        if (obj.contains("remoteTabTitleFormat"))
+            node.remoteTabTitleFormat = obj["remoteTabTitleFormat"].toString();
+        return node;
     }
     Qt::Orientation orientation = obj["orientation"].toString() == "horizontal" ? Qt::Horizontal : Qt::Vertical;
     QList<int> sizes;

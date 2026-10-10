@@ -31,8 +31,8 @@ public:
     void resize(int cols, int rows, int cellWidthPx, int cellHeightPx);
     bool hasRunningProcess() const;
     QString workingDirectory() const;
-    // Name of the PTY's foreground process group leader (falls back to the
-    // shell), as reported by /proc/<pid>/comm.
+    // Name of the PTY's foreground process group leader as reported by
+    // /proc/<pid>/comm, falling back to the shell when it is unavailable.
     QString foregroundProcessName() const;
 
 signals:

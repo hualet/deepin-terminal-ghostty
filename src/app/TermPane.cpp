@@ -103,31 +103,52 @@ QString effectiveTabTitleFormat(const TerminalWidget *term, bool remote) {
     return remote ? settings->remoteTabTitleFormat() : settings->tabTitleFormat();
 }
 
-// Remote connections from the server manager run through an expect script,
-// which stays the PTY's foreground process while the session is alive.
-bool isInRemoteSession(const TerminalWidget *term) {
-    return !term->property("remoteHost").toString().isEmpty()
-           && term->foregroundProcessName() == QStringLiteral("expect");
+constexpr auto kRemoteSessionActiveProperty = "remoteSessionActive";
+constexpr auto kRemoteSessionTimerName = "remoteSessionTimer";
+constexpr int kRemoteSessionPollIntervalMs = 500;
+constexpr int kRemoteSessionStartPolls = 20;
+
+bool formatUses(const QString &format, char key) {
+    return format.contains(QStringLiteral("%") + QLatin1Char(key));
 }
 
 QString computeTabTitle(const TerminalWidget *term) {
+    const bool remote = term->property(kRemoteSessionActiveProperty).toBool();
+    const QString format = effectiveTabTitleFormat(term, remote);
+
+    // Only gather the values the format refers to; some need /proc or
+    // passwd lookups and titles are recomputed on every shell event.
     TabTitleContext context;
     context.shellTitle = term->property("shellTitle").toString();
     context.sessionNumber = term->property("sessionNumber").toInt();
-
-    const bool remote = isInRemoteSession(term);
     if (remote) {
         context.userName = term->property("remoteUser").toString();
         context.hostName = term->property("remoteHost").toString();
     } else {
-        context.programName = term->foregroundProcessName();
-        context.workingDirectory = term->workingDirectory();
-        context.userName = localUserName();
-        context.hostName = localHostName();
+        if (formatUses(format, 'n'))
+            context.programName = term->foregroundProcessName();
+        if (formatUses(format, 'd') || formatUses(format, 'D'))
+            context.workingDirectory = term->workingDirectory();
+        if (formatUses(format, 'u') || formatUses(format, 'U'))
+            context.userName = localUserName();
+        if (formatUses(format, 'h'))
+            context.hostName = localHostName();
     }
 
-    const QString title = formatTabTitle(effectiveTabTitleFormat(term, remote), context);
+    const QString title = formatTabTitle(format, context);
     return title.trimmed().isEmpty() ? QString() : title;
+}
+
+void applySnapshotTitleFormats(TerminalWidget *term, const SplitNode &node) {
+    if (node.tabTitleFormat)
+        term->setProperty(kTabTitleFormatProperty, *node.tabTitleFormat);
+    if (node.remoteTabTitleFormat)
+        term->setProperty(kRemoteTabTitleFormatProperty, *node.remoteTabTitleFormat);
+}
+
+std::optional<QString> titleFormatOverride(const TerminalWidget *term, const char *property) {
+    const QVariant value = term->property(property);
+    return value.isValid() ? std::optional<QString>(value.toString()) : std::nullopt;
 }
 
 QString commandIconName(const QString &command) {
@@ -278,14 +299,17 @@ private:
 };
 
 SplitNode buildSplitTreeFromWidget(QWidget *widget) {
-    if (auto *container = qobject_cast<TerminalScrollContainer *>(widget)) {
-        auto *term = container->terminal();
-        return SplitNode::terminal(term->property("paneId").toUuid().toString(QUuid::WithoutBraces),
-                                   term->workingDirectory(), term->property("currentTitle").toString());
-    }
-    if (auto *term = qobject_cast<TerminalWidget *>(widget)) {
-        return SplitNode::terminal(term->property("paneId").toUuid().toString(QUuid::WithoutBraces),
-                                   term->workingDirectory(), term->property("currentTitle").toString());
+    TerminalWidget *term = nullptr;
+    if (auto *container = qobject_cast<TerminalScrollContainer *>(widget))
+        term = container->terminal();
+    else
+        term = qobject_cast<TerminalWidget *>(widget);
+    if (term) {
+        SplitNode node = SplitNode::terminal(term->property("paneId").toUuid().toString(QUuid::WithoutBraces),
+                                             term->workingDirectory(), term->property("currentTitle").toString());
+        node.tabTitleFormat = titleFormatOverride(term, kTabTitleFormatProperty);
+        node.remoteTabTitleFormat = titleFormatOverride(term, kRemoteTabTitleFormatProperty);
+        return node;
     }
     if (auto *splitter = qobject_cast<QSplitter *>(widget)) {
         QList<SplitNode> children;
@@ -492,8 +516,10 @@ void TermPane::setupTerminalConnections(TerminalWidget *term) {
         }
     });
     connect(term, &TerminalWidget::shellCommandChanged, this, [this, term](const QString &) {
-        // Always notify so the pane icon follows the new command.
-        refreshTerminalTitle(term, true);
+        // Notify the pane even when the title is unchanged so its icon
+        // follows the new command.
+        if (!refreshTerminalTitle(term))
+            Q_EMIT paneTitleChanged(ensurePaneId(term), paneTitle(term));
     });
     connect(term, &TerminalWidget::commandStateChanged, this, [this, term](TerminalWidget::CommandState state) {
         refreshTerminalTitle(term);
@@ -1070,16 +1096,55 @@ bool TermPane::executeCommandInPane(const QUuid &paneId, const QString &command)
     return sendTextToPane(paneId, command + QLatin1Char('\n'));
 }
 
-void TermPane::refreshTerminalTitle(TerminalWidget *term, bool forceNotify) {
+bool TermPane::refreshTerminalTitle(TerminalWidget *term, bool forceNotify) {
     if (!term)
-        return;
+        return false;
     const QString title = computeTabTitle(term);
     if (!forceNotify && term->property("currentTitle").toString() == title)
-        return;
+        return false;
     term->setProperty("currentTitle", title);
     Q_EMIT paneTitleChanged(ensurePaneId(term), title);
     if (m_currentTerm == term)
         Q_EMIT terminalTitleChanged(title);
+    return true;
+}
+
+void TermPane::trackRemoteSession(TerminalWidget *term, const QString &user, const QString &host) {
+    if (!term)
+        return;
+    delete term->findChild<QTimer *>(QLatin1String(kRemoteSessionTimerName), Qt::FindDirectChildrenOnly);
+
+    term->setProperty("remoteUser", user);
+    term->setProperty("remoteHost", host);
+    term->setProperty(kRemoteSessionActiveProperty, false);
+
+    // The login runs through an expect script that stays in the PTY
+    // foreground for the whole remote session. Watch it so the remote title
+    // format applies exactly while that session is alive.
+    auto *timer = new QTimer(term);
+    timer->setObjectName(QLatin1String(kRemoteSessionTimerName));
+    timer->setInterval(kRemoteSessionPollIntervalMs);
+    connect(timer, &QTimer::timeout, this, [this, term, timer, pendingPolls = kRemoteSessionStartPolls]() mutable {
+        const bool running = term->foregroundProcessName() == QStringLiteral("expect");
+        const bool active = term->property(kRemoteSessionActiveProperty).toBool();
+        if (running) {
+            if (!active) {
+                term->setProperty(kRemoteSessionActiveProperty, true);
+                refreshTerminalTitle(term);
+            }
+            return;
+        }
+        if (!active && --pendingPolls > 0)
+            return;
+
+        timer->stop();
+        timer->deleteLater();
+        term->setProperty("remoteUser", QVariant());
+        term->setProperty("remoteHost", QVariant());
+        term->setProperty(kRemoteSessionActiveProperty, false);
+        refreshTerminalTitle(term);
+    });
+    timer->start();
 }
 
 void TermPane::setTabTitleFormats(const std::optional<QString> &format, const std::optional<QString> &remoteFormat) {
@@ -1163,10 +1228,7 @@ void TermPane::connectToRemoteServer(const ServerConfig &config) {
     QString expectCmd = QString("expect -f %1 %2\n").arg(toFileStr, strArgs);
     executeCommand(expectCmd.trimmed());
 
-    // The remote tab title format applies while the expect session runs.
-    m_currentTerm->setProperty("remoteUser", config.m_userName);
-    m_currentTerm->setProperty("remoteHost", config.m_address.trimmed());
-    QTimer::singleShot(500, m_currentTerm, [this, term = m_currentTerm]() { refreshTerminalTitle(term); });
+    trackRemoteSession(m_currentTerm, config.m_userName, config.m_address.trimmed());
 }
 
 QPixmap TermPane::renderPreview(const QSize &size) const {
@@ -1227,19 +1289,20 @@ SplitNode TermPane::buildSplitTree() const {
     return buildSplitTreeFromWidget(m_rootWidget);
 }
 
-TerminalWidget *TermPane::createTerminalWithUuid(const QString &uuid,
+TerminalWidget *TermPane::createTerminalFromNode(const SplitNode &node,
                                                  const std::optional<PtySession::StartOptions> &options) {
     auto *container = new TerminalScrollContainer(this);
     auto *term = container->terminal();
     term->setContentsMargins(kTerminalContentPadding, kTerminalContentPadding, kTerminalContentPadding,
                              kTerminalContentPadding);
 
-    term->setProperty("paneId", QUuid(uuid));
+    term->setProperty("paneId", QUuid(node.uuid));
     if (options) {
         term->setStartOptions(*options);
     }
     term->initialize();
     term->setProperty("sessionNumber", nextSessionNumber());
+    applySnapshotTitleFormats(term, node);
     term->setProperty("currentTitle", computeTabTitle(term));
 
     auto *settings = AppSettings::instance();
@@ -1281,7 +1344,7 @@ QList<QPair<QString, TerminalWidget *>> TermPane::restoreFromSplitTree(const Spl
         std::optional<PtySession::StartOptions> opts;
         if (!node.workingDirectory.isEmpty())
             opts = PtySession::StartOptions{{}, node.workingDirectory};
-        auto *term = createTerminalWithUuid(node.uuid, opts);
+        auto *term = createTerminalFromNode(node, opts);
         m_layout->addWidget(layoutWidgetForTerminal(term));
         m_rootWidget = layoutWidgetForTerminal(term);
         setCurrentTerminal(term);
@@ -1299,7 +1362,7 @@ QList<QPair<QString, TerminalWidget *>> TermPane::restoreFromSplitTree(const Spl
         std::optional<PtySession::StartOptions> firstOpts;
         if (!firstChild.workingDirectory.isEmpty())
             firstOpts = PtySession::StartOptions{{}, firstChild.workingDirectory};
-        auto *firstTerm = createTerminalWithUuid(firstChild.uuid, firstOpts);
+        auto *firstTerm = createTerminalFromNode(firstChild, firstOpts);
         m_layout->addWidget(layoutWidgetForTerminal(firstTerm));
         m_rootWidget = layoutWidgetForTerminal(firstTerm);
         setCurrentTerminal(firstTerm);
@@ -1323,7 +1386,7 @@ QList<QPair<QString, TerminalWidget *>> TermPane::rebuildTreeRecursive(const Spl
         std::optional<PtySession::StartOptions> opts;
         if (!node.workingDirectory.isEmpty())
             opts = PtySession::StartOptions{{}, node.workingDirectory};
-        auto *term = createTerminalWithUuid(node.uuid, opts);
+        auto *term = createTerminalFromNode(node, opts);
         splitTerminal(sibling, term, parentOrientation);
         result.append({node.uuid, term});
         return result;
@@ -1343,7 +1406,7 @@ QList<QPair<QString, TerminalWidget *>> TermPane::rebuildTreeRecursive(const Spl
         std::optional<PtySession::StartOptions> firstOpts;
         if (!firstChild.workingDirectory.isEmpty())
             firstOpts = PtySession::StartOptions{{}, firstChild.workingDirectory};
-        firstTerm = createTerminalWithUuid(firstChild.uuid, firstOpts);
+        firstTerm = createTerminalFromNode(firstChild, firstOpts);
         splitTerminal(sibling, firstTerm, parentOrientation);
         result.append({firstChild.uuid, firstTerm});
     }

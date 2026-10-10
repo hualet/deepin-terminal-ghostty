@@ -16,6 +16,20 @@ private slots:
         QCOMPARE(restored.title, "bash");
     }
 
+    void testTerminalNodeTitleFormatsRoundTrip() {
+        SplitNode original = SplitNode::terminal("uuid-1", "/home/user", "bash");
+        original.tabTitleFormat = QStringLiteral("%n:%d");
+        original.remoteTabTitleFormat = QString();
+        const QJsonObject json = splitNodeToJson(original);
+        const SplitNode restored = splitNodeFromJson(json);
+        QCOMPARE(restored.tabTitleFormat, std::optional<QString>(QStringLiteral("%n:%d")));
+        QCOMPARE(restored.remoteTabTitleFormat, std::optional<QString>(QString()));
+
+        const SplitNode plain = splitNodeFromJson(splitNodeToJson(SplitNode::terminal("uuid-2", "/", "sh")));
+        QVERIFY(!plain.tabTitleFormat);
+        QVERIFY(!plain.remoteTabTitleFormat);
+    }
+
     void testSplitNodeRoundTrip() {
         SplitNode original =
             SplitNode::split(Qt::Vertical, {300, 500},

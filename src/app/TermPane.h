@@ -91,7 +91,9 @@ private:
     TerminalWidget *createTerminal(const std::optional<PtySession::StartOptions> &options = std::nullopt);
     void setupTerminalConnections(TerminalWidget *term);
     void setCurrentTerminal(TerminalWidget *term);
-    void refreshTerminalTitle(TerminalWidget *term, bool forceNotify = false);
+    // Returns whether the title changed (or a notification was forced).
+    bool refreshTerminalTitle(TerminalWidget *term, bool forceNotify = false);
+    void trackRemoteSession(TerminalWidget *term, const QString &user, const QString &host);
     void removeTerminal(TerminalWidget *term);
     QSplitter *createPaneSplitter(Qt::Orientation orientation);
     QList<TerminalWidget *> terminalsInVisualOrder() const;
@@ -105,7 +107,7 @@ private:
     void onSearchFindNext();
     void onSearchFindPrev();
 
-    TerminalWidget *createTerminalWithUuid(const QString &uuid,
+    TerminalWidget *createTerminalFromNode(const SplitNode &node,
                                            const std::optional<PtySession::StartOptions> &options = std::nullopt);
     QList<QPair<QString, TerminalWidget *>> rebuildTreeRecursive(const SplitNode &node, TerminalWidget *sibling,
                                                                  Qt::Orientation parentOrientation);

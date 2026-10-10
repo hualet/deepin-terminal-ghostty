@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTest>
@@ -188,11 +189,13 @@ private slots:
         QCOMPARE(s->tabTitleFormat(), QStringLiteral("%w"));
         QCOMPARE(s->remoteTabTitleFormat(), QStringLiteral("%U%h"));
 
+        const auto restoreFormat = qScopeGuard([s]() {
+            s->dsettings()->setOption(QStringLiteral("basic.tab_title.tab_title_format"), QStringLiteral("%w"));
+        });
         QSignalSpy spy(s, &AppSettings::tabTitleFormatChanged);
         s->dsettings()->setOption(QStringLiteral("basic.tab_title.tab_title_format"), QStringLiteral("%n:%d"));
         QCOMPARE(s->tabTitleFormat(), QStringLiteral("%n:%d"));
         QCOMPARE(spy.count(), 1);
-        s->dsettings()->setOption(QStringLiteral("basic.tab_title.tab_title_format"), QStringLiteral("%w"));
     }
 
     void testVerticalTabsEnabled() {
