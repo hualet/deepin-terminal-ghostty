@@ -1681,6 +1681,10 @@ QString TerminalWidget::foregroundProcessName() const {
     return m_ptySession ? m_ptySession->foregroundProcessName() : QString();
 }
 
+QStringList TerminalWidget::foregroundProcessArguments() const {
+    return m_ptySession ? m_ptySession->foregroundProcessArguments() : QStringList();
+}
+
 bool TerminalWidget::hasVtProcessingError() const {
     bool processingError = false;
     return m_terminal

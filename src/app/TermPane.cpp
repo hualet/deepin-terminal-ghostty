@@ -2,6 +2,7 @@
 
 #include "AppSettings.h"
 #include "PageSearchBar.h"
+#include "ProcessIcon.h"
 #include "PtySession.h"
 #include "TabTitleFormat.h"
 #include "TerminalScrollContainer.h"
@@ -21,10 +22,8 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QKeyEvent>
-#include <QMap>
 #include <QMenu>
 #include <QPainter>
-#include <QProcess>
 #include <QRandomGenerator>
 #include <QResizeEvent>
 #include <QScreen>
@@ -41,6 +40,7 @@ namespace {
 
 constexpr int kTerminalContentPadding = 12;
 constexpr qreal kDividerBlendRatio = 0.08;
+constexpr int kForegroundProcessSettleMs = 250;
 
 QColor blendedDividerColor(const QColor &background, const QColor &foreground) {
     const auto blendChannel = [](int backgroundChannel, int foregroundChannel) {
@@ -151,65 +151,12 @@ std::optional<QString> titleFormatOverride(const TerminalWidget *term, const cha
     return value.isValid() ? std::optional<QString>(value.toString()) : std::nullopt;
 }
 
-QString commandIconName(const QString &command) {
-    if (command.isEmpty())
-        return {};
-
-    static const QMap<QString, QString> kIconNames = {
-        {QStringLiteral("claude-code"), QStringLiteral("claude")},
-        {QStringLiteral("github-copilot"), QStringLiteral("github-copilot")},
-        {QStringLiteral("qwen-code"), QStringLiteral("qwen")},
-        {QStringLiteral("codex"), QStringLiteral("codex")},
-        {QStringLiteral("claude"), QStringLiteral("claude")},
-        {QStringLiteral("gemini"), QStringLiteral("gemini")},
-        {QStringLiteral("aider"), QStringLiteral("aider")},
-        {QStringLiteral("opencode"), QStringLiteral("opencode")},
-        {QStringLiteral("goose"), QStringLiteral("goose")},
-        {QStringLiteral("qwen"), QStringLiteral("qwen")},
-        {QStringLiteral("kimi"), QStringLiteral("kimi")},
-        {QStringLiteral("ssh"), QStringLiteral("shell")},
-        {QStringLiteral("mosh"), QStringLiteral("shell")},
-        {QStringLiteral("docker"), QStringLiteral("docker")},
-        {QStringLiteral("podman"), QStringLiteral("podman")},
-        {QStringLiteral("kubectl"), QStringLiteral("kubernetes")},
-        {QStringLiteral("helm"), QStringLiteral("helm")},
-        {QStringLiteral("nvim"), QStringLiteral("nvim")},
-        {QStringLiteral("vim"), QStringLiteral("vim")},
-        {QStringLiteral("nano"), QStringLiteral("nano")},
-        {QStringLiteral("emacs"), QStringLiteral("emacs")},
-        {QStringLiteral("htop"), QStringLiteral("htop")},
-        {QStringLiteral("btop"), QStringLiteral("htop")},
-        {QStringLiteral("top"), QStringLiteral("htop")},
-    };
-
-    const QString normalizedCommand = command.toLower();
-    for (auto it = kIconNames.constBegin(); it != kIconNames.constEnd(); ++it) {
-        if (normalizedCommand.contains(it.key()))
-            return it.value();
-    }
-
-    const QStringList tokens = QProcess::splitCommand(command);
-    for (const QString &token : tokens) {
-        const QString normalizedToken = token.toLower();
-        for (auto it = kIconNames.constBegin(); it != kIconNames.constEnd(); ++it) {
-            if (normalizedToken.contains(it.key()))
-                return it.value();
-        }
-    }
-
-    return {};
-}
-
 QString iconNameForPane(TerminalWidget *term) {
     if (!term)
         return QStringLiteral("terminal");
 
-    const QString shellCommand = term->property("shellCommand").toString();
-    const QString shellIcon = commandIconName(shellCommand);
-    if (!shellIcon.isEmpty())
-        return shellIcon;
-
-    return QStringLiteral("terminal");
+    const QString icon = processIconName(term->foregroundProcessName(), term->foregroundProcessArguments());
+    return icon.isEmpty() ? QStringLiteral("terminal") : icon;
 }
 
 TerminalWidget *firstTerminalWidget(QWidget *widget) {
@@ -515,11 +462,18 @@ void TermPane::setupTerminalConnections(TerminalWidget *term) {
             Q_EMIT startupSessionExited(exitCode);
         }
     });
-    connect(term, &TerminalWidget::shellCommandChanged, this, [this, term](const QString &) {
+    connect(term, &TerminalWidget::shellCommandChanged, this, [this, term](const QString &command) {
         // Notify the pane even when the title is unchanged so its icon
         // follows the new command.
-        if (!refreshTerminalTitle(term))
-            Q_EMIT paneTitleChanged(ensurePaneId(term), paneTitle(term));
+        const auto notifyPane = [this, term]() {
+            if (!refreshTerminalTitle(term))
+                Q_EMIT paneTitleChanged(ensurePaneId(term), paneTitle(term));
+        };
+        notifyPane();
+        // The shell reports a command before forking it; look again once the
+        // program owns the foreground so the icon and %n title catch up.
+        if (!command.isEmpty())
+            QTimer::singleShot(kForegroundProcessSettleMs, term, notifyPane);
     });
     connect(term, &TerminalWidget::commandStateChanged, this, [this, term](TerminalWidget::CommandState state) {
         refreshTerminalTitle(term);

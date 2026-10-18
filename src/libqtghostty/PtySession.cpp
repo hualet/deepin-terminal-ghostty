@@ -461,6 +461,27 @@ QString PtySession::foregroundProcessName() const {
     return readComm(m_childPid);
 }
 
+QStringList PtySession::foregroundProcessArguments() const {
+    if (m_masterFd < 0 || m_childPid <= 0)
+        return {};
+
+    const pid_t fgPgid = ::tcgetpgrp(m_masterFd);
+    if (fgPgid <= 0 || fgPgid == m_childPid)
+        return {};
+
+    QFile cmdlineFile(QStringLiteral("/proc/%1/cmdline").arg(fgPgid));
+    if (!cmdlineFile.open(QIODevice::ReadOnly))
+        return {};
+
+    QStringList arguments;
+    const QList<QByteArray> parts = cmdlineFile.readAll().split('\0');
+    for (const QByteArray &part : parts) {
+        if (!part.isEmpty())
+            arguments.append(QString::fromUtf8(part));
+    }
+    return arguments;
+}
+
 void PtySession::write(const QByteArray &data) {
     if (m_masterFd < 0 || data.isEmpty()) {
         return;

@@ -42,6 +42,21 @@ target_link_libraries(test_startup_options PRIVATE
 add_test(NAME StartupOptions COMMAND test_startup_options)
 
 # ---------------------------------------------------------------------------
+# test_process_icon
+# ---------------------------------------------------------------------------
+add_executable(test_process_icon
+  test_process_icon.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/ProcessIcon.cpp
+)
+
+target_link_libraries(test_process_icon PRIVATE
+  Qt6::Core
+  Qt6::Test
+)
+
+add_test(NAME ProcessIcon COMMAND test_process_icon)
+
+# ---------------------------------------------------------------------------
 # test_pty_session
 # ---------------------------------------------------------------------------
 add_executable(test_pty_session
@@ -150,6 +165,7 @@ add_executable(test_main_window
   ${CMAKE_SOURCE_DIR}/src/app/WorkspaceOverview.cpp
   ${CMAKE_SOURCE_DIR}/src/app/OverviewTransition.cpp
   ${CMAKE_SOURCE_DIR}/src/app/PageSearchBar.cpp
+  ${CMAKE_SOURCE_DIR}/src/app/ProcessIcon.cpp
   ${CMAKE_SOURCE_DIR}/src/app/SessionManager.cpp
   ${CMAKE_SOURCE_DIR}/src/app/SessionSnapshot.cpp
   ${CMAKE_SOURCE_DIR}/src/app/remote/ServerConfigManager.cpp

@@ -1034,6 +1034,15 @@ void TestMainWindow::testCloseOtherTerminalsPublishesSingleStructureChange() {
 }
 
 void TestMainWindow::testTermPaneReportsProcessIconNames() {
+    // The icon follows the real foreground process, so run `sleep` under a
+    // recognized program name instead of faking the typed command.
+    const QString sleepPath = QStandardPaths::findExecutable(QStringLiteral("sleep"));
+    QVERIFY(!sleepPath.isEmpty());
+    QTemporaryDir binDir;
+    QVERIFY(binDir.isValid());
+    const QString dockerPath = binDir.filePath(QStringLiteral("docker"));
+    QVERIFY(QFile::link(sleepPath, dockerPath));
+
     ExposedTermPane pane;
     pane.resize(1200, 800);
     pane.show();
@@ -1041,23 +1050,17 @@ void TestMainWindow::testTermPaneReportsProcessIconNames() {
 
     auto *terminal = pane.currentTerminal();
     QVERIFY(terminal);
-    terminal->setProperty("shellCommand", QStringLiteral("bash -lc 'npx codex'"));
-
-    const auto infos = pane.paneInfos();
-    QCOMPARE(infos.size(), 1);
-    QCOMPARE(infos.first().iconName, QStringLiteral("codex"));
-
-    terminal->setProperty("shellCommand", QStringLiteral("bash -lc 'python -m aider'"));
-    QCOMPARE(pane.paneInfos().first().iconName, QStringLiteral("aider"));
-
-    terminal->setProperty("shellCommand", QStringLiteral("bash -lc 'docker compose up'"));
-    QCOMPARE(pane.paneInfos().first().iconName, QStringLiteral("docker"));
-
-    terminal->setProperty("shellCommand", QStringLiteral("claude --dangerously-skip-permissions"));
-    QCOMPARE(pane.paneInfos().first().iconName, QStringLiteral("claude"));
-
-    terminal->setProperty("shellCommand", QString());
+    auto *session = ptySession(terminal);
+    QVERIFY(session);
+    QTRY_VERIFY_WITH_TIMEOUT(!session->hasRunningProcess(), 10000);
+    QCOMPARE(pane.paneInfos().size(), 1);
     QCOMPARE(pane.paneInfos().first().iconName, QStringLiteral("terminal"));
+
+    session->write(QStringLiteral("'%1' 60\n").arg(dockerPath).toUtf8());
+    QTRY_COMPARE_WITH_TIMEOUT(pane.paneInfos().first().iconName, QStringLiteral("docker"), 10000);
+
+    session->write("\x03");
+    QTRY_COMPARE_WITH_TIMEOUT(pane.paneInfos().first().iconName, QStringLiteral("terminal"), 10000);
 }
 
 void TestMainWindow::testAppTerminalsSetTerminalContentMargins() {

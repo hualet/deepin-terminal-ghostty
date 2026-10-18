@@ -587,9 +587,11 @@ void TestPtySession::testForegroundProcessName() {
     QTRY_VERIFY_WITH_TIMEOUT(!session.hasRunningProcess(), 10000);
     const QString shellName = session.foregroundProcessName();
     QVERIFY(!shellName.isEmpty());
+    QVERIFY(session.foregroundProcessArguments().isEmpty());
 
     session.write("sleep 60\n");
     QTRY_COMPARE_WITH_TIMEOUT(session.foregroundProcessName(), QStringLiteral("sleep"), 10000);
+    QCOMPARE(session.foregroundProcessArguments(), QStringList({QStringLiteral("sleep"), QStringLiteral("60")}));
     session.write("\x03");
     QTRY_COMPARE_WITH_TIMEOUT(session.foregroundProcessName(), shellName, 10000);
 

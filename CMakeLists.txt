@@ -259,6 +259,7 @@ add_executable(deepin-terminal-ghostty
   src/app/WorkspaceOverview.cpp
   src/app/OverviewTransition.cpp
   src/app/PageSearchBar.cpp
+  src/app/ProcessIcon.cpp
   src/app/SessionManager.cpp
   src/app/SessionSnapshot.cpp
   src/app/remote/ServerConfigManager.cpp

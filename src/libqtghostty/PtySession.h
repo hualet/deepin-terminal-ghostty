@@ -34,6 +34,9 @@ public:
     // Name of the PTY's foreground process group leader as reported by
     // /proc/<pid>/comm, falling back to the shell when it is unavailable.
     QString foregroundProcessName() const;
+    // argv of the PTY's foreground process group leader from
+    // /proc/<pid>/cmdline; empty while the shell itself is in the foreground.
+    QStringList foregroundProcessArguments() const;
 
 signals:
     void dataReceived(const QByteArray &data);
