@@ -15,7 +15,7 @@
 - [ ] 现代扩展协议
   - [ ] kitty image protocol
     - [x] pin `libghostty-vt` and the complete public header tree to
-      `e77b2309fca3a27db1123a4f904b7fb432ee7162`
+      `a4aacd918ba9e79929ff608034c60a4341773ef0`
     - [x] inline/direct image storage
     - [x] inline PNG decode callback
     - [x] decoded RGB, RGBA, grayscale, and grayscale-alpha image conversion
@@ -24,10 +24,11 @@
     - [x] graphics/image generation-based cache invalidation
     - [ ] Unicode placeholder / virtual placements (`U=1`, required by
       `textual-image` TGP)
-      - [ ] Preferred dependency: add a Ghostty C API that returns decoded
-        virtual render fragments, including image/placement ids, viewport cell
-        rectangle, source rectangle, and z-layer. The current placement helper
-        intentionally reports virtual placements as not viewport-visible.
+      - [ ] Upgrade and consume Ghostty 1.4's unified render-state image
+        iterator, which now resolves fixed, placeholder and relative placements
+        with viewport/source geometry and z-layer. Replace the storage iterator
+        drawing path to avoid drawing fixed placements twice. See
+        [the adoption assessment](research/2026-10-28-ghostty-1.4-adoption.md).
       - [ ] Available fallback dependencies: consume
         `GHOSTTY_ROW_DATA_KITTY_VIRTUAL_PLACEHOLDER`, render-cell graphemes,
         foreground/underline colors, and Ghostty's pinned row/column diacritic
@@ -44,9 +45,9 @@
     - [ ] Animated images
       - [x] Ghostty exposes current-frame pixels and changes image generation
         when its internal animation state advances.
-      - [ ] Required upstream dependency: expose animation tick/next-deadline
-        or wake scheduling through the C API. Reading the current frame alone
-        cannot advance an animation from a Qt embedder.
+      - [ ] Upgrade and consume Ghostty 1.4's
+        `ghostty_kitty_graphics_animation_tick()` C API, which now advances
+        playback and returns the next deadline. It is not yet vendored.
       - [ ] Drive the API from a single-shot Qt timer, invalidate only affected
         image caches/regions, and stop scheduling when no visible animation is
         active.

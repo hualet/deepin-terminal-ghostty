@@ -8,8 +8,8 @@ This document tracks the current Kitty image protocol support in
 The terminal now supports the common inline/direct Kitty image path:
 
 - The vendored engine and complete public headers are pinned to Ghostty commit
-  `e77b2309fca3a27db1123a4f904b7fb432ee7162` and the library reports
-  `0.1.0-dev+e77b2309f`.
+  `a4aacd918ba9e79929ff608034c60a4341773ef0` and the library reports
+  `0.1.0-dev+a4aacd918`.
 - `libghostty-vt` parses Kitty graphics APC sequences and owns protocol state.
 - `TerminalWidget` enables Kitty image storage with a 64 MiB storage limit.
 - A process-wide Ghostty PNG decoder callback is installed through
@@ -33,6 +33,15 @@ that transmit image data and ask the terminal to place the image at the cursor
 or at an explicit pinned position.
 
 ## Known Gap: Unicode Placeholder Placements
+
+As of Ghostty 1.4 (2026-10-28 review), the upstream C API now provides a
+unified render-state image iterator for fixed, placeholder and relative
+placements, plus `ghostty_kitty_graphics_animation_tick()` for playback and
+next-frame scheduling. These APIs are not in our vendored revision yet.
+The limitations below describe the current integration. See the
+[1.4 adoption assessment](research/2026-10-28-ghostty-1.4-adoption.md) for the
+available upstream path; Qt should consume that path rather than duplicate
+placeholder decoding.
 
 `textual-image` uses Kitty's Unicode placeholder placement mode:
 
@@ -84,13 +93,13 @@ Remaining virtual placement path:
 4. Paint the matching source fragment over the placeholder cell rectangle.
 5. Suppress drawing of the placeholder glyphs themselves.
 
-The preferred long-term approach is to expose virtual placement render fragments
-from `libghostty-vt` through a C API, so Qt does not duplicate Ghostty's
-placeholder decoding rules. Each fragment needs image/placement ids, viewport
-cell geometry, source geometry, and z-layer. If that API is unavailable, the
-fallback is to implement the placeholder decoder in `TerminalWidget` using the
-row flag, cell graphemes and styles, and a version-pinned copy of Ghostty's
-documented row/column diacritic table.
+The preferred approach is to upgrade to Ghostty 1.4 and consume its unified
+render-state image iterator, so Qt does not duplicate Ghostty's placeholder
+decoding rules. Entries provide image ids and generations, viewport cell
+geometry, source geometry, and z-layer. This path replaces the storage iterator
+for all image drawing. If the project must remain on the current engine, the
+fallback is a local placeholder decoder using the row flag, cell graphemes and
+styles, and a version-pinned diacritic table.
 
 Relative placements whose root is pinned can use the current placement render
 helper. Relative placements whose root is virtual have the same unresolved
@@ -99,9 +108,9 @@ dependency as Unicode placeholders.
 ## Other Remaining Dependencies
 
 - Animated image pixels are exposed as the current frame and image generation
-  changes when Ghostty advances that frame. The C API does not yet expose the
-  animation tick or next deadline, so Qt cannot schedule animation correctly
-  without an upstream API addition.
+  changes when Ghostty advances that frame. The vendored C API lacks animation
+  scheduling; upgrading to Ghostty 1.4 provides the tick and next deadline.
+  Qt still needs to drive that API with a monotonic clock and a timer.
 - Temporary-file media needs an application-controlled directory and an
   explicit path/symlink/lifetime policy. Shared-memory media needs Linux
   availability and lifecycle tests. Direct-file media remains disabled until a
