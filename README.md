@@ -147,8 +147,9 @@ Platform:
 Build dependencies on Debian/Ubuntu:
 
 ```bash
-sudo apt install cmake qt6-base-dev build-essential binutils \
-  libdtk6widget-dev libdtk6core-dev libdtk6gui-dev \
+sudo apt install cmake build-essential binutils pkg-config \
+  qt6-base-dev qt6-tools-dev qt6-l10n-tools \
+  libdtk6widget-dev libdtk6core-dev libdtk6gui-dev libdtk6core-bin \
   libfontconfig-dev libfreetype-dev libharfbuzz-dev
 ```
 
