@@ -284,10 +284,12 @@ add_test(NAME SessionManager COMMAND test_session_manager)
 
 add_test(NAME StartupCommandIntegration
   COMMAND /bin/bash ${CMAKE_SOURCE_DIR}/tests/test_startup_command_integration.sh
+    $<TARGET_FILE:deepin-terminal-ghostty>
 )
 
 add_test(NAME EsctestWrapperSmoke
   COMMAND /bin/bash ${CMAKE_SOURCE_DIR}/tests/test_esctest_wrapper.sh
+    $<TARGET_FILE:deepin-terminal-ghostty>
 )
 
 add_test(NAME DtermctlCli

@@ -1343,6 +1343,34 @@
         <source>Settings</source>
         <translation>设置</translation>
     </message>
+    <message>
+        <source>Confirm paste</source>
+        <translation>确认粘贴</translation>
+    </message>
+    <message>
+        <source>This text may execute commands. Paste it into the terminal?</source>
+        <translation>这些文本可能会执行命令，是否粘贴到终端？</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Allow clipboard access?</source>
+        <translation>允许读取剪贴板？</translation>
+    </message>
+    <message>
+        <source>A program in this terminal wants to read the clipboard.</source>
+        <translation>此终端中的程序想要读取剪贴板。</translation>
+    </message>
+    <message>
+        <source>Remember for this terminal session</source>
+        <translation>在此终端会话中记住此决定</translation>
+    </message>
+    <message>
+        <source>Allow</source>
+        <translation>允许</translation>
+    </message>
 </context>
 <context>
     <name>TerminalWidget</name>

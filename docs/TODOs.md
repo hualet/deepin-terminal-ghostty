@@ -15,44 +15,30 @@
 - [ ] 现代扩展协议
   - [ ] kitty image protocol
     - [x] pin `libghostty-vt` and the complete public header tree to
-      `a4aacd918ba9e79929ff608034c60a4341773ef0`
-    - [x] inline/direct image storage
-    - [x] inline PNG decode callback
+      Ghostty 1.4.0 `83fb95624b0439ee660c2679b43b38c8b63769cd`
+      (`0.1.0-dev+83fb95624`)
+    - [x] inline/direct image storage and PNG decode callback
     - [x] decoded RGB, RGBA, grayscale, and grayscale-alpha image conversion
-    - [x] non-virtual placement rendering
-    - [x] below-background / below-text / above-text z-layer rendering
-    - [x] graphics/image generation-based cache invalidation
-    - [ ] Unicode placeholder / virtual placements (`U=1`, required by
-      `textual-image` TGP)
-      - [ ] Upgrade and consume Ghostty 1.4's unified render-state image
-        iterator, which now resolves fixed, placeholder and relative placements
-        with viewport/source geometry and z-layer. Replace the storage iterator
-        drawing path to avoid drawing fixed placements twice. See
-        [the adoption assessment](research/2026-10-28-ghostty-1.4-adoption.md).
-      - [ ] Available fallback dependencies: consume
-        `GHOSTTY_ROW_DATA_KITTY_VIRTUAL_PLACEHOLDER`, render-cell graphemes,
-        foreground/underline colors, and Ghostty's pinned row/column diacritic
-        table to decode U+10EEEE cells in `qtghostty`.
-      - [ ] Resolve virtual placements and relative placements whose root is
-        virtual, including continuation cells, omitted row/column diacritics,
-        32-bit image ids, and optional placement ids.
-      - [ ] Paint only the matching source fragment for every placeholder run,
-        honor source cropping, scaling, offsets and z-order, and suppress the
-        U+10EEEE glyph without suppressing unrelated text decorations.
-      - [ ] Cover scrolling, scrollback, resize/reflow, clipping, deletion,
-        retransmission, alternate-screen switching, and overlapping virtual
-        placements.
-    - [ ] Animated images
-      - [x] Ghostty exposes current-frame pixels and changes image generation
-        when its internal animation state advances.
-      - [ ] Upgrade and consume Ghostty 1.4's
-        `ghostty_kitty_graphics_animation_tick()` C API, which now advances
-        playback and returns the next deadline. It is not yet vendored.
-      - [ ] Drive the API from a single-shot Qt timer, invalidate only affected
-        image caches/regions, and stop scheduling when no visible animation is
-        active.
-      - [ ] Verify frame loading, composition modes, background frames, loop
-        counts, frame gaps, replacement, deletion, and hidden/offscreen images.
+    - [x] unified render-state drawing of fixed, virtual (`U=1`, U+10EEEE)
+      and relative placements, including a virtual root
+    - [x] source crop, offsets, signed viewport coordinates and layer/z sorting
+    - [x] suppress placeholder glyphs while preserving backgrounds/decorations
+    - [x] per-image generation cache invalidation and bounded pixel retention
+    - [x] back-buffer invalidation on last-image removal; retain text-only
+      incremental rendering
+    - [x] Stage 3 focused image/animation regressions, full build and all
+      12 offscreen CTest entries pass with the stable shell environments.
+    - [ ] Placeholder interoperability matrix: omitted row/column diacritics,
+      continuation cells, 32-bit image ids, optional placement ids, overlapping
+      virtual placements and resize/reflow/scrollback combinations. Metadata
+      resolution stays in Ghostty; no Qt placeholder decoder is needed.
+    - [x] animation tick API with a terminal-lifetime monotonic clock and
+      single-shot Qt deadline timer (minimum 8 ms)
+    - [x] stop scheduling on no animation, hide/minimize and synchronized-output
+      holds; hidden snapshots do not start continuous playback
+    - [ ] Complete animation conformance coverage: pending frame loading,
+      composition modes, background frames, loop counts, frame gaps,
+      replacement/deletion combinations and offscreen-only images.
     - [ ] Local transfer media
       - [ ] Temporary file first: pass a `GhosttyString` restricted to an
         application-controlled temporary directory, define symlink/path and

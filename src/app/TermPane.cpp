@@ -11,21 +11,28 @@
 #include "logging/Logging.h"
 #include "remote/ServerConfig.h"
 
+#include <DDialog>
 #include <DGuiApplicationHelper>
 #include <QActionGroup>
+#include <QBuffer>
+#include <QCheckBox>
 #include <QClipboard>
 #include <QContextMenuEvent>
 #include <QDebug>
 #include <QDesktopServices>
 #include <QFile>
 #include <QGuiApplication>
+#include <QImageReader>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QKeyEvent>
+#include <QLabel>
 #include <QMenu>
 #include <QPainter>
+#include <QPlainTextEdit>
 #include <QRandomGenerator>
 #include <QResizeEvent>
+#include <QScopeGuard>
 #include <QScreen>
 #include <QSplitter>
 #include <QStandardPaths>
@@ -449,7 +456,91 @@ TerminalWidget *TermPane::createTerminal(const std::optional<PtySession::StartOp
     return term;
 }
 
+void TermPane::showPasteConfirmation(TerminalWidget *term, quint64 requestId, const QString &preview) {
+    for (auto *previous : term->findChildren<Dtk::Widget::DDialog *>(QStringLiteral("pasteConfirmationDialog"),
+                                                                     Qt::FindDirectChildrenOnly))
+        previous->close();
+    auto *dialog = new Dtk::Widget::DDialog(tr("Confirm paste"),
+                                            tr("This text may execute commands. Paste it into the terminal?"), term);
+    dialog->setObjectName(QStringLiteral("pasteConfirmationDialog"));
+    dialog->setWindowModality(Qt::NonModal);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setTextFormat(Qt::PlainText);
+    auto *text = new QPlainTextEdit(dialog);
+    text->setReadOnly(true);
+    text->setPlainText(preview);
+    dialog->addContent(text);
+    dialog->addButton(tr("Cancel"), true, Dtk::Widget::DDialog::ButtonNormal);
+    dialog->addButton(tr("Paste"), false, Dtk::Widget::DDialog::ButtonWarning);
+    const QPointer<Dtk::Widget::DDialog> guardedDialog(dialog);
+    const QPointer<TerminalWidget> guardedTerminal(term);
+    connect(dialog, &Dtk::Widget::DDialog::buttonClicked, term, [guardedTerminal, guardedDialog, requestId](int index) {
+        if (guardedTerminal && guardedDialog && guardedDialog->isVisible())
+            guardedTerminal->confirmPaste(requestId, index == 1);
+    });
+    connect(dialog, &QDialog::finished, term, [guardedTerminal, requestId]() {
+        if (guardedTerminal)
+            guardedTerminal->confirmPaste(requestId, false);
+    });
+    connect(term, &TerminalWidget::pasteConfirmationFinished, dialog, [guardedDialog, requestId](quint64 finishedId) {
+        if (guardedDialog && requestId == finishedId)
+            guardedDialog->close();
+    });
+    connect(term, &TerminalWidget::sessionClosed, dialog, &QDialog::close);
+    dialog->show();
+}
+
 void TermPane::setupTerminalConnections(TerminalWidget *term) {
+    term->setClipboardPermissionProvider([term](TerminalWidget::ClipboardPermissionRequest request) {
+        static bool activeDialog = false;
+        if (activeDialog)
+            return TerminalWidget::ClipboardPermissionResponse{TerminalWidget::ClipboardDecision::Busy, false};
+        activeDialog = true;
+        auto guard = qScopeGuard([] { activeDialog = false; });
+        Dtk::Widget::DDialog dialog(TermPane::tr("Allow clipboard access?"),
+                                    TermPane::tr("A program in this terminal wants to read the clipboard."), term);
+        dialog.setObjectName(QStringLiteral("clipboardPermissionDialog"));
+        dialog.setTextFormat(Qt::PlainText);
+        auto *text = new QPlainTextEdit(&dialog);
+        text->setObjectName(QStringLiteral("clipboardTextPreview"));
+        text->setReadOnly(true);
+        text->setPlainText(QString::fromUtf8(request.contents.value(QStringLiteral("text/plain")).left(4096)));
+        dialog.addContent(text);
+        const auto png = request.contents.value(QStringLiteral("image/png"));
+        if (!png.isEmpty()) {
+            QBuffer buffer;
+            buffer.setData(png);
+            buffer.open(QIODevice::ReadOnly);
+            QImageReader reader(&buffer, "PNG");
+            const QSize size = reader.size();
+            if (size.isValid() && size.width() <= 8192 && size.height() <= 8192
+                && qint64(size.width()) * size.height() <= 16 * 1024 * 1024) {
+                reader.setScaledSize(size.scaled(QSize(480, 240), Qt::KeepAspectRatio));
+                const QImage image = reader.read();
+                if (!image.isNull()) {
+                    auto *preview = new QLabel(&dialog);
+                    preview->setObjectName(QStringLiteral("clipboardImagePreview"));
+                    preview->setPixmap(QPixmap::fromImage(image));
+                    dialog.addContent(preview);
+                }
+            }
+        }
+        auto *remember = new QCheckBox(TermPane::tr("Remember for this terminal session"), &dialog);
+        remember->setObjectName(QStringLiteral("clipboardRemember"));
+        remember->setChecked(false);
+        remember->setVisible(request.canRemember);
+        if (request.canRemember)
+            dialog.addContent(remember);
+        dialog.addButton(TermPane::tr("Cancel"), true, Dtk::Widget::DDialog::ButtonNormal);
+        dialog.addButton(TermPane::tr("Allow"), false, Dtk::Widget::DDialog::ButtonRecommend);
+        const bool allowed = dialog.exec() == 1;
+        return TerminalWidget::ClipboardPermissionResponse{allowed ? TerminalWidget::ClipboardDecision::Allow
+                                                                   : TerminalWidget::ClipboardDecision::Deny,
+                                                           allowed && request.canRemember && remember->isChecked()};
+    });
+    connect(
+        term, &TerminalWidget::pasteConfirmationRequested, this,
+        [this, term](quint64 requestId, const QString &preview) { showPasteConfirmation(term, requestId, preview); });
     connect(term, &TerminalWidget::terminalTitleChanged, this, [this, term](const QString &title) {
         term->setProperty("shellTitle", title);
         refreshTerminalTitle(term);
@@ -532,6 +623,17 @@ void TermPane::removeTerminal(TerminalWidget *term) {
     if (!term)
         return;
 
+    if (term->isTerminalBusy()) {
+        const QPointer<TerminalWidget> guarded(term);
+        connect(
+            term, &TerminalWidget::terminalIdle, this,
+            [this, guarded] {
+                if (guarded)
+                    removeTerminal(guarded);
+            },
+            Qt::SingleShotConnection);
+        return;
+    }
     const bool removedTermWasCurrent = (m_currentTerm == term);
     QWidget *termWidget = layoutWidgetForTerminal(term);
     auto *splitter = splitterContainingWidget(m_rootWidget, termWidget);
@@ -804,7 +906,7 @@ void TermPane::showTerminalContextMenu(TerminalWidget *term, const QPoint &globa
         menu.addAction(tr("Copy"), term, &TerminalWidget::copyToClipboard);
 
     auto *pasteAction = menu.addAction(tr("Paste"), term, &TerminalWidget::pasteFromClipboard);
-    pasteAction->setEnabled(!QGuiApplication::clipboard()->text().isEmpty());
+    pasteAction->setEnabled(term->canPasteClipboard());
 
     QPoint localPos = term->mapFromGlobal(globalPos);
     QString hyperlinkUri = term->linkUriAtPosition(localPos);
@@ -1284,6 +1386,14 @@ TerminalWidget *TermPane::createTerminalFromNode(const SplitNode &node,
 
 QList<QPair<QString, TerminalWidget *>> TermPane::restoreFromSplitTree(const SplitNode &node) {
     QList<QPair<QString, TerminalWidget *>> result;
+    for (auto *terminal : findChildren<TerminalWidget *>()) {
+        if (terminal->isTerminalBusy()) {
+            connect(
+                terminal, &TerminalWidget::terminalIdle, this, [this, node] { restoreFromSplitTree(node); },
+                Qt::SingleShotConnection);
+            return result;
+        }
+    }
 
     if (m_rootWidget) {
         QWidget *old = m_rootWidget;

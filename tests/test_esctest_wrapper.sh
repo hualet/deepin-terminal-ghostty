@@ -5,6 +5,7 @@ set -euo pipefail
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 repo_root=$(cd "${script_dir}/.." && pwd)
 wrapper="${repo_root}/tests/run_esctest.sh"
+app_bin="${1:-${repo_root}/build/deepin-terminal-ghostty}"
 
 if [[ ! -x "${wrapper}" ]]; then
     echo "Missing esctest wrapper: ${wrapper}" >&2
@@ -25,6 +26,7 @@ PY
 
 status=0
 DISPLAY= "${wrapper}" \
+    --app "${app_bin}" \
     --no-xvfb \
     --esctest-dir "${fake_dir}" \
     --working-directory "${fake_dir}" \

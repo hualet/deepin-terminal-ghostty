@@ -56,6 +56,7 @@ private slots:
 
     void testStartShell();
     void testWriteAndRead();
+    void testBulkWriteAcceptedUnderBackpressure();
     void testStartCommand();
     void testStartCommandInWorkingDirectory();
     void testForwardedEnvironmentSelectsShell();
@@ -110,6 +111,21 @@ void TestPtySession::testWriteAndRead() {
         }
     }
     QVERIFY2(found, "Expected output to contain 'qtghostty_test_hello'");
+}
+
+void TestPtySession::testBulkWriteAcceptedUnderBackpressure() {
+    PtySession session;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    QVERIFY(session.start(80, 24, options));
+    QSignalSpy written(&session, &PtySession::dataWritten);
+    const QByteArray bytes(2 * 1024 * 1024, 'x');
+    QVERIFY(session.enqueueWriteAll(bytes));
+    QCOMPARE(written.count(), 1);
+    QCOMPARE(written.first().first().toByteArray(), bytes);
+    QVERIFY(!session.canEnqueueWrite(24 * 1024 * 1024));
+    QVERIFY(!session.enqueueWriteAll(QByteArray(25 * 1024 * 1024, 'y')));
+    QCOMPARE(written.count(), 1);
 }
 
 void TestPtySession::testStartCommand() {

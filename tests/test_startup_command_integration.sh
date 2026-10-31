@@ -4,7 +4,7 @@ set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 repo_root=$(cd "${script_dir}/.." && pwd)
-app_bin="${repo_root}/build/deepin-terminal-ghostty"
+app_bin="${1:-${repo_root}/build/deepin-terminal-ghostty}"
 
 if [[ ! -x "${app_bin}" ]]; then
     echo "Missing terminal binary: ${app_bin}" >&2

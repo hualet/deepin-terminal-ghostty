@@ -9,10 +9,12 @@
 #include <QHash>
 #include <QImage>
 #include <QInputMethodEvent>
+#include <QMap>
 #include <QStringList>
 #include <QTimer>
 #include <QWidget>
 
+#include <functional>
 #include <optional>
 
 // Qt defines 'emit' as a no-op macro; ghostty headers use 'emit' as a struct
@@ -47,6 +49,23 @@ public:
     explicit TerminalWidget(QWidget *parent = nullptr);
     ~TerminalWidget() override;
 
+    enum class ClipboardDecision { Allow, Deny, Busy };
+    struct ClipboardPermissionRequest {
+        GhosttyClipboardLocation location;
+        QString programName;
+        QMap<QString, QByteArray> contents;
+        bool canRemember = false;
+    };
+    struct ClipboardPermissionResponse {
+        ClipboardDecision decision = ClipboardDecision::Deny;
+        bool remember = false;
+    };
+    using ClipboardPermissionProvider = std::function<ClipboardPermissionResponse(ClipboardPermissionRequest)>;
+    void setClipboardPermissionProvider(ClipboardPermissionProvider provider) {
+        m_clipboardProvider = std::move(provider);
+    }
+    bool isTerminalBusy() const { return m_engineBusy || m_clipboardConsent; }
+    bool canPasteClipboard() const;
     bool initialize();
     int terminalColumns() const;
     int terminalRows() const;
@@ -78,6 +97,7 @@ public:
     void selectAll();
     void copyToClipboard();
     void pasteFromClipboard();
+    void confirmPaste(quint64 requestId, bool approved);
     void writeUserInput(const QByteArray &data);
     void zoomIn();
     void zoomOut();
@@ -140,6 +160,7 @@ public:
 #endif
 
 signals:
+    void terminalIdle();
     void terminalTitleChanged(const QString &title);
     void workingDirectoryChanged(const QString &workingDirectory);
     void shellCommandChanged(const QString &command);
@@ -156,9 +177,15 @@ signals:
     void progressChanged(ProgressState state, int progress);
     void programStatusChanged();
     void vtProcessingErrorDetected();
+    void pasteConfirmationRequested(quint64 requestId, const QString &preview);
+    void pasteConfirmationFinished(quint64 requestId);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
+    void showEvent(QShowEvent *event) override;
+    void hideEvent(QHideEvent *event) override;
+    void changeEvent(QEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void inputMethodEvent(QInputMethodEvent *event) override;
@@ -175,6 +202,8 @@ protected:
     bool focusNextPrevChild(bool next) override;
 
     virtual void setSelectionClipboardText(const QString &text);
+    virtual QString selectionClipboardText() const;
+    virtual QStringList selectionClipboardFormats() const;
 
 private slots:
     void onPtyDataReceived(const QByteArray &data);
@@ -182,12 +211,30 @@ private slots:
     void onRenderTimerTimeout();
 
 private:
+    struct PasteSnapshot {
+        quint64 id;
+        QByteArray text;
+        GhosttyClipboardLocation location;
+        GhosttyPasteSource source;
+        QMap<QString, QByteArray> contents;
+    };
+    void requestPaste(const QByteArray &text, GhosttyClipboardLocation location, GhosttyPasteSource source);
+    GhosttyResult pasteSnapshot(const PasteSnapshot &snapshot, bool allowUnsafe);
+    void clearPendingPaste();
+    void finishEngineOperation();
+    bool m_engineBusy = false;
+    bool m_clipboardConsent = false;
+    bool m_sessionClosePending = false;
+    std::optional<int> m_exitPending;
+    ClipboardPermissionProvider m_clipboardProvider;
+    QByteArray *m_capturedPtyOutput = nullptr;
     bool setupTerminal();
     bool setupRenderState();
     bool setupEncoders();
     bool syncRenderState() const;
     bool ensureBackBuffer();
     void applyPendingResize();
+    void applyPendingResizeImpl();
     void updateCachedFonts();
     void updateGridSize();
     void renderTerminal(QPainter &painter);
@@ -222,9 +269,26 @@ private:
     void invalidateLinkScanCache();
     void clearHoverLink();
     void updateHyperlinkHoverState(const QPoint &pos, bool changeCursor = true);
-    bool renderKittyGraphicsLayer(QPainter &painter, GhosttyKittyPlacementLayer layer);
-    bool renderKittyPlacement(QPainter &painter, GhosttyKittyGraphics graphics);
-    QImage imageForKittyImage(GhosttyKittyGraphicsImage image);
+    struct KittyImagePlacement {
+        quint64 key;
+        uint64_t generation;
+        GhosttyRenderStateImageLayer layer;
+        int32_t z;
+        QRectF source;
+        QRectF target;
+        bool operator==(const KittyImagePlacement &) const = default;
+    };
+    struct KittyCachedImage {
+        uint64_t generation;
+        QImage pixels;
+    };
+    bool prepareKittyImages();
+    void renderKittyGraphicsLayer(QPainter &painter, GhosttyRenderStateImageLayer layer);
+    QImage imageForKittyImage(GhosttyKittyGraphicsImage image, quint64 key, uint64_t generation);
+    void tickKittyAnimations();
+    void scheduleKittyAnimation();
+    bool canAnimateKittyImages() const;
+    void clearKittyImages();
     void renderPreeditText(QPainter &painter);
     int unicodeTextCellWidth(const QString &text) const;
     void sendFocusEvent(bool gained);
@@ -256,6 +320,7 @@ private:
     ViewportScrollState queryViewportScrollState() const;
     void updateViewportScrollState();
     void scrollViewportToBottom();
+    void scrollViewportToOffsetImpl(int offset);
 
     void updateSearchHighlight();
     void scrollToSearchMatch();
@@ -292,7 +357,7 @@ private:
     GhosttyRenderStateRowIterator m_rowIter = nullptr;
     GhosttyRenderStateRowCells m_rowCells = nullptr;
     QVector<uint32_t> m_rowCodepoints;
-    GhosttyKittyGraphicsPlacementIterator m_kittyPlacementIter = nullptr;
+    GhosttyRenderStateImageIterator m_imageIter = nullptr;
     GhosttyKeyEncoder m_keyEncoder = nullptr;
     GhosttyKeyEvent m_keyEvent = nullptr;
     GhosttyMouseEncoder m_mouseEncoder = nullptr;
@@ -301,6 +366,8 @@ private:
 
     // PTY
     PtySession *m_ptySession = nullptr;
+    std::optional<PasteSnapshot> m_pendingPaste;
+    quint64 m_nextPasteId = 0;
     PtySession::StartOptions m_startOptions;
     bool m_hasStartOptions = false;
     QByteArray m_oscScanBuffer;
@@ -309,8 +376,13 @@ private:
     CommandState m_commandState = CommandState::Idle;
     ProgramStatusStore m_programStatus;
     QByteArray m_pendingPtyData;
-    QHash<uint32_t, QImage> m_kittyImageCache;
-    std::optional<uint64_t> m_kittyGraphicsGeneration;
+    QHash<quint64, KittyCachedImage> m_kittyImageCache;
+    QVector<KittyImagePlacement> m_kittyImages;
+    std::optional<uint64_t> m_kittyPlacementsGeneration;
+    std::optional<uint64_t> m_kittyAnimationDeadline;
+    QElapsedTimer m_kittyAnimationClock;
+    QTimer *m_kittyAnimationTimer = nullptr;
+    bool m_kittyAnimationsStopped = false;
     QHash<QString, QImage> m_emojiImageCache;
     QStringList m_emojiImageCacheOrder;
     QTimer *m_renderTimer = nullptr;
@@ -421,6 +493,8 @@ private:
 #endif
 
     // Effects callbacks
+    friend void effectClipboardWrite(GhosttyTerminal, void *, const GhosttyClipboardWrite *);
+    friend void effectClipboardRead(GhosttyTerminal, void *, const GhosttyClipboardRead *);
     friend void effectWritePty(GhosttyTerminal terminal, void *userdata, const uint8_t *data, size_t len);
     friend bool effectSize(GhosttyTerminal terminal, void *userdata, GhosttySizeReportSize *out_size);
     friend bool effectDeviceAttributes(GhosttyTerminal terminal, void *userdata, GhosttyDeviceAttributes *out_attrs);

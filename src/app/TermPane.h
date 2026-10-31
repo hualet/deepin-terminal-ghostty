@@ -90,6 +90,7 @@ signals:
 private:
     TerminalWidget *createTerminal(const std::optional<PtySession::StartOptions> &options = std::nullopt);
     void setupTerminalConnections(TerminalWidget *term);
+    void showPasteConfirmation(TerminalWidget *term, quint64 requestId, const QString &preview);
     void setCurrentTerminal(TerminalWidget *term);
     // Returns whether the title changed (or a notification was forced).
     bool refreshTerminalTitle(TerminalWidget *term, bool forceNotify = false);

@@ -683,6 +683,20 @@ void MainWindow::onTabCloseRequested(int index, bool hasConfirmed) {
     if (!page)
         return;
 
+    for (auto *terminal : page->findChildren<TerminalWidget *>()) {
+        if (terminal->isTerminalBusy()) {
+            const auto tabId = m_tabs.at(index).id;
+            connect(
+                terminal, &TerminalWidget::terminalIdle, this,
+                [this, tabId, hasConfirmed] {
+                    const int current = indexOfTabId(tabId);
+                    if (current >= 0)
+                        onTabCloseRequested(current, hasConfirmed);
+                },
+                Qt::SingleShotConnection);
+            return;
+        }
+    }
     if (!hasConfirmed) {
         auto *pane = qobject_cast<TermPane *>(page);
         if (pane && pane->runningTerminalCount() > 0) {
@@ -1856,6 +1870,14 @@ void MainWindow::showExitConfirmDialog(const QString &title, const QString &body
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
+    for (auto *terminal : findChildren<TerminalWidget *>()) {
+        if (terminal->isTerminalBusy()) {
+            event->ignore();
+            connect(
+                terminal, &TerminalWidget::terminalIdle, this, [this] { close(); }, Qt::SingleShotConnection);
+            return;
+        }
+    }
     auto *app = qobject_cast<DApplication *>(qApp);
     if (app) {
         if (auto *aboutDialog = app->aboutDialog()) {

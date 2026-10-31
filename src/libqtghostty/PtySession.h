@@ -28,6 +28,10 @@ public:
 
     bool start(int cols, int rows, const StartOptions &options = {});
     void write(const QByteArray &data);
+    // Reports queue acceptance; temporary PTY backpressure is not failure.
+    bool enqueueWriteAll(const QByteArray &data);
+    bool canEnqueueWrite(qsizetype bytes) const;
+    void setProcessingPaused(bool paused);
     void resize(int cols, int rows, int cellWidthPx, int cellHeightPx);
     bool hasRunningProcess() const;
     QString workingDirectory() const;
@@ -68,6 +72,7 @@ private:
     bool setMasterCloseOnExec();
     void removeShellIntegrationTempDirs();
 
+    bool m_processingPaused = false;
     int m_masterFd{-1};
     pid_t m_childPid{-1};
     QSocketNotifier *m_readNotifier{nullptr};

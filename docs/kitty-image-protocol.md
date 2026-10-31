@@ -1,147 +1,98 @@
 # Kitty Image Protocol Support
 
-This document tracks the current Kitty image protocol support in
-`deepin-terminal-ghostty` and the intended design for the remaining work.
+The bundled engine and public headers are pinned to Ghostty 1.4.0 commit
+`83fb95624b0439ee660c2679b43b38c8b63769cd`; the VT library reports
+`0.1.0-dev+83fb95624`. Rebuild inputs are recorded in
+[`dependencies/ghostty-vt.md`](dependencies/ghostty-vt.md).
 
-## Current Status
+## Rendering
 
-The terminal now supports the common inline/direct Kitty image path:
+`libghostty-vt` parses Kitty APC commands, owns image storage, resolves placement
+geometry and composes animation frames. Qt installs a process-wide PNG decoder
+callback, converts decoded RGB/RGBA/grayscale/grayscale-alpha buffers to owned
+`QImage` pixels, and paints them with QPainter. Image storage is limited to
+64 MiB; the Kitty APC payload limit is 80 MiB.
 
-- The vendored engine and complete public headers are pinned to Ghostty commit
-  `a4aacd918ba9e79929ff608034c60a4341773ef0` and the library reports
-  `0.1.0-dev+a4aacd918`.
-- `libghostty-vt` parses Kitty graphics APC sequences and owns protocol state.
-- `TerminalWidget` enables Kitty image storage with a 64 MiB storage limit.
-- A process-wide Ghostty PNG decoder callback is installed through
-  `GHOSTTY_SYS_OPT_DECODE_PNG`; the callback decodes PNG data with Qt `QImage`
-  and returns RGBA pixels through Ghostty's allocator.
-- `TerminalWidget` reads `GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS`, iterates image
-  placements, converts Ghostty image buffers to `QImage`, and paints them into
-  the terminal back buffer.
-- The renderer honors Ghostty's placement z-layer grouping:
-  below background, below text, and above text.
-- File and shared-memory media are explicitly disabled. Temporary-file media is
-  disabled with a null directory; it must not be passed a boolean because the
-  Ghostty option requires a `GhosttyString` directory.
-- The upgraded engine includes pending-payload, relative-placement, deletion,
-  retransmission, path validation, and animation-frame improvements. These are
-  core capabilities, not claims that every corresponding Qt rendering path has
-  conformance coverage yet.
+All image drawing uses `GHOSTTY_RENDER_STATE_DATA_IMAGE_ITERATOR`. Its unified
+entries describe fixed placements, Unicode placeholder (`U=1`, U+10EEEE) runs,
+and relative placements, including children whose parent is virtual. Qt reads
+viewport coordinates, cell offsets, source crop, destination size, protocol,
+image id/generation and layer/z with `ghostty_render_state_image_get_multi()`.
+Ghostty resolves placeholder metadata; Qt does not decode its diacritics.
 
-The covered scenario is the standard non-virtual placement path used by tools
-that transmit image data and ask the terminal to place the image at the cursor
-or at an explicit pinned position.
+The renderer sorts entries by layer and z and composes them in this order:
 
-## Known Gap: Unicode Placeholder Placements
+1. Images below backgrounds.
+2. Explicit cell backgrounds.
+3. Images below text.
+4. Text and text decorations.
+5. Images above text.
+6. Selection, search, cursor and other widget overlays.
 
-As of Ghostty 1.4 (2026-10-28 review), the upstream C API now provides a
-unified render-state image iterator for fixed, placeholder and relative
-placements, plus `ghostty_kitty_graphics_animation_tick()` for playback and
-next-frame scheduling. These APIs are not in our vendored revision yet.
-The limitations below describe the current integration. See the
-[1.4 adoption assessment](research/2026-10-28-ghostty-1.4-adoption.md) for the
-available upstream path; Qt should consume that path rather than duplicate
-placeholder decoding.
+Drawing is clipped to the terminal content rectangle, including placements with
+negative viewport coordinates. U+10EEEE glyphs are suppressed while their cell
+backgrounds and decorations remain visible. The former storage placement
+iterator is no longer used for drawing, so fixed images are composed once.
 
-`textual-image` uses Kitty's Unicode placeholder placement mode:
+The pixel cache uses protocol/image id plus each image's generation. Changing a
+different image does not discard unchanged pixels. Only images needed by the
+current render list are retained. Placement and pixel changes invalidate the
+back buffer, including deletion of its last image. Frames containing images use
+a full composition pass; text-only frames retain incremental row painting.
+Synchronized output retains the previously published image list and pixel copies
+until the hold ends.
 
-- It transmits image data.
-- It creates a virtual placement with `U=1`.
-- It prints `U+10EEEE` placeholder cells plus combining diacritics that encode
-  image id, row, and column.
+## Animation
 
-Ghostty stores these as virtual placements. The current C placement rendering
-helper marks virtual placements as not directly visible because their geometry
-comes from text-grid placeholder cells, not from a pinned placement rectangle.
-The upgraded C API exposes a row-level
-`GHOSTTY_ROW_DATA_KITTY_VIRTUAL_PLACEHOLDER` flag plus the graphemes and styles
-needed to inspect the cells, but it does not expose Ghostty's internal decoded
-virtual-placement iterator. Our Qt renderer therefore still paints those
-placeholder codepoints as text, so fonts without `U+10EEEE` show visible square
-glyphs instead of the image.
+Visible terminal frames call `ghostty_kitty_graphics_animation_tick()` once with
+a monotonic `QElapsedTimer` clock whose origin lasts as long as the terminal.
+Image handles and pixels are looked up after ticking. A successful tick supplies
+the absolute next deadline for a single-shot Qt timer, with an 8 ms minimum
+delay. `GHOSTTY_NO_VALUE` stops scheduling.
 
-Supporting `textual-image` therefore requires a separate placeholder rendering
-path, not just PNG decoding.
+Hidden or minimized terminals do not tick or schedule animation. Showing them
+requests a frame and resumes playback. Rendering a hidden pane's snapshot does
+not start a background animation loop. Synchronized-output holds stop animation
+publication. Reset/import/session closure clear the relevant cache/timer state;
+session closure prevents further playback scheduling.
 
-## Design
+## Local transfer policy
 
-Keep protocol parsing and storage in `libghostty-vt`; keep Qt responsible only
-for converting renderable image state into pixels.
+Direct-file and shared-memory media remain explicitly disabled. Temporary-file
+media is disabled with a null directory; that option takes a `GhosttyString`
+directory, not a boolean.
 
-Current non-virtual placement path:
+Enabling temporary files requires an application-controlled directory and a
+path/symlink/lifetime policy. Shared memory needs Linux availability and cleanup
+coverage. Direct-file access requires an explicit product policy before terminal
+clients may request local paths. This rendering update does not enable any of
+these media.
 
-1. PTY output is fed into `ghostty_terminal_vt_write()`.
-2. Ghostty parses Kitty graphics commands, decodes PNG through the installed
-   callback, and stores images/placements.
-3. During `TerminalWidget::renderTerminal()`, Qt paints:
-   - below-background Kitty placements,
-   - terminal row backgrounds,
-   - below-text Kitty placements,
-   - terminal text,
-   - above-text Kitty placements,
-   - overlays such as selection, search, and cursor.
-4. Image buffers are copied into a small `QImage` cache keyed by Ghostty image id.
-   The cache is cleared before mutating terminal input because image ids can be
-   deleted or replaced by subsequent protocol commands.
+## Regression coverage and remaining checks
 
-Remaining virtual placement path:
+The existing inline PNG, unrelated-output cache and same-size retransmission
+pixel tests remain. Captured protocol streams add virtual placements, relative
+children, placeholder glyph suppression with backgrounds/decorations, source
+cropping, z order, partial scrolling/clipping, deletion, alternate screens and
+cache survival across another image's mutation. The two-frame animation fixture
+comes from upstream's `example/c-vt-kitty-graphics/src/main.c`; timer tests cover
+red/blue playback, stopping, hiding/minimizing, hidden snapshots, finite loops,
+reset/import/session shutdown and synchronized-output holds.
 
-1. Detect `U+10EEEE` cells in rendered rows.
-2. Decode the Kitty placeholder diacritics and foreground color encoding to
-   recover image id, placement id, row, and column.
-3. Resolve the backing image from Ghostty image storage.
-4. Paint the matching source fragment over the placeholder cell rectangle.
-5. Suppress drawing of the placeholder glyphs themselves.
+These focused paths do not establish complete Kitty protocol conformance.
+Uncovered transfer formats, malformed input, detailed placeholder metadata,
+resize/reflow combinations, animation composition/frame loading and real-client
+interoperability remain tracked in [`TODOs.md`](TODOs.md). Manual compatibility
+checks should include `kitten icat`, `kitten icat --unicode-placeholder`,
+`textual-image rich -m tgp`, and the non-Kitty `halfcell` fallback.
 
-The preferred approach is to upgrade to Ghostty 1.4 and consume its unified
-render-state image iterator, so Qt does not duplicate Ghostty's placeholder
-decoding rules. Entries provide image ids and generations, viewport cell
-geometry, source geometry, and z-layer. This path replaces the storage iterator
-for all image drawing. If the project must remain on the current engine, the
-fallback is a local placeholder decoder using the row flag, cell graphemes and
-styles, and a version-pinned diacritic table.
+Stage 3 validation passed with the restored rootless development prefix: the
+full application/test build completed, the focused image/engine run passed all
+15 Qt Test results (including init/cleanup), and all 12 CTest entries passed.
+`TerminalWidget` ran with `SHELL=/bin/sh`, an escape-only `PS1`, empty `PS2` and
+`QT_QPA_PLATFORM=offscreen`; the other entries used `PS1='$ '` and a separate
+isolated HOME. Formatting and diff checks passed.
 
-Relative placements whose root is pinned can use the current placement render
-helper. Relative placements whose root is virtual have the same unresolved
-dependency as Unicode placeholders.
-
-## Other Remaining Dependencies
-
-- Animated image pixels are exposed as the current frame and image generation
-  changes when Ghostty advances that frame. The vendored C API lacks animation
-  scheduling; upgrading to Ghostty 1.4 provides the tick and next deadline.
-  Qt still needs to drive that API with a monotonic clock and a timer.
-- Temporary-file media needs an application-controlled directory and an
-  explicit path/symlink/lifetime policy. Shared-memory media needs Linux
-  availability and lifecycle tests. Direct-file media remains disabled until a
-  product security policy permits terminal clients to request arbitrary local
-  paths.
-- Protocol parsing support inherited from Ghostty still needs wrapper-level
-  regression coverage for chunked formats, queries, placement geometry,
-  retransmission/deletion, pending payloads, animation, and main/alternate
-  screen lifetime.
-
-The actionable implementation and dependency matrix is maintained in
-[`TODOs.md`](TODOs.md) under `kitty image protocol`.
-
-## Verification
-
-Current automated coverage:
-
-- `TestTerminalWidget::testRendersInlineKittyPngImage` sends an inline Kitty PNG
-  APC sequence and verifies red pixels are rendered in the placement cells.
-- `TestTerminalWidget::testKittyImageCacheSurvivesUnrelatedOutput` verifies
-  unrelated terminal output does not reconvert an unchanged image.
-- `TestTerminalWidget::testKittyImageGenerationInvalidatesReplacement` verifies
-  retransmitting an image id invalidates same-sized cached pixels.
-- Full `test_terminal_widget` coverage verifies the image render path does not
-  regress text rendering, cursor repainting, selection, search, input, or mouse
-  behavior.
-
-Manual compatibility checks to keep using:
-
-- Kitty/icat-style direct image display.
-- Inline PNG image display.
-- `textual-image rich -m tgp` for Unicode placeholder placement support once the
-  placeholder path is implemented.
-- `textual-image rich -m halfcell` as a non-Kitty fallback sanity check.
+An earlier full widget run reported two existing link-hover assertions that
+passed in isolation and did not recur in the final rebuilt full suite. Their
+cause was not established; no unrelated link code was changed.

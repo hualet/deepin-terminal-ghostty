@@ -31,6 +31,8 @@
 #include <QAbstractButton>
 #include <QAccessible>
 #include <QAction>
+#include <QCheckBox>
+#include <QClipboard>
 #include <QDBusConnection>
 #include <QDir>
 #include <QFile>
@@ -41,8 +43,10 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QPointer>
 #include <QProgressBar>
+#include <QPushButton>
 #include <QRegularExpression>
 #include <QScopeGuard>
 #include <QScrollArea>
@@ -82,6 +86,13 @@ private slots:
         DGuiApplicationHelper::instance()->setPaletteType(m_originalPaletteType);
     }
 
+    void testClipboardPermissionDialog();
+    void testClipboardImagePreviewAndNestedRequest();
+    void testClipboardConsentDefersWindowClose();
+    void testPasteConfirmationDialog_data();
+    void testPasteConfirmationDialog();
+    void testPasteConfirmationDialogReplacementAndDestruction();
+    void testPasteConfirmationDialogClosesOnRestore();
     void testTabTitleFormatExpandsVariables();
     void testTermPaneAppliesTabTitleFormats();
     void testOverviewMenuAndShortcutEntries_data();
@@ -600,6 +611,196 @@ void TestMainWindow::testAltArrowWithKeypadModifierIsConsumedByPane() {
 
     QKeyEvent keyPress(QEvent::KeyPress, Qt::Key_Left, Qt::AltModifier | Qt::KeypadModifier);
     QVERIFY(pane.eventFilter(sourceTerminal, &keyPress));
+}
+
+void TestMainWindow::testClipboardPermissionDialog() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    TermPane pane(options);
+    pane.show();
+    auto *term = pane.currentTerminal();
+    QGuiApplication::clipboard()->setText(QStringLiteral("<b>literal preview</b>"));
+    QSignalSpy written(term->findChild<PtySession *>(), &PtySession::dataWritten);
+    bool inspected = false;
+    QTimer::singleShot(30, &pane, [&] {
+        auto *dialog = pane.findChild<DDialog *>("clipboardPermissionDialog");
+        if (!dialog)
+            return;
+        auto *preview = dialog->findChild<QPlainTextEdit *>("clipboardTextPreview");
+        auto *remember = dialog->findChild<QCheckBox *>("clipboardRemember");
+        inspected = preview && preview->toPlainText() == QStringLiteral("<b>literal preview</b>") && remember
+                    && !remember->isChecked() && remember->isVisible()
+                    && qobject_cast<QPushButton *>(dialog->getButton(0))->isDefault() && term->isTerminalBusy();
+        pane.closeCurrentSplit();
+        QTest::mouseClick(dialog->getButton(0), Qt::LeftButton);
+    });
+    const QByteArray request("\033]5522;type=read:pw=c2Vzc2lvbg==:name=VGVzdA==;dGV4dC9wbGFpbg==\033\\");
+    QVERIFY(QMetaObject::invokeMethod(term, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, request)));
+    QTest::qWait(100);
+    QVERIFY(inspected);
+    QByteArray bytes;
+    for (const auto &args : written)
+        bytes += args.at(0).toByteArray();
+    QVERIFY(bytes.contains("status=EPERM"));
+}
+
+void TestMainWindow::testClipboardImagePreviewAndNestedRequest() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    TermPane first(options);
+    TermPane second(options);
+    first.show();
+    auto *term = first.currentTerminal();
+    auto *other = second.currentTerminal();
+    QImage image(32, 16, QImage::Format_ARGB32);
+    image.fill(Qt::red);
+    QGuiApplication::clipboard()->setImage(image);
+    QSignalSpy written(other->findChild<PtySession *>(), &PtySession::dataWritten);
+    bool inspected = false;
+    QTimer::singleShot(30, &first, [&] {
+        auto *dialog = first.findChild<DDialog *>("clipboardPermissionDialog");
+        if (!dialog)
+            return;
+        auto *preview = dialog->findChild<QLabel *>("clipboardImagePreview");
+        auto *remember = dialog->findChild<QCheckBox *>("clipboardRemember");
+        inspected = preview && !preview->pixmap().isNull() && preview->pixmap().width() <= 480 && remember
+                    && !remember->isVisible();
+        const QByteArray request("\033]5522;type=read;aW1hZ2UvcG5n\033\\");
+        QMetaObject::invokeMethod(other, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, request));
+        QTest::qWait(20);
+        inspected = inspected && second.findChildren<DDialog *>("clipboardPermissionDialog").isEmpty();
+        QTest::mouseClick(dialog->getButton(0), Qt::LeftButton);
+    });
+    const QByteArray request("\033]5522;type=read;aW1hZ2UvcG5n\033\\");
+    QVERIFY(QMetaObject::invokeMethod(term, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, request)));
+    QTest::qWait(100);
+    QVERIFY(inspected);
+    QByteArray bytes;
+    for (const auto &args : written)
+        bytes += args.at(0).toByteArray();
+    QVERIFY(bytes.contains("status=EBUSY"));
+}
+
+void TestMainWindow::testClipboardConsentDefersWindowClose() {
+    MainWindow window;
+    window.show();
+    auto *term = window.findChild<TerminalWidget *>();
+    QVERIFY(term);
+    QGuiApplication::clipboard()->setText(QStringLiteral("secret"));
+    bool inspected = false;
+    QTimer::singleShot(30, &window, [&] {
+        auto *dialog = window.findChild<DDialog *>("clipboardPermissionDialog");
+        if (!dialog)
+            return;
+        window.close();
+        QCoreApplication::processEvents();
+        inspected = window.isVisible() && term->isTerminalBusy();
+        QTest::mouseClick(dialog->getButton(0), Qt::LeftButton);
+    });
+    const QByteArray request("\033]52;c;?\a");
+    QVERIFY(QMetaObject::invokeMethod(term, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, request)));
+    QTRY_VERIFY(inspected);
+    QTRY_VERIFY(!window.isVisible());
+}
+
+void TestMainWindow::testPasteConfirmationDialog_data() {
+    QTest::addColumn<bool>("approve");
+    QTest::newRow("cancel") << false;
+    QTest::newRow("approve") << true;
+}
+
+void TestMainWindow::testPasteConfirmationDialog() {
+    QFETCH(bool, approve);
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    TermPane pane(options);
+    pane.show();
+    auto *term = pane.currentTerminal();
+    QSignalSpy written(term->findChild<PtySession *>(), &PtySession::dataWritten);
+    QGuiApplication::clipboard()->setText(QStringLiteral("<b>literal</b>\nsecond"));
+    term->pasteFromClipboard();
+    auto *dialog = pane.findChild<DDialog *>("pasteConfirmationDialog");
+    QVERIFY(dialog);
+    QVERIFY(dialog->isVisible());
+    QCOMPARE(dialog->windowModality(), Qt::NonModal);
+    auto *preview = dialog->findChild<QPlainTextEdit *>();
+    QVERIFY(preview);
+    QVERIFY(preview->isReadOnly());
+    QCOMPARE(preview->toPlainText(), QStringLiteral("<b>literal</b>\nsecond"));
+    QVERIFY(qobject_cast<QPushButton *>(dialog->getButton(0))->isDefault());
+    QCOMPARE(written.count(), 0);
+    QGuiApplication::clipboard()->setText(QStringLiteral("changed\n"));
+    QTest::mouseClick(dialog->getButton(approve ? 1 : 0), Qt::LeftButton);
+    QByteArray bytes;
+    for (const auto &args : written)
+        bytes += args.at(0).toByteArray();
+    QCOMPARE(bytes, approve ? QByteArray("<b>literal</b>\rsecond") : QByteArray());
+}
+
+void TestMainWindow::testPasteConfirmationDialogReplacementAndDestruction() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    auto *pane = new TermPane(options);
+    pane->show();
+    auto *term = pane->currentTerminal();
+    QSignalSpy written(term->findChild<PtySession *>(), &PtySession::dataWritten);
+    QGuiApplication::clipboard()->setText(QStringLiteral("old\n"));
+    term->pasteFromClipboard();
+    QPointer<DDialog> old = pane->findChild<DDialog *>("pasteConfirmationDialog");
+    QVERIFY(old);
+    QGuiApplication::clipboard()->setText(QStringLiteral("new\n"));
+    term->pasteFromClipboard();
+    QVERIFY(!old || !old->isVisible());
+    if (old)
+        QTest::mouseClick(old->getButton(1), Qt::LeftButton);
+    QCOMPARE(written.count(), 0);
+    QPointer<DDialog> current;
+    for (auto *dialog : pane->findChildren<DDialog *>("pasteConfirmationDialog"))
+        if (dialog->isVisible())
+            current = dialog;
+    QVERIFY(current);
+    QTest::mouseClick(current->getButton(1), Qt::LeftButton);
+    QByteArray bytes;
+    for (const auto &args : written)
+        bytes += args.at(0).toByteArray();
+    QCOMPARE(bytes, QByteArray("new\r"));
+    written.clear();
+    term->pasteFromClipboard();
+    for (auto *dialog : pane->findChildren<DDialog *>("pasteConfirmationDialog"))
+        if (dialog->isVisible())
+            current = dialog;
+    QGuiApplication::clipboard()->setText(QStringLiteral("safe"));
+    term->pasteFromClipboard();
+    QVERIFY(!current || !current->isVisible());
+    if (current)
+        QTest::mouseClick(current->getButton(1), Qt::LeftButton);
+    bytes.clear();
+    for (const auto &args : written)
+        bytes += args.at(0).toByteArray();
+    QCOMPARE(bytes, QByteArray("safe"));
+    QGuiApplication::clipboard()->setText(QStringLiteral("unsafe\n"));
+    term->pasteFromClipboard();
+    QPointer<DDialog> remaining;
+    for (auto *dialog : pane->findChildren<DDialog *>("pasteConfirmationDialog"))
+        if (dialog->isVisible())
+            remaining = dialog;
+    QVERIFY(remaining);
+    delete pane;
+    QVERIFY(!remaining);
+}
+
+void TestMainWindow::testPasteConfirmationDialogClosesOnRestore() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    TermPane pane(options);
+    pane.show();
+    auto *term = pane.currentTerminal();
+    QGuiApplication::clipboard()->setText(QStringLiteral("unsafe\n"));
+    term->pasteFromClipboard();
+    QPointer<DDialog> dialog = pane.findChild<DDialog *>("pasteConfirmationDialog");
+    QVERIFY(dialog && dialog->isVisible());
+    term->importVtContent(QByteArray("restored"));
+    QVERIFY(!dialog || !dialog->isVisible());
 }
 
 void TestMainWindow::testTabTitleFormatExpandsVariables() {

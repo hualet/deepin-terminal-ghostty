@@ -482,6 +482,35 @@ QStringList PtySession::foregroundProcessArguments() const {
     return arguments;
 }
 
+bool PtySession::canEnqueueWrite(qsizetype bytes) const {
+    constexpr qsizetype kReplyQueueLimit = 24 * 1024 * 1024;
+    return m_masterFd >= 0 && bytes >= 0
+           && bytes <= kReplyQueueLimit - pendingWriteBytes(m_writeBuffer, m_writeBufferOffset);
+}
+
+bool PtySession::enqueueWriteAll(const QByteArray &data) {
+    if (!canEnqueueWrite(data.size()))
+        return false;
+    if (m_writeBufferOffset) {
+        m_writeBuffer.remove(0, m_writeBufferOffset);
+        m_writeBufferOffset = 0;
+    }
+    m_writeBuffer.append(data);
+    TerminalTrace::logBytes("pty.write", data);
+    const QPointer<PtySession> guard(this);
+    (void)flushWriteBuffer();
+    if (!guard || m_masterFd < 0)
+        return false;
+    Q_EMIT dataWritten(data);
+    return true;
+}
+
+void PtySession::setProcessingPaused(bool paused) {
+    m_processingPaused = paused;
+    if (m_readNotifier)
+        m_readNotifier->setEnabled(!paused);
+}
+
 void PtySession::write(const QByteArray &data) {
     if (m_masterFd < 0 || data.isEmpty()) {
         return;
@@ -513,6 +542,8 @@ void PtySession::resize(int cols, int rows, int cellWidthPx, int cellHeightPx) {
 }
 
 void PtySession::handleMasterReadyRead() {
+    if (m_processingPaused)
+        return;
     if (m_masterFd < 0) {
         return;
     }
@@ -592,6 +623,8 @@ void PtySession::handleMasterWritable() {
 }
 
 void PtySession::handleChildPollTimeout() {
+    if (m_processingPaused)
+        return;
     if (m_childPid <= 0) {
         if (m_childPollTimer != nullptr) {
             m_childPollTimer->stop();

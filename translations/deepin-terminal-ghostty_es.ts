@@ -1343,6 +1343,34 @@
         <source>Settings</source>
         <translation>Configuración</translation>
     </message>
+    <message>
+        <source>Confirm paste</source>
+        <translation>Confirmar pegado</translation>
+    </message>
+    <message>
+        <source>This text may execute commands. Paste it into the terminal?</source>
+        <translation>Este texto puede ejecutar órdenes. ¿Quieres pegarlo en el terminal?</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancelar</translation>
+    </message>
+    <message>
+        <source>Allow clipboard access?</source>
+        <translation>¿Permitir el acceso al portapapeles?</translation>
+    </message>
+    <message>
+        <source>A program in this terminal wants to read the clipboard.</source>
+        <translation>Un programa de este terminal quiere leer el portapapeles.</translation>
+    </message>
+    <message>
+        <source>Remember for this terminal session</source>
+        <translation>Recordar durante esta sesión de terminal</translation>
+    </message>
+    <message>
+        <source>Allow</source>
+        <translation>Permitir</translation>
+    </message>
 </context>
 <context>
     <name>TerminalWidget</name>

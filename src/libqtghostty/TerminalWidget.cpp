@@ -5,6 +5,7 @@
 #include "logging/Logging.h"
 
 #include <QApplication>
+#include <QBuffer>
 #include <QClipboard>
 #include <QDir>
 #include <QDragEnterEvent>
@@ -16,6 +17,8 @@
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPointer>
+#include <QScopeGuard>
 #include <QSet>
 #include <QSysInfo>
 #include <QUrl>
@@ -25,6 +28,8 @@
 #include <ft2build.h>
 #include <hb-ft.h>
 #include <hb.h>
+
+#include <utility>
 #include FT_FREETYPE_H
 
 #include <algorithm>
@@ -1130,12 +1135,24 @@ void effectWritePty(GhosttyTerminal terminal, void *userdata, const uint8_t *dat
     (void)terminal;
     auto *widget = static_cast<TerminalWidget *>(userdata);
     if (widget->m_ptySession && len > 0) {
-        widget->m_ptySession->write(QByteArray(reinterpret_cast<const char *>(data), static_cast<int>(len)));
+        if (!data || len > 24 * 1024 * 1024)
+            return;
+        const QByteArray bytes(reinterpret_cast<const char *>(data), static_cast<qsizetype>(len));
+        if (widget->m_capturedPtyOutput) {
+            if (widget->m_capturedPtyOutput->size() + bytes.size() <= 24 * 1024 * 1024)
+                widget->m_capturedPtyOutput->append(bytes);
+        } else {
+            widget->m_ptySession->enqueueWriteAll(bytes);
+        }
     }
 }
 
-GhosttyClipboardWriteResult effectClipboardWrite(GhosttyTerminal terminal, void *userdata,
-                                                 const GhosttyClipboardWrite *write) {
+namespace {
+bool validMime(const QByteArray &mime);
+}
+
+static GhosttyClipboardWriteResult clipboardWriteResult(GhosttyTerminal terminal, void *userdata,
+                                                        const GhosttyClipboardWrite *write) {
     (void)terminal;
     if (!userdata || !write || write->size < sizeof(GhosttyClipboardWrite))
         return GHOSTTY_CLIPBOARD_WRITE_RESULT_INVALID_DATA;
@@ -1162,23 +1179,25 @@ GhosttyClipboardWriteResult effectClipboardWrite(GhosttyTerminal terminal, void 
         clipboard->clear(mode);
         return GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS;
     }
-    if (!write->contents)
+    if (!write->contents || write->contents_len > 128)
         return GHOSTTY_CLIPBOARD_WRITE_RESULT_INVALID_DATA;
 
+    size_t total = 0;
     auto *mimeData = new QMimeData;
     for (size_t i = 0; i < write->contents_len; ++i) {
         const GhosttyClipboardContent &content = write->contents[i];
-        if (!content.mime.ptr || content.mime.len == 0
-            || content.mime.len > static_cast<size_t>(std::numeric_limits<qsizetype>::max())
+        if (content.data.len > 64 * 1024 * 1024 - total || content.mime.len > 256 || !content.mime.ptr
+            || content.mime.len == 0 || content.mime.len > static_cast<size_t>(std::numeric_limits<qsizetype>::max())
             || (!content.data.ptr && content.data.len > 0)
             || content.data.len > static_cast<size_t>(std::numeric_limits<qsizetype>::max())) {
             delete mimeData;
             return GHOSTTY_CLIPBOARD_WRITE_RESULT_INVALID_DATA;
         }
 
+        total += content.data.len;
         const QByteArray mimeBytes(reinterpret_cast<const char *>(content.mime.ptr),
                                    static_cast<qsizetype>(content.mime.len));
-        if (mimeBytes.contains('\0')) {
+        if (!validMime(mimeBytes)) {
             delete mimeData;
             return GHOSTTY_CLIPBOARD_WRITE_RESULT_INVALID_DATA;
         }
@@ -1190,6 +1209,226 @@ GhosttyClipboardWriteResult effectClipboardWrite(GhosttyTerminal terminal, void 
 
     clipboard->setMimeData(mimeData, mode);
     return GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS;
+}
+
+void effectClipboardWrite(GhosttyTerminal terminal, void *userdata, const GhosttyClipboardWrite *write) {
+    if (!write || write->size < sizeof(GhosttyClipboardWrite) || !write->reply)
+        return;
+    auto *widget = static_cast<TerminalWidget *>(userdata);
+    const bool previousConsent = widget && widget->m_clipboardConsent;
+    if (widget)
+        widget->m_clipboardConsent = true;
+    auto callbackGate = qScopeGuard([&] {
+        if (widget)
+            widget->m_clipboardConsent = previousConsent;
+    });
+    GhosttyClipboardWriteReply reply = GHOSTTY_INIT_SIZED(GhosttyClipboardWriteReply);
+    reply.result = clipboardWriteResult(terminal, userdata, write);
+    write->reply(write, &reply);
+}
+
+namespace {
+constexpr qsizetype kClipboardReadBudget = 16 * 1024 * 1024;
+GhosttyString borrowedString(const QByteArray &bytes) {
+    return {reinterpret_cast<const uint8_t *>(bytes.constData()), static_cast<size_t>(bytes.size())};
+}
+bool validMime(const QByteArray &mime) {
+    if (mime.isEmpty() || mime.size() > 256 || !mime.contains('/'))
+        return false;
+    for (unsigned char c : mime)
+        if (c < 0x21 || c > 0x7e)
+            return false;
+    return true;
+}
+bool clipboardSourceAlive(const QPointer<const QMimeData> &source, bool *valid) {
+    if (source)
+        return true;
+    if (valid)
+        *valid = false;
+    return false;
+}
+QStringList clipboardFormats(const QMimeData *mime, bool *valid = nullptr) {
+    if (valid)
+        *valid = true;
+    if (!mime)
+        return {};
+    const QPointer<const QMimeData> source(mime);
+    QStringList formats = mime->formats();
+    if (!clipboardSourceAlive(source, valid))
+        return {};
+    const bool hasText = mime->hasText();
+    if (!clipboardSourceAlive(source, valid))
+        return {};
+    if (hasText && !formats.contains(QStringLiteral("text/plain")))
+        formats.prepend(QStringLiteral("text/plain"));
+    const bool hasImage = mime->hasImage();
+    if (!clipboardSourceAlive(source, valid))
+        return {};
+    if (hasImage && !formats.contains(QStringLiteral("image/png")))
+        formats.append(QStringLiteral("image/png"));
+    formats.removeDuplicates();
+    return formats;
+}
+QByteArray clipboardBytes(const QMimeData *mime, const QString &format, bool *valid = nullptr) {
+    if (valid)
+        *valid = true;
+    if (!mime)
+        return {};
+    const QPointer<const QMimeData> source(mime);
+    const bool hasFormat = mime->hasFormat(format);
+    if (!clipboardSourceAlive(source, valid))
+        return {};
+    if (hasFormat) {
+        const QByteArray bytes = mime->data(format);
+        return clipboardSourceAlive(source, valid) ? bytes : QByteArray();
+    }
+    if (format == QStringLiteral("text/plain")) {
+        const bool hasText = mime->hasText();
+        if (!clipboardSourceAlive(source, valid))
+            return {};
+        if (hasText) {
+            const QString text = mime->text();
+            return clipboardSourceAlive(source, valid) ? text.toUtf8() : QByteArray();
+        }
+    }
+    if (format == QStringLiteral("image/png")) {
+        const bool hasImage = mime->hasImage();
+        if (!clipboardSourceAlive(source, valid))
+            return {};
+        if (!hasImage)
+            return {};
+        const QVariant imageData = mime->imageData();
+        if (!clipboardSourceAlive(source, valid))
+            return {};
+        const QImage image = qvariant_cast<QImage>(imageData);
+        if (image.width() > 8192 || image.height() > 8192 || qint64(image.width()) * image.height() > 16 * 1024 * 1024)
+            return {};
+        QByteArray bytes;
+        QBuffer buffer(&bytes);
+        buffer.open(QIODevice::WriteOnly);
+        image.save(&buffer, "PNG");
+        return bytes;
+    }
+    return {};
+}
+} // namespace
+
+void effectClipboardRead(GhosttyTerminal, void *userdata, const GhosttyClipboardRead *read) {
+    if (!read || read->size < sizeof(GhosttyClipboardRead) || !read->reply)
+        return;
+    auto *widget = static_cast<TerminalWidget *>(userdata);
+    const bool previousConsent = widget && widget->m_clipboardConsent;
+    if (widget)
+        widget->m_clipboardConsent = true;
+    // Clipboard retrieval and synchronous reply observers may also dispatch events.
+    auto callbackGate = qScopeGuard([&] {
+        if (widget)
+            widget->m_clipboardConsent = previousConsent;
+    });
+    GhosttyClipboardReadReply reply = GHOSTTY_INIT_SIZED(GhosttyClipboardReadReply);
+    reply.result = GHOSTTY_CLIPBOARD_READ_RESULT_DENIED;
+    auto finish = qScopeGuard([&] { read->reply(read, &reply); });
+    auto *clipboard = QGuiApplication::clipboard();
+    if (!widget || !clipboard || read->mimes_len > 128 || (read->mimes_len && !read->mimes))
+        return;
+    QClipboard::Mode mode = QClipboard::Clipboard;
+    if (read->location != GHOSTTY_CLIPBOARD_LOCATION_STANDARD) {
+        if ((read->location != GHOSTTY_CLIPBOARD_LOCATION_PRIMARY
+             && read->location != GHOSTTY_CLIPBOARD_LOCATION_SELECTION)
+            || !clipboard->supportsSelection()) {
+            reply.result = GHOSTTY_CLIPBOARD_READ_RESULT_UNSUPPORTED;
+            return;
+        }
+        mode = QClipboard::Selection;
+    }
+    const QPointer<const QMimeData> mime = clipboard->mimeData(mode);
+    bool sourceValid = true;
+    const QStringList formats = clipboardFormats(mime.data(), &sourceValid);
+    if (!sourceValid) {
+        reply.result = GHOSTTY_CLIPBOARD_READ_RESULT_BUSY;
+        return;
+    }
+    if (formats.size() > 128) {
+        reply.result = GHOSTTY_CLIPBOARD_READ_RESULT_BUSY;
+        return;
+    }
+    // Storage precedes the reply scope so all borrowed views survive reply().
+    QMap<QString, QByteArray> snapshot;
+    std::vector<QByteArray> names;
+    std::vector<GhosttyString> available;
+    std::vector<GhosttyClipboardContent> contents;
+    finish.dismiss();
+    auto answer = qScopeGuard([&] { read->reply(read, &reply); });
+    qsizetype total = 0;
+    for (size_t i = 0; i < read->mimes_len; ++i) {
+        const auto &wanted = read->mimes[i];
+        if (!wanted.ptr || wanted.len > 256)
+            return;
+        const QByteArray name(reinterpret_cast<const char *>(wanted.ptr), qsizetype(wanted.len));
+        if (!validMime(name))
+            return;
+        const QString format = QString::fromLatin1(name);
+        if (!mime || !formats.contains(format))
+            continue;
+        if (snapshot.contains(format))
+            continue;
+        QByteArray bytes = clipboardBytes(mime.data(), format, &sourceValid);
+        if (!sourceValid) {
+            reply.result = GHOSTTY_CLIPBOARD_READ_RESULT_BUSY;
+            return;
+        }
+        if (bytes.size() > kClipboardReadBudget - total) {
+            reply.result = GHOSTTY_CLIPBOARD_READ_RESULT_BUSY;
+            return;
+        }
+        total += bytes.size();
+        snapshot.insert(format, std::move(bytes));
+    }
+    // Include encoding overhead and all protocol packets before granting access.
+    if (!widget->m_ptySession || !widget->m_ptySession->canEnqueueWrite(total * 2 + 256 * 1024)) {
+        reply.result = GHOSTTY_CLIPBOARD_READ_RESULT_BUSY;
+        return;
+    }
+    if (read->mimes_len && !read->granted) {
+        const auto provider = widget->m_clipboardProvider;
+        if (!provider)
+            return;
+        TerminalWidget::ClipboardPermissionRequest request;
+        request.location = read->location;
+        request.contents = snapshot;
+        request.canRemember = read->can_remember;
+        if (read->name.ptr && read->name.len <= 256)
+            request.programName =
+                QString::fromUtf8(reinterpret_cast<const char *>(read->name.ptr), qsizetype(read->name.len));
+        const auto response = provider(std::move(request));
+        if (response.decision != TerminalWidget::ClipboardDecision::Allow) {
+            if (response.decision == TerminalWidget::ClipboardDecision::Busy)
+                reply.result = GHOSTTY_CLIPBOARD_READ_RESULT_BUSY;
+            return;
+        }
+        reply.remember = response.remember && read->can_remember;
+        if (!widget->m_ptySession->canEnqueueWrite(total * 2 + 256 * 1024)) {
+            reply.result = GHOSTTY_CLIPBOARD_READ_RESULT_BUSY;
+            return;
+        }
+    }
+    names.reserve(snapshot.size() + formats.size());
+    for (auto it = snapshot.cbegin(); it != snapshot.cend(); ++it)
+        names.push_back(it.key().toLatin1());
+    for (const auto &format : formats)
+        if (validMime(format.toLatin1()))
+            names.push_back(format.toLatin1());
+    size_t i = 0;
+    for (auto it = snapshot.cbegin(); it != snapshot.cend(); ++it, ++i)
+        contents.push_back({borrowedString(names[i]), borrowedString(it.value())});
+    if (read->list)
+        for (size_t n = snapshot.size(); n < names.size(); ++n)
+            available.push_back(borrowedString(names[n]));
+    reply.contents = contents.data();
+    reply.contents_len = contents.size();
+    reply.available = available.data();
+    reply.available_len = available.size();
+    reply.result = GHOSTTY_CLIPBOARD_READ_RESULT_SUCCESS;
 }
 
 void effectDesktopNotification(GhosttyTerminal terminal, void *userdata,
@@ -1422,6 +1661,8 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     m_blinkTimer = new QTimer(this);
     m_blinkTimer->setInterval(500);
     connect(m_blinkTimer, &QTimer::timeout, this, [this]() {
+        if (isTerminalBusy())
+            return;
         const QRect previousCursorRect = cursorPaintRect();
         m_cursorBlinkVisible = !m_cursorBlinkVisible;
         const QRect currentCursorRect = cursorPaintRect();
@@ -1432,10 +1673,22 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     m_renderTimer->setSingleShot(true);
     connect(m_renderTimer, &QTimer::timeout, this, &TerminalWidget::onRenderTimerTimeout);
 
+    m_kittyAnimationTimer = new QTimer(this);
+    m_kittyAnimationTimer->setObjectName(QStringLiteral("kittyAnimationTimer"));
+    m_kittyAnimationTimer->setSingleShot(true);
+    connect(m_kittyAnimationTimer, &QTimer::timeout, this, [this]() {
+        if (canAnimateKittyImages())
+            update();
+    });
+
     m_synchronizedOutputTimeoutTimer = new QTimer(this);
     m_synchronizedOutputTimeoutTimer->setSingleShot(true);
     m_synchronizedOutputTimeoutTimer->setInterval(kSynchronizedOutputTimeoutMs);
     connect(m_synchronizedOutputTimeoutTimer, &QTimer::timeout, this, [this]() {
+        if (isTerminalBusy()) {
+            m_synchronizedOutputTimeoutTimer->start();
+            return;
+        }
         bool synchronizedOutput = false;
         if (!m_terminal || terminalModeGet(m_terminal, GHOSTTY_MODE_SYNC_OUTPUT, &synchronizedOutput) != GHOSTTY_SUCCESS
             || !synchronizedOutput) {
@@ -1474,12 +1727,12 @@ TerminalWidget::~TerminalWidget() {
         ghostty_key_event_free(m_keyEvent);
     if (m_keyEncoder)
         ghostty_key_encoder_free(m_keyEncoder);
+    if (m_imageIter)
+        ghostty_render_state_image_iterator_free(m_imageIter);
     if (m_rowCells)
         ghostty_render_state_row_cells_free(m_rowCells);
     if (m_rowIter)
         ghostty_render_state_row_iterator_free(m_rowIter);
-    if (m_kittyPlacementIter)
-        ghostty_kitty_graphics_placement_iterator_free(m_kittyPlacementIter);
     if (m_renderState)
         ghostty_render_state_free(m_renderState);
     if (m_terminal)
@@ -1504,7 +1757,12 @@ bool TerminalWidget::initialize() {
 
     m_ptySession = new PtySession(this);
     connect(m_ptySession, &PtySession::dataReceived, this, &TerminalWidget::onPtyDataReceived);
-    connect(m_ptySession, &PtySession::childExited, this, &TerminalWidget::sessionExited);
+    connect(m_ptySession, &PtySession::childExited, this, [this](int code) {
+        if (m_engineBusy)
+            m_exitPending = code;
+        else
+            Q_EMIT sessionExited(code);
+    });
     connect(m_ptySession, &PtySession::sessionClosed, this, &TerminalWidget::onPtySessionClosed);
 
     const PtySession::StartOptions options = m_hasStartOptions ? m_startOptions : PtySession::StartOptions{};
@@ -1531,10 +1789,12 @@ bool TerminalWidget::hasRunningProcess() const {
 }
 
 TerminalWidget::ViewportScrollState TerminalWidget::viewportScrollState() const {
-    return queryViewportScrollState();
+    return isTerminalBusy() ? m_viewportScrollState : queryViewportScrollState();
 }
 
 void TerminalWidget::scrollViewportBy(int deltaRows) {
+    if (isTerminalBusy())
+        return;
     if (!m_terminal || deltaRows == 0)
         return;
 
@@ -1553,6 +1813,12 @@ void TerminalWidget::scrollViewportBy(int deltaRows) {
 }
 
 void TerminalWidget::scrollViewportToOffset(int offset) {
+    if (isTerminalBusy())
+        return;
+    scrollViewportToOffsetImpl(offset);
+}
+
+void TerminalWidget::scrollViewportToOffsetImpl(int offset) {
     const ViewportScrollState state = queryViewportScrollState();
     const int targetOffset = qBound(0, offset, state.maximumOffset());
     if (!m_terminal || targetOffset == state.offset)
@@ -1573,6 +1839,8 @@ void TerminalWidget::scrollViewportToOffset(int offset) {
 }
 
 QByteArray TerminalWidget::exportVtContent() const {
+    if (isTerminalBusy())
+        return {};
     if (!m_terminal)
         return {};
 
@@ -1623,6 +1891,13 @@ QByteArray TerminalWidget::exportVtContent() const {
 }
 
 void TerminalWidget::importVtContent(const QByteArray &data) {
+    if (isTerminalBusy()) {
+        connect(
+            this, &TerminalWidget::terminalIdle, this, [this, data] { importVtContent(data); },
+            Qt::SingleShotConnection);
+        return;
+    }
+    clearPendingPaste();
     if (!m_terminal || data.isEmpty())
         return;
 
@@ -1642,11 +1917,14 @@ void TerminalWidget::importVtContent(const QByteArray &data) {
     }
     Q_EMIT progressChanged(ProgressState::Remove, -1);
     clearProgramStatus(QString());
-    m_kittyImageCache.clear();
-    m_kittyGraphicsGeneration.reset();
+    clearKittyImages();
     invalidateLinkScanCache();
     clearHoverLink();
     ghostty_terminal_reset(m_terminal);
+    m_engineBusy = true;
+    if (m_ptySession)
+        m_ptySession->setProcessingPaused(true);
+    auto processing = qScopeGuard([this] { finishEngineOperation(); });
     ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(data.constData()),
                               static_cast<size_t>(data.size()));
     // The snapshot belongs to the old foreground process, while the restored
@@ -1686,6 +1964,8 @@ QStringList TerminalWidget::foregroundProcessArguments() const {
 }
 
 bool TerminalWidget::hasVtProcessingError() const {
+    if (isTerminalBusy())
+        return false;
     bool processingError = false;
     return m_terminal
            && ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_VT_PROCESSING_ERROR, &processingError)
@@ -1694,6 +1974,8 @@ bool TerminalWidget::hasVtProcessingError() const {
 }
 
 QString TerminalWidget::visibleText() const {
+    if (isTerminalBusy())
+        return {};
     QStringList lines;
     lines.reserve(m_rows);
 
@@ -1890,6 +2172,8 @@ bool TerminalWidget::setupTerminal() {
         return false;
     }
 
+    m_kittyAnimationClock.start();
+
     if (!applyScrollbackLimits()) {
         ghostty_terminal_free(m_terminal);
         m_terminal = nullptr;
@@ -1905,6 +2189,10 @@ bool TerminalWidget::setupTerminal() {
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_WRITE_PTY, reinterpret_cast<const void *>(effectWritePty));
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE,
                          reinterpret_cast<const void *>(effectClipboardWrite));
+    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_READ,
+                         reinterpret_cast<const void *>(effectClipboardRead));
+    const size_t clipboardLimit = 64 * 1024 * 1024;
+    ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE_MAX_BYTES, &clipboardLimit);
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_DESKTOP_NOTIFICATION,
                          reinterpret_cast<const void *>(effectDesktopNotification));
     ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_PROGRESS_REPORT,
@@ -1958,9 +2246,9 @@ bool TerminalWidget::setupRenderState() {
         return false;
     }
 
-    err = ghostty_kitty_graphics_placement_iterator_new(nullptr, &m_kittyPlacementIter);
+    err = ghostty_render_state_image_iterator_new(nullptr, &m_imageIter);
     if (err != GHOSTTY_SUCCESS) {
-        std::fprintf(stderr, "ghostty_kitty_graphics_placement_iterator_new failed (%d)\n", err);
+        qCWarning(terminalLog) << "Failed to create Ghostty render-state image iterator" << err;
         return false;
     }
 
@@ -2046,6 +2334,8 @@ QString TerminalWidget::hyperlinkUriAtViewportCell(int viewportRow, int col) con
 }
 
 QString TerminalWidget::hyperlinkUriForPoint(GhosttyPoint point) const {
+    if (m_clipboardConsent)
+        return {};
     if (!m_terminal)
         return QString();
 
@@ -2068,12 +2358,16 @@ QString TerminalWidget::hyperlinkUriForPoint(GhosttyPoint point) const {
 }
 
 QString TerminalWidget::hyperlinkUriAtPosition(const QPoint &pos) const {
+    if (isTerminalBusy())
+        return {};
     const int col = viewportColumnForPosition(pos);
     const int viewportRow = viewportRowForPosition(pos);
     return hyperlinkUriAtViewportCell(viewportRow, col);
 }
 
 QString TerminalWidget::linkUriAtPosition(const QPoint &pos) const {
+    if (isTerminalBusy())
+        return {};
     return linkRangeAtPosition(pos).uri;
 }
 
@@ -2331,6 +2625,8 @@ void TerminalWidget::updateHyperlinkHoverState(const QPoint &pos, bool changeCur
 }
 
 QImage TerminalWidget::renderSnapshot(const QSize &maximumSize) {
+    if (isTerminalBusy())
+        return m_backBuffer.scaled(maximumSize, Qt::KeepAspectRatio);
     if (!m_terminal || !m_renderState || size().isEmpty() || maximumSize.isEmpty())
         return {};
     const QSize imageSize = size().scaled(maximumSize, Qt::KeepAspectRatio);
@@ -2347,6 +2643,11 @@ QImage TerminalWidget::renderSnapshot(const QSize &maximumSize) {
 }
 
 void TerminalWidget::paintEvent(QPaintEvent *event) {
+    if (m_engineBusy) {
+        QPainter painter(this);
+        painter.drawImage(QPoint(0, 0), m_backBuffer);
+        return;
+    }
     (void)event;
     if (!m_terminal || !m_renderState)
         return;
@@ -2359,7 +2660,89 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     renderPreeditText(painter);
 }
 
+void TerminalWidget::showEvent(QShowEvent *event) {
+    QWidget::showEvent(event);
+    if (window() != this)
+        window()->installEventFilter(this);
+    update();
+}
+
+void TerminalWidget::hideEvent(QHideEvent *event) {
+    m_kittyAnimationTimer->stop();
+    QWidget::hideEvent(event);
+}
+
+void TerminalWidget::changeEvent(QEvent *event) {
+    QWidget::changeEvent(event);
+    if (event->type() == QEvent::WindowStateChange) {
+        if (!canAnimateKittyImages())
+            m_kittyAnimationTimer->stop();
+        else
+            update();
+    }
+}
+
+bool TerminalWidget::eventFilter(QObject *watched, QEvent *event) {
+    if (watched == window() && event->type() == QEvent::WindowStateChange) {
+        if (!canAnimateKittyImages())
+            m_kittyAnimationTimer->stop();
+        else
+            update();
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
+bool TerminalWidget::canAnimateKittyImages() const {
+    return m_terminal && !m_kittyAnimationsStopped && isVisible() && !window()->isMinimized();
+}
+
+void TerminalWidget::clearKittyImages() {
+    m_kittyAnimationTimer->stop();
+    m_kittyAnimationDeadline.reset();
+    m_kittyImages.clear();
+    m_kittyImageCache.clear();
+    m_kittyPlacementsGeneration.reset();
+}
+
+void TerminalWidget::tickKittyAnimations() {
+    if (m_clipboardConsent)
+        return;
+    m_kittyAnimationDeadline.reset();
+    m_kittyAnimationTimer->stop();
+    if (!canAnimateKittyImages())
+        return;
+
+    GhosttyKittyGraphics graphics = nullptr;
+    if (ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS, &graphics) != GHOSTTY_SUCCESS
+        || !graphics)
+        return;
+    uint64_t before = 0;
+    if (ghostty_kitty_graphics_get(graphics, GHOSTTY_KITTY_GRAPHICS_DATA_GENERATION, &before) != GHOSTTY_SUCCESS)
+        return;
+    uint64_t next = 0;
+    const GhosttyResult result =
+        ghostty_kitty_graphics_animation_tick(graphics, static_cast<uint64_t>(m_kittyAnimationClock.elapsed()), &next);
+    if (result == GHOSTTY_SUCCESS)
+        m_kittyAnimationDeadline = next;
+    else if (result != GHOSTTY_NO_VALUE)
+        qCWarning(terminalLog) << "Failed to advance Kitty image animation" << result;
+    uint64_t after = 0;
+    if (ghostty_kitty_graphics_get(graphics, GHOSTTY_KITTY_GRAPHICS_DATA_GENERATION, &after) == GHOSTTY_SUCCESS
+        && before != after)
+        m_renderStateDirty = true;
+}
+
+void TerminalWidget::scheduleKittyAnimation() {
+    if (!canAnimateKittyImages() || m_kittyImages.isEmpty() || !m_kittyAnimationDeadline)
+        return;
+    const uint64_t now = static_cast<uint64_t>(m_kittyAnimationClock.elapsed());
+    const uint64_t delay = *m_kittyAnimationDeadline > now ? *m_kittyAnimationDeadline - now : 0;
+    m_kittyAnimationTimer->start(static_cast<int>(qBound<uint64_t>(8, delay, std::numeric_limits<int>::max())));
+}
+
 bool TerminalWidget::syncRenderState() const {
+    if (m_clipboardConsent)
+        return false;
     if (!m_renderStateDirty) {
         return true;
     }
@@ -2406,6 +2789,14 @@ bool TerminalWidget::ensureBackBuffer() {
 }
 
 void TerminalWidget::renderTerminal(QPainter &painter) {
+    bool synchronizedOutput = false;
+    const bool holdingFrame =
+        terminalModeGet(m_terminal, GHOSTTY_MODE_SYNC_OUTPUT, &synchronizedOutput) == GHOSTTY_SUCCESS
+        && synchronizedOutput;
+    if (holdingFrame)
+        m_kittyAnimationTimer->stop();
+    else
+        tickKittyAnimations();
     if (!syncRenderState())
         return;
 
@@ -2445,6 +2836,9 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     if (err != GHOSTTY_SUCCESS)
         return;
 
+    const bool imagesChanged = !holdingFrame && prepareKittyImages();
+    if (!holdingFrame)
+        scheduleKittyAnimation();
     const bool bufferRecreated = ensureBackBuffer();
     if (m_backBuffer.isNull())
         return;
@@ -2454,7 +2848,8 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
 
     const int currentViewportOffset = viewportScrollState().offset;
     const bool viewportChanged = currentViewportOffset != m_backBufferViewportOffset;
-    const bool fullRedraw = bufferRecreated || viewportChanged || (dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FULL);
+    const bool fullRedraw = bufferRecreated || viewportChanged || imagesChanged || !m_kittyImages.isEmpty()
+                            || (dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FULL);
     if (!fullRedraw && dirtyState == GHOSTTY_RENDER_STATE_DIRTY_FALSE) {
         painter.setCompositionMode(QPainter::CompositionMode_Source);
         painter.drawImage(contentOrigin, m_backBuffer);
@@ -2479,7 +2874,7 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     m_debugLastFrameEmojiFallbackDrawCount = 0;
 #endif
 
-    renderKittyGraphicsLayer(backPainter, GHOSTTY_KITTY_PLACEMENT_LAYER_BELOW_BG);
+    renderKittyGraphicsLayer(backPainter, GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_BACKGROUND);
 
     int y = 0;
     while (ghostty_render_state_row_iterator_next(m_rowIter)) {
@@ -2500,7 +2895,7 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
         y += m_cellHeight;
     }
 
-    renderKittyGraphicsLayer(backPainter, GHOSTTY_KITTY_PLACEMENT_LAYER_BELOW_TEXT);
+    renderKittyGraphicsLayer(backPainter, GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_TEXT);
 
     err = ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, &m_rowIter);
     if (err != GHOSTTY_SUCCESS)
@@ -2522,7 +2917,7 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
 
         y += m_cellHeight;
     }
-    renderKittyGraphicsLayer(backPainter, GHOSTTY_KITTY_PLACEMENT_LAYER_ABOVE_TEXT);
+    renderKittyGraphicsLayer(backPainter, GHOSTTY_RENDER_STATE_IMAGE_LAYER_ABOVE_TEXT);
     GhosttyRenderStateDirty cleanState = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
     ghostty_render_state_set(m_renderState, GHOSTTY_RENDER_STATE_OPTION_DIRTY, &cleanState);
     m_backBufferViewportOffset = currentViewportOffset;
@@ -2531,92 +2926,99 @@ void TerminalWidget::renderTerminal(QPainter &painter) {
     painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
 }
 
-bool TerminalWidget::renderKittyGraphicsLayer(QPainter &painter, GhosttyKittyPlacementLayer layer) {
-    if (!m_terminal || !m_kittyPlacementIter)
+bool TerminalWidget::prepareKittyImages() {
+    uint64_t placementGeneration = 0;
+    GhosttyResult result = ghostty_render_state_get(
+        m_renderState, GHOSTTY_RENDER_STATE_DATA_IMAGE_PLACEMENTS_GENERATION, &placementGeneration);
+    if (result != GHOSTTY_SUCCESS)
+        return false;
+    result = ghostty_render_state_get(m_renderState, GHOSTTY_RENDER_STATE_DATA_IMAGE_ITERATOR, &m_imageIter);
+    if (result != GHOSTTY_SUCCESS)
         return false;
 
     GhosttyKittyGraphics graphics = nullptr;
-    if (ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS, &graphics) != GHOSTTY_SUCCESS
-        || !graphics) {
+    result = ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS, &graphics);
+    if (result != GHOSTTY_SUCCESS || !graphics)
         return false;
-    }
 
-    uint64_t generation = 0;
-    if (ghostty_kitty_graphics_get(graphics, GHOSTTY_KITTY_GRAPHICS_DATA_GENERATION, &generation) != GHOSTTY_SUCCESS)
-        return false;
-    if (!m_kittyGraphicsGeneration || *m_kittyGraphicsGeneration != generation) {
-        m_kittyImageCache.clear();
-        m_kittyGraphicsGeneration = generation;
+    QVector<KittyImagePlacement> placements;
+    QSet<quint64> needed;
+    while (ghostty_render_state_image_iterator_next(m_imageIter)) {
+        GhosttyImageProtocol protocol = GHOSTTY_IMAGE_PROTOCOL_KITTY;
+        uint32_t imageId = 0;
+        uint64_t generation = 0;
+        GhosttyRenderStateImageLayer layer = GHOSTTY_RENDER_STATE_IMAGE_LAYER_ABOVE_TEXT;
+        int32_t z = 0, col = 0, row = 0;
+        uint32_t offsetX = 0, offsetY = 0, width = 0, height = 0;
+        uint32_t sourceX = 0, sourceY = 0, sourceWidth = 0, sourceHeight = 0;
+        constexpr GhosttyRenderStateImageData keys[] = {
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_PROTOCOL,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_ID,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_GENERATION,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_LAYER,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_Z,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_VIEWPORT_COL,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_VIEWPORT_ROW,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_CELL_OFFSET_X,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_CELL_OFFSET_Y,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_WIDTH,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_HEIGHT,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_X,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_Y,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_WIDTH,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_HEIGHT,
+        };
+        void *values[] = {&protocol, &imageId, &generation, &layer,   &z,       &col,         &row,         &offsetX,
+                          &offsetY,  &width,   &height,     &sourceX, &sourceY, &sourceWidth, &sourceHeight};
+        size_t written = 0;
+        result = ghostty_render_state_image_get_multi(m_imageIter, std::size(keys), keys, values, &written);
+        if (result != GHOSTTY_SUCCESS || written != std::size(keys)) {
+            qCWarning(terminalLog) << "Failed to read render-state image placement" << result << written;
+            continue;
+        }
+        if (protocol != GHOSTTY_IMAGE_PROTOCOL_KITTY || !width || !height || !sourceWidth || !sourceHeight)
+            continue;
+        const quint64 key = (quint64(protocol) << 32) | imageId;
+        const GhosttyKittyGraphicsImage image = ghostty_kitty_graphics_image(graphics, imageId);
+        if (!image || imageForKittyImage(image, key, generation).isNull())
+            continue;
+        needed.insert(key);
+        placements.append(
+            {key, generation, layer, z, QRectF(sourceX, sourceY, sourceWidth, sourceHeight),
+             QRectF(qreal(col) * m_cellWidth + offsetX, qreal(row) * m_cellHeight + offsetY, width, height)});
     }
-
-    if (ghostty_kitty_graphics_get(graphics, GHOSTTY_KITTY_GRAPHICS_DATA_PLACEMENT_ITERATOR, &m_kittyPlacementIter)
-        != GHOSTTY_SUCCESS) {
-        return false;
+    std::stable_sort(placements.begin(), placements.end(),
+                     [](const auto &a, const auto &b) { return a.layer != b.layer ? a.layer < b.layer : a.z < b.z; });
+    const bool changed = !m_kittyPlacementsGeneration || *m_kittyPlacementsGeneration != placementGeneration
+                         || placements != m_kittyImages;
+    m_kittyPlacementsGeneration = placementGeneration;
+    m_kittyImages = std::move(placements);
+    for (auto it = m_kittyImageCache.begin(); it != m_kittyImageCache.end();) {
+        if (!needed.contains(it.key()))
+            it = m_kittyImageCache.erase(it);
+        else
+            ++it;
     }
+    return changed;
+}
 
-    if (ghostty_kitty_graphics_placement_iterator_set(m_kittyPlacementIter,
-                                                      GHOSTTY_KITTY_GRAPHICS_PLACEMENT_ITERATOR_OPTION_LAYER, &layer)
-        != GHOSTTY_SUCCESS) {
-        return false;
-    }
-
-    bool rendered = false;
+void TerminalWidget::renderKittyGraphicsLayer(QPainter &painter, GhosttyRenderStateImageLayer layer) {
     painter.save();
-    painter.setClipRect(QRect(QPoint(0, 0), terminalContentRect().size()));
-    while (ghostty_kitty_graphics_placement_next(m_kittyPlacementIter))
-        rendered = renderKittyPlacement(painter, graphics) || rendered;
+    painter.setClipRect(QRect(QPoint(0, 0), terminalContentRect().size()), Qt::IntersectClip);
+    for (const auto &placement : m_kittyImages) {
+        if (placement.layer == layer) {
+            const auto image = m_kittyImageCache.constFind(placement.key);
+            if (image != m_kittyImageCache.constEnd())
+                painter.drawImage(placement.target, image->pixels, placement.source);
+        }
+    }
     painter.restore();
-    return rendered;
 }
 
-bool TerminalWidget::renderKittyPlacement(QPainter &painter, GhosttyKittyGraphics graphics) {
-    uint32_t imageId = 0;
-    if (ghostty_kitty_graphics_placement_get(m_kittyPlacementIter, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_IMAGE_ID,
-                                             &imageId)
-        != GHOSTTY_SUCCESS) {
-        return false;
-    }
-
-    GhosttyKittyGraphicsImage image = ghostty_kitty_graphics_image(graphics, imageId);
-    if (!image)
-        return false;
-
-    GhosttyKittyGraphicsPlacementRenderInfo renderInfo = GHOSTTY_INIT_SIZED(GhosttyKittyGraphicsPlacementRenderInfo);
-    if (ghostty_kitty_graphics_placement_render_info(m_kittyPlacementIter, image, m_terminal, &renderInfo)
-            != GHOSTTY_SUCCESS
-        || !renderInfo.viewport_visible || renderInfo.pixel_width == 0 || renderInfo.pixel_height == 0
-        || renderInfo.source_width == 0 || renderInfo.source_height == 0) {
-        return false;
-    }
-
-    uint32_t xOffset = 0;
-    uint32_t yOffset = 0;
-    ghostty_kitty_graphics_placement_get(m_kittyPlacementIter, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_X_OFFSET,
-                                         &xOffset);
-    ghostty_kitty_graphics_placement_get(m_kittyPlacementIter, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_Y_OFFSET,
-                                         &yOffset);
-
-    const QImage qtImage = imageForKittyImage(image);
-    if (qtImage.isNull())
-        return false;
-
-    const QRectF sourceRect(renderInfo.source_x, renderInfo.source_y, renderInfo.source_width,
-                            renderInfo.source_height);
-    const QRectF targetRect(static_cast<qreal>(renderInfo.viewport_col) * m_cellWidth + xOffset,
-                            static_cast<qreal>(renderInfo.viewport_row) * m_cellHeight + yOffset,
-                            renderInfo.pixel_width, renderInfo.pixel_height);
-    painter.drawImage(targetRect, qtImage, sourceRect);
-    return true;
-}
-
-QImage TerminalWidget::imageForKittyImage(GhosttyKittyGraphicsImage image) {
-    uint32_t imageId = 0;
-    if (ghostty_kitty_graphics_image_get(image, GHOSTTY_KITTY_IMAGE_DATA_ID, &imageId) != GHOSTTY_SUCCESS)
-        return {};
-
-    const auto cached = m_kittyImageCache.constFind(imageId);
-    if (cached != m_kittyImageCache.constEnd())
-        return cached.value();
+QImage TerminalWidget::imageForKittyImage(GhosttyKittyGraphicsImage image, quint64 key, uint64_t generation) {
+    const auto cached = m_kittyImageCache.constFind(key);
+    if (cached != m_kittyImageCache.constEnd() && cached->generation == generation)
+        return cached->pixels;
 
     uint32_t width = 0;
     uint32_t height = 0;
@@ -2694,7 +3096,7 @@ QImage TerminalWidget::imageForKittyImage(GhosttyKittyGraphicsImage image) {
 #ifdef QTGHOSTTY_TESTING
         ++m_debugKittyImageConversionCount;
 #endif
-        m_kittyImageCache.insert(imageId, qtImage);
+        m_kittyImageCache.insert(key, {generation, qtImage});
     }
     return qtImage;
 }
@@ -3237,6 +3639,17 @@ void TerminalWidget::renderRow(QPainter &painter, int y, const GhosttyRenderStat
         const QColor cellBackground =
             (style.inverse || hasBg) ? QColor(bgColor.r, bgColor.g, bgColor.b) : defaultBackground;
 
+        uint32_t cellCodepoint = 0;
+        if (ghostty_cell_get(rawCell, GHOSTTY_CELL_DATA_CODEPOINT, &cellCodepoint) == GHOSTTY_SUCCESS
+            && cellCodepoint == 0x10EEEE) {
+            flushTextRun();
+            if (!style.invisible)
+                drawTextDecorations(x, isWideHead ? 2 : 1, decorationColor, style.underline, style.strikethrough,
+                                    style.overline);
+            x += m_cellWidth;
+            continue;
+        }
+
         if (!isWideHead && !isWideTail) {
             if (graphemeLen == 0) {
                 emptyCellXs.insert(x);
@@ -3688,6 +4101,8 @@ bool encodeAndSendMouseEvent(GhosttyMouseEncoder encoder, GhosttyMouseEvent even
 } // anonymous namespace
 
 void TerminalWidget::keyPressEvent(QKeyEvent *event) {
+    if (isTerminalBusy())
+        return;
     if (!m_terminal || !m_keyEncoder || !m_keyEvent || !m_ptySession) {
         QWidget::keyPressEvent(event);
         return;
@@ -3779,6 +4194,8 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
 }
 
 void TerminalWidget::inputMethodEvent(QInputMethodEvent *event) {
+    if (isTerminalBusy())
+        return;
     if (!event) {
         return;
     }
@@ -3804,6 +4221,8 @@ void TerminalWidget::inputMethodEvent(QInputMethodEvent *event) {
 }
 
 QVariant TerminalWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
+    if (isTerminalBusy())
+        return {};
     switch (query) {
         case Qt::ImEnabled:
             return true;
@@ -3841,6 +4260,12 @@ bool TerminalWidget::focusNextPrevChild(bool next) {
 }
 
 void TerminalWidget::setTerminalFont(const QFont &font) {
+    if (isTerminalBusy()) {
+        connect(
+            this, &TerminalWidget::terminalIdle, this, [this, font] { setTerminalFont(font); },
+            Qt::SingleShotConnection);
+        return;
+    }
     m_font = font;
     m_font.setStyleHint(QFont::Monospace);
     m_font.setFixedPitch(true);
@@ -3863,6 +4288,12 @@ QFont TerminalWidget::terminalFont() const {
 }
 
 void TerminalWidget::setCursorShape(int shape) {
+    if (isTerminalBusy()) {
+        connect(
+            this, &TerminalWidget::terminalIdle, this, [this, shape] { setCursorShape(shape); },
+            Qt::SingleShotConnection);
+        return;
+    }
     m_cursorShape = shape;
     update();
 }
@@ -3886,6 +4317,12 @@ void TerminalWidget::setStartOptions(const PtySession::StartOptions &options) {
 }
 
 void TerminalWidget::setScrollbackLines(int lines) {
+    if (isTerminalBusy()) {
+        connect(
+            this, &TerminalWidget::terminalIdle, this, [this, lines] { setScrollbackLines(lines); },
+            Qt::SingleShotConnection);
+        return;
+    }
     m_scrollbackLines = std::max(0, lines);
     if (m_terminal && applyScrollbackLimits())
         scheduleScrollbackCompression();
@@ -3908,6 +4345,11 @@ void TerminalWidget::setOpacity(qreal opacity) {
 }
 
 void TerminalWidget::applyTheme(const TerminalTheme &theme) {
+    if (isTerminalBusy()) {
+        connect(
+            this, &TerminalWidget::terminalIdle, this, [this, theme] { applyTheme(theme); }, Qt::SingleShotConnection);
+        return;
+    }
     if (!m_terminal)
         return;
 
@@ -3961,6 +4403,8 @@ void TerminalWidget::focusOutEvent(QFocusEvent *event) {
 }
 
 void TerminalWidget::sendFocusEvent(bool gained) {
+    if (isTerminalBusy())
+        return;
     if (!m_terminal || !m_ptySession)
         return;
 
@@ -3980,6 +4424,8 @@ void TerminalWidget::sendFocusEvent(bool gained) {
 }
 
 void TerminalWidget::wheelEvent(QWheelEvent *event) {
+    if (isTerminalBusy())
+        return;
     if (!m_terminal)
         return;
 
@@ -4028,11 +4474,15 @@ void TerminalWidget::dropEvent(QDropEvent *event) {
     if (paths.isEmpty())
         return;
 
-    writeUserInput(paths.join(QLatin1Char(' ')).toUtf8());
+    requestPaste(paths.join(QLatin1Char(' ')).toUtf8(), GHOSTTY_CLIPBOARD_LOCATION_STANDARD, GHOSTTY_PASTE_SOURCE_TEXT);
     event->acceptProposedAction();
 }
 
 void TerminalWidget::onPtyDataReceived(const QByteArray &data) {
+    if (m_engineBusy) {
+        m_pendingPtyData.append(data);
+        return;
+    }
     if (!m_terminal || data.isEmpty())
         return;
 
@@ -4162,6 +4612,13 @@ void TerminalWidget::updateCommandState(CommandState newState) {
 }
 
 void TerminalWidget::onPtySessionClosed() {
+    if (m_engineBusy) {
+        m_sessionClosePending = true;
+        return;
+    }
+    clearPendingPaste();
+    clearKittyImages();
+    m_kittyAnimationsStopped = true;
     flushPendingPtyData();
     m_oscScanBuffer.clear();
     clearActiveProgramStatuses();
@@ -4281,7 +4738,9 @@ void TerminalWidget::notifyInputMethodCursorChange() {
 }
 
 void TerminalWidget::scheduleTerminalRepaint() {
-    if (!m_terminal || m_pendingPtyData.isEmpty()) {
+    if (m_clipboardConsent)
+        return;
+    if (m_engineBusy || !m_terminal || m_pendingPtyData.isEmpty()) {
         return;
     }
 
@@ -4314,6 +4773,12 @@ void TerminalWidget::scheduleTerminalRepaint() {
 }
 
 void TerminalWidget::applyPendingResize() {
+    if (isTerminalBusy())
+        return;
+    applyPendingResizeImpl();
+}
+
+void TerminalWidget::applyPendingResizeImpl() {
     if (m_pendingResizeCols == m_cols && m_pendingResizeRows == m_rows)
         return;
 
@@ -4398,7 +4863,11 @@ bool TerminalWidget::applyScrollbackLimits() {
 }
 
 void TerminalWidget::checkVtProcessingError() {
-    if (m_vtProcessingErrorReported || !hasVtProcessingError())
+    bool processingError = false;
+    if (m_vtProcessingErrorReported || !m_terminal
+        || ghostty_terminal_get(m_terminal, GHOSTTY_TERMINAL_DATA_VT_PROCESSING_ERROR, &processingError)
+               != GHOSTTY_SUCCESS
+        || !processingError)
         return;
 
     m_vtProcessingErrorReported = true;
@@ -4407,6 +4876,8 @@ void TerminalWidget::checkVtProcessingError() {
 }
 
 void TerminalWidget::scheduleScrollbackCompression() {
+    if (m_clipboardConsent)
+        return;
     if (!m_terminal || !m_scrollbackCompressionTimer || !m_scrollbackCompressionAvailable)
         return;
 
@@ -4425,6 +4896,8 @@ void TerminalWidget::scheduleScrollbackCompression() {
 }
 
 void TerminalWidget::runScrollbackCompressionStep() {
+    if (isTerminalBusy())
+        return;
     if (!m_terminal || !m_scrollbackCompressionTimer || !m_scrollbackCompressionAvailable)
         return;
 
@@ -4467,10 +4940,44 @@ void TerminalWidget::runScrollbackCompressionStep() {
     }
 }
 
+void TerminalWidget::finishEngineOperation() {
+    m_engineBusy = false;
+    if (m_ptySession)
+        m_ptySession->setProcessingPaused(false);
+    QMetaObject::invokeMethod(
+        this,
+        [this] {
+            if (m_engineBusy)
+                return;
+            applyPendingResize();
+            if (m_exitPending) {
+                const int code = *m_exitPending;
+                m_exitPending.reset();
+                Q_EMIT sessionExited(code);
+            }
+            if (m_sessionClosePending) {
+                m_sessionClosePending = false;
+                onPtySessionClosed();
+            }
+            if (!m_pendingPtyData.isEmpty())
+                scheduleTerminalRepaint();
+            Q_EMIT terminalIdle();
+            update();
+        },
+        Qt::QueuedConnection);
+}
+
 bool TerminalWidget::flushPendingPtyData(QRect *repaintRegion) {
+    if (isTerminalBusy())
+        return false;
     if (!m_terminal || m_pendingPtyData.isEmpty()) {
         return false;
     }
+    m_engineBusy = true;
+    if (m_ptySession)
+        m_ptySession->setProcessingPaused(true);
+    auto processing = qScopeGuard([this] { finishEngineOperation(); });
+    applyPendingResizeImpl();
 
     const bool canDetectCursorOnly = repaintRegion && m_renderState && !m_renderStateDirty && !m_backBuffer.isNull()
                                      && m_preeditText.isEmpty() && isCursorOnlyPtyData(m_pendingPtyData);
@@ -4479,13 +4986,13 @@ bool TerminalWidget::flushPendingPtyData(QRect *repaintRegion) {
 #ifdef QTGHOSTTY_TESTING
     ++m_debugPtyFlushCount;
 #endif
-    ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(m_pendingPtyData.constData()),
-                              static_cast<size_t>(m_pendingPtyData.size()));
+    const QByteArray batch = std::exchange(m_pendingPtyData, {});
+    ghostty_terminal_vt_write(m_terminal, reinterpret_cast<const uint8_t *>(batch.constData()),
+                              static_cast<size_t>(batch.size()));
     checkVtProcessingError();
     scheduleScrollbackCompression();
     invalidateLinkScanCache();
     clearHoverLink();
-    m_pendingPtyData.clear();
     m_renderStateDirty = true;
     updateViewportScrollState();
 
@@ -4542,10 +5049,12 @@ void TerminalWidget::scrollViewportToBottom() {
     if (state.offset >= state.maximumOffset())
         return;
 
-    scrollViewportToOffset(state.maximumOffset());
+    scrollViewportToOffsetImpl(state.maximumOffset());
 }
 
 void TerminalWidget::writeUserInput(const QByteArray &data) {
+    if (isTerminalBusy())
+        return;
     if (!m_ptySession || data.isEmpty())
         return;
 
@@ -4554,6 +5063,8 @@ void TerminalWidget::writeUserInput(const QByteArray &data) {
 }
 
 void TerminalWidget::onRenderTimerTimeout() {
+    if (isTerminalBusy())
+        return;
     if (m_pendingPtyData.isEmpty()) {
         return;
     }
@@ -4643,6 +5154,8 @@ QString TerminalWidget::textForScreenRowWithCellMap(int row, QVector<int> &cellO
 }
 
 void TerminalWidget::performSearch(const QString &query) {
+    if (isTerminalBusy())
+        return;
     m_searchMatches.clear();
     m_currentSearchIndex = -1;
 
@@ -4678,6 +5191,8 @@ void TerminalWidget::clearSearch() {
 }
 
 void TerminalWidget::findNext() {
+    if (isTerminalBusy())
+        return;
     if (m_searchMatches.isEmpty())
         return;
     m_currentSearchIndex = (m_currentSearchIndex + 1) % m_searchMatches.size();
@@ -4686,6 +5201,8 @@ void TerminalWidget::findNext() {
 }
 
 void TerminalWidget::findPrevious() {
+    if (isTerminalBusy())
+        return;
     if (m_searchMatches.isEmpty())
         return;
     m_currentSearchIndex = m_currentSearchIndex - 1;
@@ -4718,6 +5235,8 @@ void TerminalWidget::scrollToSearchMatch() {
 // ---------------------------------------------------------------------------
 
 void TerminalWidget::mousePressEvent(QMouseEvent *event) {
+    if (isTerminalBusy())
+        return;
     if (!m_terminal || !m_ptySession)
         return;
 
@@ -4798,6 +5317,8 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
 }
 
 void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
+    if (isTerminalBusy())
+        return;
     if (!m_terminal || !m_ptySession)
         return;
 
@@ -4846,6 +5367,8 @@ void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
 }
 
 void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
+    if (isTerminalBusy())
+        return;
     if (!m_terminal || !m_ptySession)
         return;
 
@@ -4888,32 +5411,8 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
     }
 
     if (event->button() == Qt::MiddleButton) {
-        if (!m_ptySession)
-            return;
-        QString text = QGuiApplication::clipboard()->text(QClipboard::Selection);
-        if (!text.isEmpty()) {
-            QByteArray data = text.toUtf8();
-            bool bracketed = false;
-            terminalModeGet(m_terminal, GHOSTTY_MODE_BRACKETED_PASTE, &bracketed);
-            if (bracketed) {
-                size_t required = 0;
-                QByteArray mutableData(data);
-                GhosttyResult err = ghostty_paste_encode(mutableData.data(), static_cast<size_t>(mutableData.size()),
-                                                         true, nullptr, 0, &required);
-                if (err == GHOSTTY_OUT_OF_SPACE && required > 0) {
-                    QByteArray buf(static_cast<int>(required), '\0');
-                    size_t written = 0;
-                    if (ghostty_paste_encode(mutableData.data(), static_cast<size_t>(mutableData.size()), true,
-                                             buf.data(), static_cast<size_t>(buf.size()), &written)
-                        == GHOSTTY_SUCCESS) {
-                        writeUserInput(QByteArray(buf.constData(), static_cast<int>(written)));
-                        event->accept();
-                        return;
-                    }
-                }
-            }
-            writeUserInput(data);
-        }
+        requestPaste(selectionClipboardText().toUtf8(), GHOSTTY_CLIPBOARD_LOCATION_PRIMARY,
+                     GHOSTTY_PASTE_SOURCE_CLIPBOARD);
         event->accept();
     }
 }
@@ -4960,6 +5459,8 @@ void TerminalWidget::stopSelectionAutoScroll() {
 }
 
 void TerminalWidget::handleSelectionAutoScroll() {
+    if (isTerminalBusy())
+        return;
     if (!m_selectionDragActive || !m_terminal || !m_selectionAutoScrollTimer) {
         stopSelectionAutoScroll();
         return;
@@ -5025,6 +5526,8 @@ bool TerminalWidget::cellInSelection(int screenRow, int col) const {
 }
 
 QString TerminalWidget::selectedText() const {
+    if (isTerminalBusy())
+        return {};
     if (!m_selection.active || !m_terminal)
         return QString();
 
@@ -5094,6 +5597,8 @@ bool TerminalWidget::hasSelection() const {
 }
 
 void TerminalWidget::copyToClipboard() {
+    if (isTerminalBusy())
+        return;
     QString text = selectedText();
     if (!text.isEmpty())
         QGuiApplication::clipboard()->setText(text);
@@ -5103,38 +5608,132 @@ void TerminalWidget::setSelectionClipboardText(const QString &text) {
     QGuiApplication::clipboard()->setText(text, QClipboard::Selection);
 }
 
+QString TerminalWidget::selectionClipboardText() const {
+    return QString::fromUtf8(
+        clipboardBytes(QGuiApplication::clipboard()->mimeData(QClipboard::Selection), QStringLiteral("text/plain")));
+}
+
+QStringList TerminalWidget::selectionClipboardFormats() const {
+    return clipboardFormats(QGuiApplication::clipboard()->mimeData(QClipboard::Selection));
+}
+
+bool TerminalWidget::canPasteClipboard() const {
+    if (isTerminalBusy())
+        return false;
+    bool sourceValid = true;
+    const auto formats = clipboardFormats(QGuiApplication::clipboard()->mimeData(), &sourceValid);
+    if (!sourceValid)
+        return false;
+    if (formats.contains(QStringLiteral("text/plain")))
+        return true;
+    bool events = false;
+    return m_terminal && terminalModeGet(m_terminal, GHOSTTY_MODE_PASTE_EVENTS, &events) == GHOSTTY_SUCCESS && events
+           && !formats.isEmpty();
+}
+
 void TerminalWidget::pasteFromClipboard() {
-    if (!m_ptySession || !m_terminal)
+    if (isTerminalBusy())
         return;
-    QString text = QGuiApplication::clipboard()->text();
-    if (text.isEmpty())
+    bool sourceValid = true;
+    const auto text =
+        clipboardBytes(QGuiApplication::clipboard()->mimeData(), QStringLiteral("text/plain"), &sourceValid);
+    if (!sourceValid)
         return;
-    QByteArray data = text.toUtf8();
+    requestPaste(text, GHOSTTY_CLIPBOARD_LOCATION_STANDARD, GHOSTTY_PASTE_SOURCE_CLIPBOARD);
+}
 
-    bool bracketed = false;
-    terminalModeGet(m_terminal, GHOSTTY_MODE_BRACKETED_PASTE, &bracketed);
+void TerminalWidget::requestPaste(const QByteArray &text, GhosttyClipboardLocation location,
+                                  GhosttyPasteSource source) {
+    clearPendingPaste();
+    if (isTerminalBusy() || !m_ptySession || !m_terminal)
+        return;
 
-    if (bracketed) {
-        size_t required = 0;
-        QByteArray mutableData(data);
-        GhosttyResult err = ghostty_paste_encode(mutableData.data(), static_cast<size_t>(mutableData.size()), true,
-                                                 nullptr, 0, &required);
-        if (err == GHOSTTY_OUT_OF_SPACE && required > 0) {
-            QByteArray buf(static_cast<int>(required), '\0');
-            size_t written = 0;
-            if (ghostty_paste_encode(mutableData.data(), static_cast<size_t>(mutableData.size()), true, buf.data(),
-                                     static_cast<size_t>(buf.size()), &written)
-                == GHOSTTY_SUCCESS) {
-                writeUserInput(QByteArray(buf.constData(), static_cast<int>(written)));
-                return;
-            }
-        }
+    PasteSnapshot snapshot{++m_nextPasteId, text, location, source, {}};
+    if (!text.isEmpty())
+        snapshot.contents.insert(QStringLiteral("text/plain"), text);
+    if (source == GHOSTTY_PASTE_SOURCE_CLIPBOARD) {
+        const auto *mime = QGuiApplication::clipboard()->mimeData(
+            location == GHOSTTY_CLIPBOARD_LOCATION_STANDARD ? QClipboard::Clipboard : QClipboard::Selection);
+        // Event advertisement needs names only. The text retry owns the confirmed bytes.
+        const auto formats =
+            location == GHOSTTY_CLIPBOARD_LOCATION_STANDARD ? clipboardFormats(mime) : selectionClipboardFormats();
+        for (const auto &format : formats)
+            if (validMime(format.toLatin1()))
+                snapshot.contents.insert(format, format == QStringLiteral("text/plain") ? text : QByteArray());
     }
+    if (snapshot.contents.isEmpty())
+        return;
+    const GhosttyResult result = pasteSnapshot(snapshot, false);
+    if (result == GHOSTTY_REJECTED) {
+        m_pendingPaste = snapshot;
+        Q_EMIT pasteConfirmationRequested(snapshot.id, QString::fromUtf8(snapshot.text));
+    }
+}
 
-    writeUserInput(data);
+GhosttyResult TerminalWidget::pasteSnapshot(const PasteSnapshot &snapshot, bool allowUnsafe) {
+    if (m_engineBusy)
+        return GHOSTTY_IO_ERROR;
+    if (!m_ptySession->canEnqueueWrite(snapshot.text.size() + 256 * 1024))
+        return GHOSTTY_IO_ERROR;
+    std::vector<QByteArray> names;
+    std::vector<GhosttyString> mimes;
+    for (auto it = snapshot.contents.cbegin(); it != snapshot.contents.cend(); ++it)
+        names.push_back(it.key().toLatin1());
+    for (const auto &name : names)
+        mimes.push_back(borrowedString(name));
+    GhosttyPaste paste = GHOSTTY_INIT_SIZED(GhosttyPaste);
+    paste.location = snapshot.location;
+    paste.source = snapshot.source;
+    paste.mimes = mimes.data();
+    paste.mimes_len = mimes.size();
+    paste.reader = {[](void *userdata, GhosttyString name, GhosttyWriter writer) {
+                        const auto &snapshot = *static_cast<const PasteSnapshot *>(userdata);
+                        const auto bytes = snapshot.contents.value(
+                            QString::fromLatin1(reinterpret_cast<const char *>(name.ptr), qsizetype(name.len)));
+                        return bytes.isEmpty()
+                               || writer.write(writer.userdata, reinterpret_cast<const uint8_t *>(bytes.constData()),
+                                               size_t(bytes.size()));
+                    },
+                    const_cast<PasteSnapshot *>(&snapshot)};
+    m_engineBusy = true;
+    m_ptySession->setProcessingPaused(true);
+    auto processing = qScopeGuard([this] { finishEngineOperation(); });
+    QByteArray output;
+    m_capturedPtyOutput = &output;
+    auto capture = qScopeGuard([this] { m_capturedPtyOutput = nullptr; });
+    paste.allow_unsafe = allowUnsafe;
+    bool written = false;
+    const GhosttyResult result = ghostty_terminal_paste(m_terminal, &paste, &written);
+    m_capturedPtyOutput = nullptr;
+    if (result == GHOSTTY_SUCCESS && written) {
+        if (!m_ptySession->enqueueWriteAll(output))
+            return GHOSTTY_IO_ERROR;
+        scrollViewportToBottom();
+    } else if (result != GHOSTTY_SUCCESS && result != GHOSTTY_REJECTED)
+        qCWarning(terminalLog) << "Failed to paste terminal text" << result;
+    return result;
+}
+
+void TerminalWidget::clearPendingPaste() {
+    if (!m_pendingPaste)
+        return;
+    const quint64 requestId = m_pendingPaste->id;
+    m_pendingPaste.reset();
+    Q_EMIT pasteConfirmationFinished(requestId);
+}
+
+void TerminalWidget::confirmPaste(quint64 requestId, bool approved) {
+    if (!m_pendingPaste || m_pendingPaste->id != requestId)
+        return;
+    const PasteSnapshot snapshot = std::move(*m_pendingPaste);
+    clearPendingPaste();
+    if (approved && m_terminal && m_ptySession)
+        pasteSnapshot(snapshot, true);
 }
 
 void TerminalWidget::selectAll() {
+    if (isTerminalBusy())
+        return;
     if (!m_terminal)
         return;
     size_t totalRows = 0;

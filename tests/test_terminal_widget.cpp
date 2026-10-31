@@ -1,6 +1,7 @@
 #include "TerminalTheme.h"
 
 #include <QApplication>
+#include <QBuffer>
 #include <QClipboard>
 #include <QElapsedTimer>
 #include <QEvent>
@@ -10,6 +11,7 @@
 #include <QInputMethodQueryEvent>
 #include <QMimeData>
 #include <QPainter>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTest>
 #include <QUrl>
@@ -27,6 +29,8 @@
 
 #include <unistd.h>
 
+#include <memory>
+
 class TestTerminalWidget : public QObject {
     Q_OBJECT
 
@@ -34,6 +38,9 @@ private slots:
     void initTestCase() {}
     void cleanupTestCase() {}
 
+    void testBundledEngineBuild();
+    void testEnginePasteSafety_data();
+    void testEnginePasteSafety();
     void testInitialize();
     void testInputMethodSupport();
     void testAltLetterSendsEscapePrefix();
@@ -86,6 +93,15 @@ private slots:
     void testRendersInlineKittyPngImage();
     void testKittyImageCacheSurvivesUnrelatedOutput();
     void testKittyImageGenerationInvalidatesReplacement();
+    void testKittyVirtualAndRelativePlacements();
+    void testKittyPlaceholderPreservesBackgroundAndDecorations();
+    void testKittyPlacementCropLayersAndClipping();
+    void testKittyImageLayersAndAlpha();
+    void testKittyImageDeletionAndAlternateScreen();
+    void testKittyImageCacheSurvivesOtherImageMutation();
+    void testKittyAnimationScheduling();
+    void testKittyAnimationHonorsSynchronizedOutput();
+    void testKittyAnimationFiniteLoopAndLifecycle();
     void testRendersTextDecorations();
     void testStyledTextKeepsCharactersOnCellGrid();
     void testConcealedTextDoesNotRenderGlyphs();
@@ -172,7 +188,42 @@ private slots:
     void testSelectAllCreatesSelection();
     void testSelectAllThenCopyToClipboard();
     void testPasteFromClipboardSendsToPty();
+    void testUnsafePasteWritesNothing_data();
+    void testUnsafePasteWritesNothing();
+    void testPasteConfirmationSnapshotAndStaleIds();
+    void testSafeBracketedMultilinePaste();
+    void testPasteAuthorizationCleared_data();
+    void testPasteAuthorizationCleared();
+    void testUnsafeFileDropRequiresConfirmation_data();
+    void testUnsafeFileDropRequiresConfirmation();
+    void testMiddleClickPasteRequiresConfirmation();
     void testDropLocalFileWritesEscapedPathToPty();
+    void testRichClipboardWriteAck();
+    void testRichClipboardList();
+    void testClipboardWriteBounds_data();
+    void testClipboardWriteBounds();
+    void testClipboardWritePreservesMimeAndEmptyData();
+    void testClipboardGrantsAreDirectional();
+    void testClipboardReadBounds_data();
+    void testClipboardReadBounds();
+    void testClipboardOwnerReplacement_data();
+    void testClipboardOwnerReplacement();
+    void testClipboardProviderReplacementKeepsInvocationAlive();
+    void testImageOnlyPaste();
+    void testImageOnlyPrimaryPasteUsesSelectionFormats();
+    void testClipboardCallbackReentryWindows();
+    void testOuterEngineSignalReentry();
+    void testPendingResizeObserverSeesBusy();
+    void testCopyDuringEngineSignalUsesNoSelectionData();
+    void testClipboardConsentDefersSessionClose();
+    void testPasteReplyObserverSeesBusy();
+    void testClipboardConsentDefersChildExit();
+    void testRichClipboardBinaryRead_data();
+    void testRichClipboardBinaryRead();
+    void testRichClipboardRememberIsolation();
+    void testRichClipboardPrimaryUnsupported();
+    void testRichClipboardConsentSnapshot();
+    void testRichClipboardPasteEvent();
     void testOsc52WritesClipboard();
     void testOsc52WritesClipboardAcrossChunks();
     void testOsc52ReadRequestDoesNotChangeClipboard();
@@ -324,6 +375,20 @@ void waitForNextPtyFlush(CountingTerminalWidget &widget, int previousFlushCount,
     QApplication::processEvents();
 }
 
+void feedClipboardOutput(CountingTerminalWidget &widget, const QByteArray &data) {
+    const int previous = widget.debugPtyFlushCount();
+    QVERIFY(QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, data)));
+    QTRY_VERIFY_WITH_TIMEOUT(widget.debugPtyFlushCount() > previous, 100);
+    QApplication::processEvents();
+}
+
+bool initializeIdleTerminal(TerminalWidget &widget) {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    widget.setStartOptions(options);
+    return widget.initialize();
+}
+
 void feedTerminalOutput(CountingTerminalWidget &widget, const QByteArray &data) {
     const int previousFlushCount = widget.debugPtyFlushCount();
     const bool invoked =
@@ -473,6 +538,43 @@ int lastColorfulColumn(const QImage &image, const QRect &rect) {
 }
 
 } // namespace
+
+void TestTerminalWidget::testBundledEngineBuild() {
+    GhosttyString version{};
+    QCOMPARE(ghostty_build_info(GHOSTTY_BUILD_INFO_VERSION_STRING, &version), GHOSTTY_SUCCESS);
+    QCOMPARE(QByteArray(reinterpret_cast<const char *>(version.ptr), static_cast<qsizetype>(version.len)),
+             QByteArray("0.1.0-dev+83fb95624"));
+
+    GhosttyOptimizeMode optimize{};
+    QCOMPARE(ghostty_build_info(GHOSTTY_BUILD_INFO_OPTIMIZE, &optimize), GHOSTTY_SUCCESS);
+    QCOMPARE(optimize, GHOSTTY_OPTIMIZE_RELEASE_FAST);
+
+    bool enabled = false;
+    QCOMPARE(ghostty_build_info(GHOSTTY_BUILD_INFO_SIMD, &enabled), GHOSTTY_SUCCESS);
+    QVERIFY(enabled);
+    QCOMPARE(ghostty_build_info(GHOSTTY_BUILD_INFO_KITTY_GRAPHICS, &enabled), GHOSTTY_SUCCESS);
+    QVERIFY(enabled);
+    QCOMPARE(ghostty_build_info(GHOSTTY_BUILD_INFO_TMUX_CONTROL_MODE, &enabled), GHOSTTY_SUCCESS);
+    QVERIFY(!enabled);
+}
+
+void TestTerminalWidget::testEnginePasteSafety_data() {
+    QTest::addColumn<QByteArray>("text");
+    QTest::addColumn<bool>("safe");
+
+    QTest::newRow("plain-text") << QByteArray("printf hello") << true;
+    QTest::newRow("tab") << QByteArray("hello\tworld") << true;
+    QTest::newRow("line-feed") << QByteArray("printf hello\nid") << false;
+    QTest::newRow("carriage-return") << QByteArray("printf hello\rid") << false;
+    QTest::newRow("crlf") << QByteArray("printf hello\r\nid") << false;
+    QTest::newRow("bracketed-paste-end") << QByteArray("\x1b[201~id") << false;
+}
+
+void TestTerminalWidget::testEnginePasteSafety() {
+    QFETCH(QByteArray, text);
+    QFETCH(bool, safe);
+    QCOMPARE(ghostty_paste_is_safe(text.constData(), static_cast<size_t>(text.size())), safe);
+}
 
 void TestTerminalWidget::testInitialize() {
     TerminalWidget widget;
@@ -822,17 +924,23 @@ void TestTerminalWidget::testProgramStatusStoreEvictsOldestRecord() {
 }
 
 void TestTerminalWidget::testProgramStatusAnswersSupportQuery() {
-    // The child sends the support query and prints the reply it reads back.
+    // Read the complete BEL-terminated capability reply rather than a fixed byte count.
     PtySession::StartOptions options;
-    options.command = QStringLiteral("sh -c \"stty raw -echo; printf '\\033]7501;?\\007'; "
-                                     "reply=\\$(dd bs=1 count=9 2>/dev/null | tr -d '\\033\\007'); "
-                                     "stty sane; echo REPLY:\\$reply:END; sleep 5\"");
+    options.command = QStringLiteral("stty raw -echo; printf '\\033]7501;?\\007'; "
+                                     "reply=; bell=$(printf '\\007'); "
+                                     "while :; do byte=$(dd bs=1 count=1 2>/dev/null); "
+                                     "[ \"$byte\" = \"$bell\" ] && break; reply=$reply$byte; done; "
+                                     "stty sane; printf 'REPLY:%s:END\\n' \"$reply\" | tr -d '\\033'; sleep 5");
 
     CountingTerminalWidget widget;
+    widget.resize(1600, 640);
     widget.setStartOptions(options);
     QVERIFY(widget.initialize());
 
-    QTRY_VERIFY_WITH_TIMEOUT(widget.visibleText().contains(QStringLiteral("REPLY:]7501;?:END")), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        widget.visibleText().contains(
+            QStringLiteral("REPLY:]7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth:END")),
+        5000);
 }
 
 void TestTerminalWidget::testNormalOutputDoesNotReportVtProcessingError() {
@@ -1980,6 +2088,254 @@ void TestTerminalWidget::testKittyImageGenerationInvalidatesReplacement() {
     const QImage blueFrame = renderWidgetImage(widget);
     QCOMPARE(widget.debugKittyImageConversionCount(), 2);
     QVERIFY(countPixelsNear(blueFrame, imageArea, QColor(0, 0, 255), 8) > imageArea.width() * imageArea.height() / 2);
+}
+
+// Captured from Ghostty's c-vt-kitty-graphics placeholder and animation examples.
+static const QByteArray kKittyVirtualGreen("\033[H\033_Ga=T,U=1,f=32,i=3,p=1,s=1,v=1,c=2,r=1,q=2;AP8A/w==\033\\"
+                                           "\033[38;5;3m\xf4\x8e\xbb\xae\xcc\x85\xcc\x85"
+                                           "\xf4\x8e\xbb\xae\xcc\x85\xcc\x8d\033[39m");
+static const QByteArray kKittyAnimation("\033[H\033_Ga=T,f=32,i=2,s=1,v=1,c=4,r=2,q=2;/wAA/w==\033\\"
+                                        "\033_Ga=f,f=32,i=2,s=1,v=1,z=40,q=2;AAD//w==\033\\"
+                                        "\033_Ga=a,i=2,r=1,z=30,q=2\033\\"
+                                        "\033_Ga=a,i=2,s=3,q=2\033\\");
+
+void TestTerminalWidget::testKittyVirtualAndRelativePlacements() {
+    CountingTerminalWidget widget;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    widget.setStartOptions(options);
+    widget.resize(640, 400);
+    QVERIFY(widget.initialize());
+    feedTerminalOutput(widget,
+                       kKittyVirtualGreen + "\033_Ga=T,f=32,i=4,s=1,v=1,c=1,r=1,P=3,Q=1,H=2,V=1,q=2;/wAA/w==\033\\");
+    const QFontMetrics fm(widget.terminalFont());
+    const int cw = fm.horizontalAdvance('M');
+    const int ch = fm.height();
+    const QImage frame = renderWidgetImage(widget);
+    const QRect parent(0, 0, 2 * cw, ch);
+    const QRect child(2 * cw, ch, cw, ch);
+    QVERIFY2(countPixelsNear(frame, parent, Qt::green, 8) > parent.width() * parent.height() / 2,
+             "U=1 placeholder cells must show the backing image");
+    QVERIFY2(countPixelsNear(frame, child, Qt::red, 8) > child.width() * child.height() / 2,
+             "a child of a virtual placement must follow its resolved origin");
+
+    feedTerminalOutput(widget, QByteArray("\033[H\033[2K"));
+    const QImage erased = renderWidgetImage(widget);
+    QCOMPARE(countPixelsNear(erased, parent.united(child), Qt::green, 8), 0);
+    QCOMPARE(countPixelsNear(erased, parent.united(child), Qt::red, 8), 0);
+}
+
+void TestTerminalWidget::testKittyPlaceholderPreservesBackgroundAndDecorations() {
+    CountingTerminalWidget widget;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    widget.setStartOptions(options);
+    widget.resize(640, 400);
+    QVERIFY(widget.initialize());
+    feedTerminalOutput(widget, QByteArray("\033[H\033[48;2;0;0;255m\033[58;2;255;0;0m\033[4m")
+                                   + QByteArray("\xf4\x8e\xbb\xae\xcc\x85\xcc\x85") + "\033[0m\033[?25l");
+    const QFontMetrics fm(widget.terminalFont());
+    const QRect cell(0, 0, fm.horizontalAdvance('M'), fm.height());
+    const QImage frame = renderWidgetImage(widget);
+    QVERIFY(countPixelsNear(frame, cell, Qt::blue, 0) > cell.width() * cell.height() * 3 / 4);
+    QVERIFY(countPixelsNear(frame, cell, Qt::red, 8) >= cell.width());
+    QCOMPARE(countPixelsNear(frame, cell, widget.debugAppliedForeground(), 8), 0);
+}
+
+void TestTerminalWidget::testKittyPlacementCropLayersAndClipping() {
+    CountingTerminalWidget widget;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    widget.setStartOptions(options);
+    widget.resize(640, 400);
+    QVERIFY(widget.initialize());
+    // Crop the blue half of a red/blue source, then overlap it with a lower-z red image.
+    feedTerminalOutput(widget, QByteArray("\033[H\033_Ga=T,f=32,i=8,s=2,v=1,c=4,r=2,x=1,w=1,z=2,q=2;/wAA/wAA//8=\033\\"
+                                          "\033[H\033_Ga=T,f=32,i=9,s=1,v=1,c=4,r=2,z=1,q=2;/wAA/w==\033\\"
+                                          "\033[?25l"));
+    const QFontMetrics fm(widget.terminalFont());
+    const QRect area(0, 0, 4 * fm.horizontalAdvance('M'), 2 * fm.height());
+    const QImage frame = renderWidgetImage(widget);
+    QVERIFY(countPixelsNear(frame, area, Qt::blue, 8) > area.width() * area.height() * 3 / 4);
+    // Scrolling one row leaves the second half of the placement at a negative origin.
+    feedTerminalOutput(widget, QByteArray("\033[1S"));
+    const QImage scrolled = renderWidgetImage(widget);
+    const QRect remaining(0, 0, area.width(), fm.height());
+    QVERIFY(countPixelsNear(scrolled, remaining, Qt::blue, 8) > remaining.width() * remaining.height() * 3 / 4);
+    QCOMPARE(countPixelsNear(scrolled, area.translated(0, fm.height()), Qt::blue, 8), 0);
+}
+
+void TestTerminalWidget::testKittyImageLayersAndAlpha() {
+    CountingTerminalWidget widget;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    widget.setStartOptions(options);
+    widget.resize(640, 400);
+    QVERIFY(widget.initialize());
+    const QFontMetrics fm(widget.terminalFont());
+    const QRect area(0, 0, 4 * fm.horizontalAdvance('M'), 2 * fm.height());
+    const QByteArray text("\033[H\033[48;2;0;0;255m\033[38;2;255;255;255mMMMM\033[0m\033[?25l");
+    const QByteArray image("\033[H\033_Ga=T,f=32,i=7,s=1,v=1,c=4,r=2,z=");
+    for (const int z : {-1073741825, -1, 1}) {
+        feedTerminalOutput(widget, QByteArray("\033c") + text + image + QByteArray::number(z) + ",q=2;/wAA/w==\033\\");
+        const QImage frame = renderWidgetImage(widget);
+        const QRect topRow(area.x(), area.y(), area.width(), fm.height());
+        if (z < -1073741824) {
+            QVERIFY(countPixelsNear(frame, topRow, Qt::blue, 8) > 0);
+            QCOMPARE(countPixelsNear(frame, topRow, Qt::red, 8), 0);
+        } else {
+            QVERIFY(countPixelsNear(frame, area, Qt::red, 8) > area.width() * area.height() / 2);
+        }
+        if (z < 0)
+            QVERIFY(countPixelsNear(frame, topRow, Qt::white, 32) > 0);
+        else
+            QCOMPARE(countPixelsNear(frame, topRow, Qt::white, 32), 0);
+    }
+    // A half-transparent fixed placement is composed exactly once.
+    feedTerminalOutput(widget, QByteArray("\033c\033[?25l\033_Ga=T,f=32,i=7,s=1,v=1,c=4,r=2,q=2;/wAAgA==\033\\"));
+    const QImage frame = renderWidgetImage(widget);
+    const QColor background = widget.debugAppliedBackground();
+    const QColor once((255 * 128 + background.red() * 127) / 255, background.green() * 127 / 255,
+                      background.blue() * 127 / 255);
+    QVERIFY(countPixelsNear(frame, area, once, 2) > area.width() * area.height() * 3 / 4);
+}
+
+void TestTerminalWidget::testKittyImageDeletionAndAlternateScreen() {
+    CountingTerminalWidget widget;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    widget.setStartOptions(options);
+    widget.resize(640, 400);
+    QVERIFY(widget.initialize());
+    const QByteArray red("\033[H\033_Ga=T,f=32,i=6,s=1,v=1,c=4,r=2,q=2;/wAA/w==\033\\");
+    feedTerminalOutput(widget, red);
+    const QFontMetrics fm(widget.terminalFont());
+    const QRect area(0, 0, 4 * fm.horizontalAdvance('M'), 2 * fm.height());
+    QVERIFY(countPixelsNear(renderWidgetImage(widget), area, Qt::red, 8) > area.width() * area.height() / 2);
+    feedTerminalOutput(widget, QByteArray("\033[?1049h"));
+    QCOMPARE(countPixelsNear(renderWidgetImage(widget), area, Qt::red, 8), 0);
+    feedTerminalOutput(widget, QByteArray("\033[?1049l"));
+    QVERIFY(countPixelsNear(renderWidgetImage(widget), area, Qt::red, 8) > area.width() * area.height() / 2);
+    feedTerminalOutput(widget, QByteArray("\033_Ga=d,d=I,i=6,q=2\033\\"));
+    QCOMPARE(countPixelsNear(renderWidgetImage(widget), area, Qt::red, 8), 0);
+}
+
+void TestTerminalWidget::testKittyImageCacheSurvivesOtherImageMutation() {
+    CountingTerminalWidget widget;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    widget.setStartOptions(options);
+    widget.resize(640, 400);
+    QVERIFY(widget.initialize());
+    feedTerminalOutput(widget, kKittyVirtualGreen);
+    renderWidgetImage(widget);
+    QCOMPARE(widget.debugKittyImageConversionCount(), 1);
+    feedTerminalOutput(widget, QByteArray("\033[4;1H\033_Ga=T,f=32,i=5,s=1,v=1,c=2,r=1,q=2;/wAA/w==\033\\"));
+    renderWidgetImage(widget);
+    QCOMPARE(widget.debugKittyImageConversionCount(), 2);
+    feedTerminalOutput(widget, QByteArray("\033_Ga=d,d=I,i=5,q=2\033\\"));
+    renderWidgetImage(widget);
+    QCOMPARE(widget.debugKittyImageConversionCount(), 2);
+}
+
+void TestTerminalWidget::testKittyAnimationScheduling() {
+    CountingTerminalWidget widget;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    widget.setStartOptions(options);
+    widget.resize(640, 400);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QTest::qWait(20);
+    const QFontMetrics fm(widget.terminalFont());
+    const QRect area(0, 0, 4 * fm.horizontalAdvance('M'), 2 * fm.height());
+    feedTerminalOutput(widget, kKittyAnimation);
+    QVERIFY(countPixelsNear(renderWidgetImage(widget), area, Qt::red, 8) > area.width() * area.height() / 2);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        countPixelsNear(renderWidgetImage(widget), area, Qt::blue, 8) > area.width() * area.height() / 2, 250);
+    QTimer *timer = widget.findChild<QTimer *>(QStringLiteral("kittyAnimationTimer"));
+    QVERIFY(timer);
+    QVERIFY(timer->isSingleShot());
+    QVERIFY(timer->isActive());
+    widget.hide();
+    QVERIFY(!timer->isActive());
+    const int conversions = widget.debugKittyImageConversionCount();
+    widget.renderSnapshot(widget.size());
+    QTest::qWait(100);
+    QVERIFY(!timer->isActive());
+    QCOMPARE(widget.debugKittyImageConversionCount(), conversions);
+    widget.show();
+    QTRY_VERIFY_WITH_TIMEOUT(timer->isActive(), 200);
+    widget.showMinimized();
+    QTRY_VERIFY_WITH_TIMEOUT(!timer->isActive(), 100);
+    widget.showNormal();
+    QTRY_VERIFY_WITH_TIMEOUT(timer->isActive(), 200);
+    feedTerminalOutput(widget, QByteArray("\033_Ga=a,i=2,s=1,q=2\033\\"));
+    renderWidgetImage(widget);
+    QVERIFY(!timer->isActive());
+    const QImage stopped = renderWidgetImage(widget);
+    QTest::qWait(100);
+    QCOMPARE(renderWidgetImage(widget), stopped);
+    feedTerminalOutput(widget, QByteArray("\033_Ga=d,d=I,i=2,q=2\033\\"));
+    QCOMPARE(countPixelsNear(renderWidgetImage(widget), area, Qt::red, 8), 0);
+    QVERIFY(!timer->isActive());
+}
+
+void TestTerminalWidget::testKittyAnimationHonorsSynchronizedOutput() {
+    CountingTerminalWidget widget;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    widget.setStartOptions(options);
+    widget.resize(640, 400);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QTest::qWait(20);
+    feedTerminalOutput(widget, kKittyAnimation + "\033_Ga=a,i=2,s=1,q=2\033\\");
+    const QImage before = renderWidgetImage(widget);
+    feedTerminalOutput(widget, QByteArray("\033[?2026h\033_Ga=a,i=2,s=3,q=2\033\\"));
+    QTest::qWait(120);
+    QCOMPARE(renderWidgetImage(widget), before);
+    feedTerminalOutput(widget, QByteArray("\033[?2026l"));
+    QTRY_VERIFY_WITH_TIMEOUT(widget.debugKittyImageConversionCount() > 1, 250);
+}
+
+void TestTerminalWidget::testKittyAnimationFiniteLoopAndLifecycle() {
+    CountingTerminalWidget widget;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    widget.setStartOptions(options);
+    widget.resize(640, 400);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QTest::qWait(20);
+    QTimer *timer = widget.findChild<QTimer *>(QStringLiteral("kittyAnimationTimer"));
+    QVERIFY(timer);
+    QVERIFY(!timer->isActive());
+    feedTerminalOutput(widget, kKittyAnimation + "\033_Ga=a,i=2,v=2,q=2\033\\");
+    renderWidgetImage(widget);
+    QTRY_VERIFY_WITH_TIMEOUT(!timer->isActive(), 400);
+    const int stoppedConversions = widget.debugKittyImageConversionCount();
+    QTest::qWait(100);
+    QCOMPARE(widget.debugKittyImageConversionCount(), stoppedConversions);
+    feedTerminalOutput(widget, QByteArray("\033_Ga=a,i=2,s=3,v=1,q=2\033\\"));
+    renderWidgetImage(widget);
+    QVERIFY(timer->isActive());
+    feedTerminalOutput(widget, QByteArray("\033c"));
+    renderWidgetImage(widget);
+    QVERIFY(!timer->isActive());
+    feedTerminalOutput(widget, kKittyAnimation);
+    renderWidgetImage(widget);
+    QVERIFY(timer->isActive());
+    widget.importVtContent(QByteArray("restored text"));
+    renderWidgetImage(widget);
+    QVERIFY(!timer->isActive());
+    feedTerminalOutput(widget, kKittyAnimation);
+    renderWidgetImage(widget);
+    QVERIFY(timer->isActive());
+    QVERIFY(QMetaObject::invokeMethod(&widget, "onPtySessionClosed", Qt::DirectConnection));
+    QVERIFY(!timer->isActive());
+    renderWidgetImage(widget);
+    QVERIFY(!timer->isActive());
 }
 
 void TestTerminalWidget::testRendersTextDecorations() {
@@ -3975,6 +4331,187 @@ void TestTerminalWidget::testPasteFromClipboardSendsToPty() {
     QVERIFY(written.contains("pasted text"));
 }
 
+void TestTerminalWidget::testUnsafePasteWritesNothing_data() {
+    QTest::addColumn<QString>("text");
+    QTest::addColumn<bool>("bracketed");
+    QTest::newRow("lf") << QStringLiteral("echo first\necho second") << false;
+    QTest::newRow("cr") << QStringLiteral("echo first\recho second") << false;
+    QTest::newRow("crlf") << QStringLiteral("echo first\r\necho second") << false;
+    QTest::newRow("terminator") << QStringLiteral("first\033[201~echo second\n") << true;
+}
+
+void TestTerminalWidget::testUnsafePasteWritesNothing() {
+    QFETCH(QString, text);
+    QFETCH(bool, bracketed);
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    TerminalWidget widget;
+    widget.setStartOptions(options);
+    QVERIFY(widget.initialize());
+    if (bracketed) {
+        QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                  Q_ARG(QByteArray, QByteArray("\033[?2004h")));
+        QTRY_COMPARE(widget.debugPendingPtyDataSize(), 0);
+    }
+    QSignalSpy confirmation(&widget, &TerminalWidget::pasteConfirmationRequested);
+    QSignalSpy written(widget.findChild<PtySession *>(), &PtySession::dataWritten);
+    QGuiApplication::clipboard()->setText(text);
+    widget.pasteFromClipboard();
+    QCOMPARE(collectedPtyOutput(written), QByteArray());
+    QCOMPARE(confirmation.count(), 1);
+    QCOMPARE(confirmation.first().at(1).toString(), text);
+    widget.confirmPaste(confirmation.first().at(0).toULongLong(), true);
+    QByteArray expected = text.toUtf8();
+    expected.replace('\033', ' ');
+    if (bracketed)
+        expected = "\033[200~" + expected + "\033[201~";
+    else
+        expected.replace('\n', '\r');
+    QCOMPARE(collectedPtyOutput(written), expected);
+}
+
+void TestTerminalWidget::testPasteConfirmationSnapshotAndStaleIds() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    TerminalWidget widget;
+    widget.setStartOptions(options);
+    QVERIFY(widget.initialize());
+    QSignalSpy confirmation(&widget, &TerminalWidget::pasteConfirmationRequested);
+    QSignalSpy written(widget.findChild<PtySession *>(), &PtySession::dataWritten);
+    QGuiApplication::clipboard()->setText(QStringLiteral("original\n"));
+    widget.pasteFromClipboard();
+    QCOMPARE(confirmation.count(), 1);
+    const quint64 original = confirmation.last().at(0).toULongLong();
+    QGuiApplication::clipboard()->setText(QStringLiteral("changed clipboard\n"));
+    widget.confirmPaste(original, true);
+    QCOMPARE(collectedPtyOutput(written), QByteArray("original\r"));
+    written.clear();
+    widget.confirmPaste(original, true);
+    QCOMPARE(written.count(), 0);
+
+    widget.pasteFromClipboard();
+    const quint64 cancelled = confirmation.last().at(0).toULongLong();
+    QVERIFY(cancelled > original);
+    widget.confirmPaste(cancelled, false);
+    widget.confirmPaste(cancelled, true);
+    QCOMPARE(written.count(), 0);
+    widget.pasteFromClipboard();
+    const quint64 replaced = confirmation.last().at(0).toULongLong();
+    QGuiApplication::clipboard()->setText(QStringLiteral("replacement\n"));
+    widget.pasteFromClipboard();
+    const quint64 current = confirmation.last().at(0).toULongLong();
+    QVERIFY(current > replaced);
+    widget.confirmPaste(replaced, true);
+    QCOMPARE(written.count(), 0);
+    widget.confirmPaste(current, true);
+    QCOMPARE(collectedPtyOutput(written), QByteArray("replacement\r"));
+    written.clear();
+    widget.pasteFromClipboard();
+    const quint64 supersededBySafePaste = confirmation.last().at(0).toULongLong();
+    QGuiApplication::clipboard()->setText(QStringLiteral("safe"));
+    widget.pasteFromClipboard();
+    widget.confirmPaste(supersededBySafePaste, true);
+    QCOMPARE(collectedPtyOutput(written), QByteArray("safe"));
+}
+
+void TestTerminalWidget::testSafeBracketedMultilinePaste() {
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    TerminalWidget widget;
+    widget.setStartOptions(options);
+    QVERIFY(widget.initialize());
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                              Q_ARG(QByteArray, QByteArray("\033[?2004h")));
+    QTRY_COMPARE(widget.debugPendingPtyDataSize(), 0);
+    QSignalSpy confirmation(&widget, &TerminalWidget::pasteConfirmationRequested);
+    QSignalSpy written(widget.findChild<PtySession *>(), &PtySession::dataWritten);
+    QGuiApplication::clipboard()->setText(QStringLiteral("first\nsecond\r\nthird"));
+    widget.pasteFromClipboard();
+    QCOMPARE(confirmation.count(), 0);
+    QCOMPARE(collectedPtyOutput(written), QByteArray("\033[200~first\nsecond\r\nthird\033[201~"));
+}
+
+void TestTerminalWidget::testPasteAuthorizationCleared_data() {
+    QTest::addColumn<bool>("restore");
+    QTest::newRow("restore") << true;
+    QTest::newRow("session-end") << false;
+}
+
+void TestTerminalWidget::testPasteAuthorizationCleared() {
+    QFETCH(bool, restore);
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    TerminalWidget widget;
+    widget.setStartOptions(options);
+    QVERIFY(widget.initialize());
+    QSignalSpy confirmation(&widget, &TerminalWidget::pasteConfirmationRequested);
+    QSignalSpy written(widget.findChild<PtySession *>(), &PtySession::dataWritten);
+    QGuiApplication::clipboard()->setText(QStringLiteral("unsafe\n"));
+    widget.pasteFromClipboard();
+    QCOMPARE(confirmation.count(), 1);
+    if (restore)
+        widget.importVtContent(QByteArray("restored"));
+    else
+        QVERIFY(QMetaObject::invokeMethod(&widget, "onPtySessionClosed", Qt::DirectConnection));
+    written.clear();
+    widget.confirmPaste(confirmation.last().at(0).toULongLong(), true);
+    QCOMPARE(written.count(), 0);
+}
+
+void TestTerminalWidget::testUnsafeFileDropRequiresConfirmation_data() {
+    QTest::addColumn<QString>("separator");
+    QTest::newRow("lf") << QStringLiteral("\n");
+    QTest::newRow("cr") << QStringLiteral("\r");
+    QTest::newRow("crlf") << QStringLiteral("\r\n");
+}
+
+void TestTerminalWidget::testUnsafeFileDropRequiresConfirmation() {
+    QFETCH(QString, separator);
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    TerminalWidget widget;
+    widget.setStartOptions(options);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QSignalSpy confirmation(&widget, &TerminalWidget::pasteConfirmationRequested);
+    QSignalSpy written(widget.findChild<PtySession *>(), &PtySession::dataWritten);
+    QMimeData mime;
+    mime.setUrls({QUrl::fromLocalFile(QStringLiteral("/tmp/first") + separator + QStringLiteral("second's file"))});
+    QDragEnterEvent enter(QPoint(10, 10), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &enter);
+    QVERIFY(enter.isAccepted());
+    QDropEvent drop(QPointF(10, 10), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &drop);
+    QVERIFY(drop.isAccepted());
+    QCOMPARE(written.count(), 0);
+    QCOMPARE(confirmation.count(), 1);
+    QCOMPARE(confirmation.last().at(1).toString(),
+             QStringLiteral("'/tmp/first") + separator + QStringLiteral("second'\\''s file'"));
+    widget.confirmPaste(confirmation.last().at(0).toULongLong(), true);
+    QByteArray expected = confirmation.last().at(1).toString().toUtf8();
+    expected.replace('\n', '\r');
+    QCOMPARE(collectedPtyOutput(written), expected);
+}
+
+void TestTerminalWidget::testMiddleClickPasteRequiresConfirmation() {
+    class PrimaryTerminalWidget : public TerminalWidget {
+        QString selectionClipboardText() const override { return QStringLiteral("primary\nselection"); }
+    };
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    PrimaryTerminalWidget widget;
+    widget.setStartOptions(options);
+    QVERIFY(widget.initialize());
+    widget.show();
+    QSignalSpy confirmation(&widget, &TerminalWidget::pasteConfirmationRequested);
+    QSignalSpy written(widget.findChild<PtySession *>(), &PtySession::dataWritten);
+    QTest::mouseClick(&widget, Qt::MiddleButton);
+    QCOMPARE(written.count(), 0);
+    QCOMPARE(confirmation.count(), 1);
+    widget.confirmPaste(confirmation.last().at(0).toULongLong(), true);
+    QCOMPARE(collectedPtyOutput(written), QByteArray("primary\rselection"));
+}
+
 void TestTerminalWidget::testDropLocalFileWritesEscapedPathToPty() {
     TerminalWidget widget;
     QVERIFY(widget.initialize());
@@ -4000,6 +4537,629 @@ void TestTerminalWidget::testDropLocalFileWritesEscapedPathToPty() {
     QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 500);
     const QByteArray written = collectedPtyOutput(spy);
     QVERIFY(written.contains("'/tmp/drop test/it'\\''s here.txt'"));
+}
+
+void TestTerminalWidget::testRichClipboardWriteAck() {
+    CountingTerminalWidget widget;
+    QVERIFY(initializeIdleTerminal(widget));
+    QSignalSpy spy(widget.findChild<PtySession *>(), &PtySession::dataWritten);
+    feedClipboardOutput(widget, QByteArray("\033]5522;type=write:id=c1\033\\")
+                                    + "\033]5522;type=wdata:mime=dGV4dC9wbGFpbg==;R2hvc3R0eQ==\033\\"
+                                    + "\033]5522;type=wdata\033\\");
+    QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("Ghostty"));
+    QVERIFY(collectedPtyOutput(spy).contains("status=DONE"));
+}
+
+void TestTerminalWidget::testClipboardCallbackReentryWindows() {
+    CountingTerminalWidget widget;
+    QVERIFY(initializeIdleTerminal(widget));
+    feedClipboardOutput(widget, "visible content");
+    struct ReentrantMime : QMimeData {
+        std::function<void()> retrieve;
+        mutable bool active = false;
+        QVariant retrieveData(const QString &format, QMetaType type) const override {
+            if (!active && retrieve) {
+                active = true;
+                retrieve();
+                active = false;
+            }
+            return QMimeData::retrieveData(format, type);
+        }
+    };
+    auto *mime = new ReentrantMime;
+    mime->setText(QStringLiteral("secret"));
+    bool retrieved = false;
+    bool retrievalGuarded = true;
+    mime->retrieve = [&] {
+        retrieved = true;
+        retrievalGuarded = retrievalGuarded && widget.isTerminalBusy() && widget.exportVtContent().isEmpty();
+        QCoreApplication::processEvents();
+    };
+    QGuiApplication::clipboard()->setMimeData(mime);
+    widget.setClipboardPermissionProvider([](auto) {
+        return TerminalWidget::ClipboardPermissionResponse{TerminalWidget::ClipboardDecision::Allow, false};
+    });
+    bool replyObserved = false;
+    bool replyGuarded = true;
+    auto *session = widget.findChild<PtySession *>();
+    const auto connection = connect(session, &PtySession::dataWritten, &widget, [&](const QByteArray &data) {
+        if (!data.contains("]52;"))
+            return;
+        replyObserved = true;
+        replyGuarded = replyGuarded && widget.exportVtContent().isEmpty();
+        QCoreApplication::processEvents();
+    });
+    feedClipboardOutput(widget, "\033]52;c;?\a");
+    disconnect(connection);
+    QVERIFY(retrieved);
+    QVERIFY2(retrievalGuarded, "QMimeData retrieval entered the active engine");
+    QVERIFY(replyObserved);
+    QVERIFY2(replyGuarded, "Reply observer entered the active engine");
+    bool changeObserved = false;
+    bool changeGuarded = true;
+    const auto changed = connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, &widget, [&] {
+        changeObserved = true;
+        changeGuarded = changeGuarded && widget.isTerminalBusy() && widget.exportVtContent().isEmpty();
+        QCoreApplication::processEvents();
+    });
+    feedClipboardOutput(widget, "\033]52;c;d3JpdGU=\a");
+    disconnect(changed);
+    QVERIFY(changeObserved);
+    QVERIFY2(changeGuarded, "Clipboard change observer entered the active engine");
+}
+
+void TestTerminalWidget::testOuterEngineSignalReentry() {
+    CountingTerminalWidget widget;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    widget.setStartOptions(options);
+    QVERIFY(widget.initialize());
+    bool observed = false;
+    bool guarded = true;
+    connect(&widget, &TerminalWidget::terminalTitleChanged, &widget, [&] {
+        observed = true;
+        guarded = guarded && widget.isTerminalBusy() && widget.exportVtContent().isEmpty();
+        widget.selectAll();
+        guarded = guarded && !widget.hasSelection();
+        widget.resize(730, 470);
+        QCoreApplication::processEvents();
+    });
+    feedClipboardOutput(widget, "before\033]2;reentrant title\aafter");
+    QVERIFY(observed);
+    QVERIFY2(guarded, "A synchronous non-clipboard effect entered the active engine");
+    QTRY_VERIFY(widget.visibleText().contains(QStringLiteral("beforeafter")));
+}
+
+void TestTerminalWidget::testPendingResizeObserverSeesBusy() {
+    CountingTerminalWidget widget;
+    QVERIFY(initializeIdleTerminal(widget));
+    feedClipboardOutput(widget, "before resize");
+    widget.resize(300, 100);
+    widget.show();
+    bool observed = false;
+    bool guarded = true;
+    connect(&widget, &TerminalWidget::viewportScrollStateChanged, &widget, [&] {
+        observed = true;
+        guarded = guarded && widget.isTerminalBusy() && widget.exportVtContent().isEmpty();
+    });
+    const QByteArray data(32 * 1024, ' ');
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, data));
+    QVERIFY(observed);
+    QVERIFY2(guarded, "Preparse resize observer entered the active outer operation");
+}
+
+void TestTerminalWidget::testCopyDuringEngineSignalUsesNoSelectionData() {
+    CountingTerminalWidget widget;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    widget.setStartOptions(options);
+    QVERIFY(widget.initialize());
+    feedClipboardOutput(widget, "selected secret");
+    widget.selectAll();
+    QVERIFY(widget.hasSelection());
+    QGuiApplication::clipboard()->setText(QStringLiteral("unchanged"));
+    connect(&widget, &TerminalWidget::terminalTitleChanged, &widget, [&] { widget.copyToClipboard(); });
+    feedClipboardOutput(widget, "\033]2;copy during effect\a");
+    QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("unchanged"));
+}
+
+void TestTerminalWidget::testClipboardConsentDefersSessionClose() {
+    CountingTerminalWidget widget;
+    QVERIFY(initializeIdleTerminal(widget));
+    QGuiApplication::clipboard()->setText(QStringLiteral("secret"));
+    QSignalSpy closed(&widget, &TerminalWidget::sessionClosed);
+    bool deferred = false;
+    widget.setClipboardPermissionProvider([&](auto) {
+        QMetaObject::invokeMethod(&widget, "onPtySessionClosed", Qt::DirectConnection);
+        QMetaObject::invokeMethod(&widget, "onRenderTimerTimeout", Qt::DirectConnection);
+        QCoreApplication::processEvents();
+        deferred = closed.isEmpty() && widget.isTerminalBusy();
+        return TerminalWidget::ClipboardPermissionResponse{TerminalWidget::ClipboardDecision::Deny, false};
+    });
+    feedClipboardOutput(widget, "\033]52;c;?\a");
+    QVERIFY(deferred);
+    QTRY_COMPARE(closed.count(), 1);
+}
+
+void TestTerminalWidget::testPasteReplyObserverSeesBusy() {
+    CountingTerminalWidget widget;
+    QVERIFY(initializeIdleTerminal(widget));
+    QGuiApplication::clipboard()->setText(QStringLiteral("paste"));
+    bool observed = false;
+    bool guarded = true;
+    connect(widget.findChild<PtySession *>(), &PtySession::dataWritten, &widget, [&](const QByteArray &) {
+        observed = true;
+        guarded = guarded && widget.isTerminalBusy() && widget.exportVtContent().isEmpty();
+        QCoreApplication::processEvents();
+    });
+    widget.pasteFromClipboard();
+    QVERIFY(observed);
+    QVERIFY2(guarded, "Paste enqueue observer entered an active paste operation");
+}
+
+void TestTerminalWidget::testClipboardConsentDefersChildExit() {
+    CountingTerminalWidget widget;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 0.1");
+    widget.setStartOptions(options);
+    QVERIFY(widget.initialize());
+    QGuiApplication::clipboard()->setText(QStringLiteral("secret"));
+    QSignalSpy exited(&widget, &TerminalWidget::sessionExited);
+    bool deferred = false;
+    widget.setClipboardPermissionProvider([&](auto) {
+        QTest::qWait(250);
+        deferred = exited.isEmpty() && widget.isTerminalBusy();
+        return TerminalWidget::ClipboardPermissionResponse{TerminalWidget::ClipboardDecision::Deny, false};
+    });
+    feedClipboardOutput(widget, "\033]52;c;?\a");
+    QVERIFY(deferred);
+    QTRY_COMPARE(exited.count(), 1);
+}
+
+void effectClipboardWrite(GhosttyTerminal, void *, const GhosttyClipboardWrite *);
+void effectClipboardRead(GhosttyTerminal, void *, const GhosttyClipboardRead *);
+
+void TestTerminalWidget::testClipboardWritePreservesMimeAndEmptyData() {
+    CountingTerminalWidget widget;
+    QVERIFY(initializeIdleTerminal(widget));
+    const QByteArray mimeNames[] = {"text/html", "image/png", "application/octet-stream"};
+    QByteArray png;
+    QBuffer buffer(&png);
+    QVERIFY(buffer.open(QIODevice::WriteOnly));
+    QImage image(2, 2, QImage::Format_ARGB32);
+    image.fill(Qt::red);
+    QVERIFY(image.save(&buffer, "PNG"));
+    const QByteArray bytes[] = {"<b>literal</b>", png, QByteArray::fromHex("00ff8001")};
+    GhosttyClipboardContent contents[3];
+    for (int i = 0; i < 3; ++i) {
+        contents[i] = {{reinterpret_cast<const uint8_t *>(mimeNames[i].constData()), size_t(mimeNames[i].size())},
+                       {reinterpret_cast<const uint8_t *>(bytes[i].constData()), size_t(bytes[i].size())}};
+    }
+    GhosttyClipboardWrite request = GHOSTTY_INIT_SIZED(GhosttyClipboardWrite);
+    request.contents = contents;
+    request.contents_len = 3;
+    int replies = 0;
+    request.ctx = &replies;
+    request.reply = [](const GhosttyClipboardWrite *request, const GhosttyClipboardWriteReply *reply) {
+        if (reply->result == GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS)
+            ++*static_cast<int *>(const_cast<void *>(request->ctx));
+    };
+    effectClipboardWrite(nullptr, &widget, &request);
+    QCOMPARE(replies, 1);
+    for (int i = 0; i < 3; ++i)
+        QCOMPARE(QGuiApplication::clipboard()->mimeData()->data(QString::fromLatin1(mimeNames[i])), bytes[i]);
+    contents[0].data = {nullptr, 0};
+    request.contents_len = 1;
+    effectClipboardWrite(nullptr, &widget, &request);
+    QCOMPARE(replies, 2);
+    QVERIFY(QGuiApplication::clipboard()->mimeData()->hasFormat(QStringLiteral("text/html")));
+    QVERIFY(QGuiApplication::clipboard()->mimeData()->data(QStringLiteral("text/html")).isEmpty());
+    request.contents_len = 0;
+    effectClipboardWrite(nullptr, &widget, &request);
+    QCOMPARE(replies, 3);
+    QVERIFY(!QGuiApplication::clipboard()->mimeData() || QGuiApplication::clipboard()->mimeData()->formats().isEmpty());
+}
+
+void TestTerminalWidget::testClipboardGrantsAreDirectional() {
+    GhosttyTerminal terminal = nullptr;
+    QCOMPARE(ghostty_terminal_new(nullptr, &terminal, 80, 24), GHOSTTY_SUCCESS);
+    auto cleanup = qScopeGuard([&] { ghostty_terminal_free(terminal); });
+    struct Observations {
+        QList<bool> reads;
+        QList<bool> writes;
+    } observations;
+    QCOMPARE(ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_USERDATA, &observations), GHOSTTY_SUCCESS);
+    const GhosttyTerminalClipboardReadFn read = [](GhosttyTerminal, void *userdata,
+                                                   const GhosttyClipboardRead *request) {
+        static_cast<Observations *>(userdata)->reads.append(request->granted);
+        GhosttyClipboardReadReply reply = GHOSTTY_INIT_SIZED(GhosttyClipboardReadReply);
+        reply.result = GHOSTTY_CLIPBOARD_READ_RESULT_SUCCESS;
+        reply.remember = true;
+        request->reply(request, &reply);
+    };
+    const GhosttyTerminalClipboardWriteFn write = [](GhosttyTerminal, void *userdata,
+                                                     const GhosttyClipboardWrite *request) {
+        static_cast<Observations *>(userdata)->writes.append(request->granted);
+        GhosttyClipboardWriteReply reply = GHOSTTY_INIT_SIZED(GhosttyClipboardWriteReply);
+        reply.result = GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS;
+        reply.remember = true;
+        request->reply(request, &reply);
+    };
+    QCOMPARE(ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_READ, reinterpret_cast<const void *>(read)),
+             GHOSTTY_SUCCESS);
+    QCOMPARE(
+        ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE, reinterpret_cast<const void *>(write)),
+        GHOSTTY_SUCCESS);
+    const QByteArray readRequest("\033]5522;type=read:pw=c2Vzc2lvbg==:name=VGVzdA==;dGV4dC9wbGFpbg==\033\\");
+    const QByteArray writeRequest(
+        "\033]5522;type=write:pw=c2Vzc2lvbg==:name=VGVzdA==\033\\\033]5522;type=wdata:mime=dGV4dC9wbGFpbg=="
+        ";eA==\033\\\033]5522;type=wdata\033\\");
+    const auto feed = [&](const QByteArray &bytes) {
+        ghostty_terminal_vt_write(terminal, reinterpret_cast<const uint8_t *>(bytes.constData()), size_t(bytes.size()));
+    };
+    feed(readRequest);
+    feed(readRequest);
+    feed(writeRequest);
+    feed(writeRequest);
+    QCOMPARE(observations.reads, QList<bool>({false, true}));
+    QCOMPARE(observations.writes, QList<bool>({false, true}));
+}
+
+void TestTerminalWidget::testClipboardOwnerReplacement_data() {
+    QTest::addColumn<int>("phase");
+    QTest::newRow("formats") << 0;
+    QTest::newRow("hasFormat") << 1;
+    QTest::newRow("retrieveData") << 2;
+}
+
+void TestTerminalWidget::testClipboardOwnerReplacement() {
+    QFETCH(int, phase);
+    CountingTerminalWidget widget;
+    QVERIFY(initializeIdleTerminal(widget));
+    bool replaced = false;
+    bool destroyed = false;
+    struct ReplacingMime : QMimeData {
+        int phase;
+        bool *replaced;
+        bool *destroyed;
+        ~ReplacingMime() override { *destroyed = true; }
+        void replace(int currentPhase) const {
+            if (phase != currentPhase || *replaced)
+                return;
+            *replaced = true;
+            QGuiApplication::clipboard()->setText(QStringLiteral("replacement"));
+        }
+        QStringList formats() const override {
+            replace(0);
+            return {QStringLiteral("text/plain"), QStringLiteral("text/html")};
+        }
+        bool hasFormat(const QString &) const override {
+            replace(1);
+            return true;
+        }
+        QVariant retrieveData(const QString &, QMetaType) const override {
+            replace(2);
+            return QByteArray("original");
+        }
+    };
+    auto *mime = new ReplacingMime;
+    mime->phase = phase;
+    mime->replaced = &replaced;
+    mime->destroyed = &destroyed;
+    QGuiApplication::clipboard()->setMimeData(mime);
+    bool prompted = false;
+    widget.setClipboardPermissionProvider([&](auto) {
+        prompted = true;
+        return TerminalWidget::ClipboardPermissionResponse{TerminalWidget::ClipboardDecision::Allow, false};
+    });
+    const QByteArray plain("text/plain"), html("text/html");
+    const GhosttyString names[] = {{reinterpret_cast<const uint8_t *>(plain.constData()), size_t(plain.size())},
+                                   {reinterpret_cast<const uint8_t *>(html.constData()), size_t(html.size())}};
+    GhosttyClipboardRead request = GHOSTTY_INIT_SIZED(GhosttyClipboardRead);
+    request.mimes = names;
+    request.mimes_len = 2;
+    struct Answer {
+        int replies = 0;
+        GhosttyClipboardReadResult result;
+        size_t contents = 0;
+    } answer;
+    request.ctx = &answer;
+    request.reply = [](const GhosttyClipboardRead *request, const GhosttyClipboardReadReply *reply) {
+        auto *answer = static_cast<Answer *>(const_cast<void *>(request->ctx));
+        ++answer->replies;
+        answer->result = reply->result;
+        answer->contents = reply->contents_len;
+    };
+    effectClipboardRead(nullptr, &widget, &request);
+    QVERIFY(replaced);
+    QVERIFY(destroyed);
+    QVERIFY(!prompted);
+    QCOMPARE(answer.replies, 1);
+    QCOMPARE(answer.result, GHOSTTY_CLIPBOARD_READ_RESULT_BUSY);
+    QCOMPARE(answer.contents, size_t(0));
+}
+
+void TestTerminalWidget::testClipboardProviderReplacementKeepsInvocationAlive() {
+    CountingTerminalWidget widget;
+    QVERIFY(initializeIdleTerminal(widget));
+    QGuiApplication::clipboard()->setText(QStringLiteral("secret"));
+    auto lifetime = std::make_shared<int>(42);
+    std::weak_ptr<int> observer = lifetime;
+    bool aliveDuringInvocation = false;
+    widget.setClipboardPermissionProvider([&, lifetime](auto) {
+        widget.setClipboardPermissionProvider({});
+        aliveDuringInvocation = !observer.expired();
+        return TerminalWidget::ClipboardPermissionResponse{TerminalWidget::ClipboardDecision::Deny, false};
+    });
+    lifetime.reset();
+    feedClipboardOutput(widget, "\033]52;c;?\a");
+    QVERIFY(aliveDuringInvocation);
+    QVERIFY(observer.expired());
+}
+
+void TestTerminalWidget::testClipboardReadBounds_data() {
+    QTest::addColumn<int>("fault");
+    QTest::newRow("unavailable text MIME prefix") << 0;
+    QTest::newRow("null MIME pointer") << 1;
+    QTest::newRow("too many MIME requests") << 2;
+    QTest::newRow("oversized MIME name") << 3;
+    QTest::newRow("invalid MIME name") << 4;
+}
+
+void TestTerminalWidget::testClipboardReadBounds() {
+    QFETCH(int, fault);
+    CountingTerminalWidget widget;
+    QVERIFY(initializeIdleTerminal(widget));
+    QGuiApplication::clipboard()->setText(QStringLiteral("do not fabricate representations"));
+    QByteArray name = fault == 0 ? QByteArray("text/plain-evil") : QByteArray("text/plain");
+    if (fault == 4)
+        name = "text/plain\n";
+    GhosttyString wanted{reinterpret_cast<const uint8_t *>(name.constData()), size_t(name.size())};
+    if (fault == 3)
+        wanted.len = 257;
+    GhosttyClipboardRead request = GHOSTTY_INIT_SIZED(GhosttyClipboardRead);
+    request.mimes = fault == 1 ? nullptr : &wanted;
+    request.mimes_len = fault == 2 ? 129 : 1;
+    request.granted = true;
+    struct Answer {
+        int replies = 0;
+        GhosttyClipboardReadResult result;
+        qsizetype contents = 0;
+    } answer;
+    request.ctx = &answer;
+    request.reply = [](const GhosttyClipboardRead *request, const GhosttyClipboardReadReply *reply) {
+        auto *answer = static_cast<Answer *>(const_cast<void *>(request->ctx));
+        ++answer->replies;
+        answer->result = reply->result;
+        answer->contents = qsizetype(reply->contents_len);
+    };
+    effectClipboardRead(nullptr, &widget, &request);
+    QCOMPARE(answer.replies, 1);
+    QCOMPARE(answer.contents, 0);
+    QCOMPARE(answer.result, fault == 0 ? GHOSTTY_CLIPBOARD_READ_RESULT_SUCCESS : GHOSTTY_CLIPBOARD_READ_RESULT_DENIED);
+}
+
+void TestTerminalWidget::testClipboardWriteBounds_data() {
+    QTest::addColumn<int>("fault");
+    QTest::newRow("invalid MIME") << 0;
+    QTest::newRow("null data") << 1;
+    QTest::newRow("size overflow") << 2;
+    QTest::newRow("too many formats") << 3;
+}
+
+void TestTerminalWidget::testClipboardWriteBounds() {
+    QFETCH(int, fault);
+    CountingTerminalWidget widget;
+    QVERIFY(initializeIdleTerminal(widget));
+    QGuiApplication::clipboard()->setText(QStringLiteral("unchanged"));
+    const QByteArray mime = fault == 0 ? QByteArray("text/plain\n") : QByteArray("text/plain");
+    GhosttyClipboardContent content{{reinterpret_cast<const uint8_t *>(mime.data()), size_t(mime.size())},
+                                    {reinterpret_cast<const uint8_t *>("x"), 1}};
+    if (fault == 1)
+        content.data.ptr = nullptr;
+    if (fault == 2)
+        content.data.len = 64 * 1024 * 1024 + 1;
+    GhosttyClipboardWrite request = GHOSTTY_INIT_SIZED(GhosttyClipboardWrite);
+    request.contents = &content;
+    request.contents_len = fault == 3 ? 129 : 1;
+    GhosttyClipboardWriteResult result = GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS;
+    request.ctx = &result;
+    request.reply = [](const GhosttyClipboardWrite *request, const GhosttyClipboardWriteReply *reply) {
+        *static_cast<GhosttyClipboardWriteResult *>(const_cast<void *>(request->ctx)) = reply->result;
+    };
+    effectClipboardWrite(nullptr, &widget, &request);
+    QCOMPARE(result, GHOSTTY_CLIPBOARD_WRITE_RESULT_INVALID_DATA);
+    QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("unchanged"));
+}
+
+void TestTerminalWidget::testImageOnlyPaste() {
+    CountingTerminalWidget widget;
+    QVERIFY(initializeIdleTerminal(widget));
+    QImage image(8, 8, QImage::Format_ARGB32);
+    image.fill(Qt::red);
+    QGuiApplication::clipboard()->setImage(image);
+    QVERIFY(!widget.canPasteClipboard());
+    feedClipboardOutput(widget, "\033[?5522h");
+    QVERIFY(widget.canPasteClipboard());
+    QSignalSpy spy(widget.findChild<PtySession *>(), &PtySession::dataWritten);
+    widget.pasteFromClipboard();
+    const QByteArray event = collectedPtyOutput(spy);
+    QByteArray listing;
+    for (const auto &packet : event.split('\033')) {
+        if (!packet.contains("status=DATA:mime=Lg=="))
+            continue;
+        const auto start = packet.indexOf(';', packet.indexOf("status=DATA"));
+        listing += QByteArray::fromBase64(packet.mid(start + 1, packet.size() - start - 2));
+    }
+    QVERIFY2(listing.contains("image/png"), event.constData());
+    QVERIFY(!listing.contains("text/plain"));
+}
+
+void TestTerminalWidget::testImageOnlyPrimaryPasteUsesSelectionFormats() {
+    class PrimaryTerminalWidget : public TerminalWidget {
+        QString selectionClipboardText() const override { return {}; }
+        QStringList selectionClipboardFormats() const override { return {QStringLiteral("image/png")}; }
+    };
+    PrimaryTerminalWidget widget;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    widget.setStartOptions(options);
+    QVERIFY(widget.initialize());
+    const QByteArray mode("\033[?5522h");
+    QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, mode));
+    QTest::qWait(20);
+    QGuiApplication::clipboard()->clear();
+    QSignalSpy written(widget.findChild<PtySession *>(), &PtySession::dataWritten);
+    QTest::mouseClick(&widget, Qt::MiddleButton);
+    const QByteArray event = collectedPtyOutput(written);
+    QVERIFY(event.contains("status=OK:loc=primary"));
+    QVERIFY(event.contains("aW1hZ2UvcG5nCg=="));
+}
+
+void TestTerminalWidget::testRichClipboardList() {
+    CountingTerminalWidget widget;
+    QVERIFY(initializeIdleTerminal(widget));
+    QGuiApplication::clipboard()->setText(QStringLiteral("secret"));
+    QSignalSpy spy(widget.findChild<PtySession *>(), &PtySession::dataWritten);
+    feedClipboardOutput(widget, "\033]5522;type=read;Lg==\033\\");
+    QVERIFY(collectedPtyOutput(spy).contains("status=DONE"));
+    QVERIFY(collectedPtyOutput(spy).contains("dGV4dC9wbGFpbg"));
+    QVERIFY(!collectedPtyOutput(spy).contains("c2VjcmV0"));
+}
+
+void TestTerminalWidget::testRichClipboardBinaryRead_data() {
+    QTest::addColumn<int>("size");
+    QTest::newRow("binary") << 32;
+    QTest::newRow("multi-megabyte") << 2 * 1024 * 1024;
+    QTest::newRow("over-budget") << 17 * 1024 * 1024;
+}
+
+void TestTerminalWidget::testRichClipboardBinaryRead() {
+    QFETCH(int, size);
+    CountingTerminalWidget widget;
+    PtySession::StartOptions options;
+    options.command = QStringLiteral("sleep 30");
+    widget.setStartOptions(options);
+    QVERIFY(widget.initialize());
+    QByteArray bytes(size, '\0');
+    for (int i = 0; i < size; ++i)
+        bytes[i] = char(i % 256);
+    auto *mime = new QMimeData;
+    mime->setData(QStringLiteral("application/octet-stream"), bytes);
+    mime->setText(QStringLiteral("DO NOT DISCLOSE"));
+    QGuiApplication::clipboard()->setMimeData(mime);
+    widget.setClipboardPermissionProvider([](auto) {
+        return TerminalWidget::ClipboardPermissionResponse{TerminalWidget::ClipboardDecision::Allow, false};
+    });
+    QSignalSpy spy(widget.findChild<PtySession *>(), &PtySession::dataWritten);
+    feedClipboardOutput(widget, "\033]5522;type=read;YXBwbGljYXRpb24vb2N0ZXQtc3RyZWFt\033\\");
+    const QByteArray response = collectedPtyOutput(spy);
+    if (size > 16 * 1024 * 1024) {
+        QVERIFY(response.contains("status=EBUSY"));
+        QVERIFY(!response.contains("status=DATA"));
+        return;
+    }
+    QVERIFY(response.endsWith("\033]5522;type=read:status=DONE\033\\"));
+    QVERIFY(!response.contains(QByteArray("DO NOT DISCLOSE").toBase64()));
+    QByteArray decoded;
+    for (const auto &packet : response.split('\033')) {
+        if (!packet.contains("status=DATA"))
+            continue;
+        const auto start = packet.indexOf(';', packet.indexOf("status=DATA"));
+        decoded += QByteArray::fromBase64(packet.mid(start + 1, packet.size() - start - 2));
+    }
+    QCOMPARE(decoded, bytes);
+}
+
+void TestTerminalWidget::testRichClipboardRememberIsolation() {
+    CountingTerminalWidget first;
+    CountingTerminalWidget second;
+    QVERIFY(initializeIdleTerminal(first));
+    QVERIFY(initializeIdleTerminal(second));
+    QGuiApplication::clipboard()->setText(QStringLiteral("secret"));
+    int prompts = 0;
+    first.setClipboardPermissionProvider([&](auto request) {
+        ++prompts;
+        return TerminalWidget::ClipboardPermissionResponse{TerminalWidget::ClipboardDecision::Allow,
+                                                           request.canRemember};
+    });
+    const QByteArray request("\033]5522;type=read:pw=c2Vzc2lvbg==:name=VGVzdA==;dGV4dC9wbGFpbg==\033\\");
+    feedClipboardOutput(first, request);
+    feedClipboardOutput(first, request);
+    QCOMPARE(prompts, 1);
+    feedClipboardOutput(first, "\033]5522;type=read:pw=b3RoZXI=:name=VGVzdA==;dGV4dC9wbGFpbg==\033\\");
+    QCOMPARE(prompts, 2);
+    QSignalSpy spy(second.findChild<PtySession *>(), &PtySession::dataWritten);
+    feedClipboardOutput(second, request);
+    QVERIFY(collectedPtyOutput(spy).contains("status=EPERM"));
+}
+
+void TestTerminalWidget::testRichClipboardPrimaryUnsupported() {
+    if (QGuiApplication::clipboard()->supportsSelection())
+        QSKIP("Selection supported by platform");
+    CountingTerminalWidget widget;
+    QVERIFY(initializeIdleTerminal(widget));
+    QGuiApplication::clipboard()->setText(QStringLiteral("standard secret"));
+    QSignalSpy spy(widget.findChild<PtySession *>(), &PtySession::dataWritten);
+    feedClipboardOutput(widget, "\033]5522;type=read:loc=primary;dGV4dC9wbGFpbg==\033\\");
+    QVERIFY(collectedPtyOutput(spy).contains("status=ENOSYS"));
+    QVERIFY(!collectedPtyOutput(spy).contains("status=DATA"));
+}
+
+void TestTerminalWidget::testRichClipboardConsentSnapshot() {
+    CountingTerminalWidget widget;
+    QVERIFY(initializeIdleTerminal(widget));
+    QGuiApplication::clipboard()->setText(QStringLiteral("original"));
+    QSignalSpy spy(widget.findChild<PtySession *>(), &PtySession::dataWritten);
+    bool called = false;
+    bool busy = false;
+    widget.setClipboardPermissionProvider([&](TerminalWidget::ClipboardPermissionRequest request) {
+        called = true;
+        busy = widget.isTerminalBusy();
+        if (request.contents.value(QStringLiteral("text/plain")) != QByteArray("original"))
+            called = false;
+        QGuiApplication::clipboard()->setText(QStringLiteral("changed"));
+        QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection,
+                                  Q_ARG(QByteArray, QByteArray("AFTER")));
+        widget.resize(700, 500);
+        QCoreApplication::processEvents();
+        return TerminalWidget::ClipboardPermissionResponse{TerminalWidget::ClipboardDecision::Allow, false};
+    });
+    const QByteArray batch("BEFORE\033]52;c;?\aOUTER");
+    QVERIFY(QMetaObject::invokeMethod(&widget, "onPtyDataReceived", Qt::DirectConnection, Q_ARG(QByteArray, batch)));
+    QTRY_VERIFY(called);
+    QVERIFY(called);
+    QVERIFY(busy);
+    QVERIFY(collectedPtyOutput(spy).contains("b3JpZ2luYWw="));
+    QVERIFY(!collectedPtyOutput(spy).contains("Y2hhbmdlZA=="));
+    QTRY_VERIFY(widget.visibleText().contains(QStringLiteral("OUTERAFTER")));
+    QVERIFY(widget.visibleText().contains(QStringLiteral("BEFOREOUTERAFTER")));
+}
+
+void TestTerminalWidget::testRichClipboardPasteEvent() {
+    CountingTerminalWidget widget;
+    QVERIFY(initializeIdleTerminal(widget));
+    QSignalSpy spy(widget.findChild<PtySession *>(), &PtySession::dataWritten);
+    QGuiApplication::clipboard()->setText(QStringLiteral("secret"));
+    feedClipboardOutput(widget, "\033[?5522h");
+    widget.pasteFromClipboard();
+    const QByteArray event = collectedPtyOutput(spy);
+    QVERIFY(event.contains("type=read:status=OK:pw="));
+    QVERIFY(!event.contains("secret"));
+    const QByteArray prefix("type=read:status=OK:pw=");
+    const auto start = event.indexOf(prefix) + prefix.size();
+    const QByteArray pw = event.mid(start, event.indexOf("\033\\", start) - start);
+    spy.clear();
+    feedClipboardOutput(widget, QByteArray("\033]5522;type=read:pw=") + pw + ":name=UGFzdGUgZXZlbnQ=;Lg==\033\\");
+    QVERIFY(collectedPtyOutput(spy).contains("status=DONE"));
+    spy.clear();
+    const QByteArray request =
+        QByteArray("\033]5522;type=read:pw=") + pw + ":name=UGFzdGUgZXZlbnQ=;dGV4dC9wbGFpbg==\033\\";
+    feedClipboardOutput(widget, request);
+    QVERIFY(collectedPtyOutput(spy).contains("c2VjcmV0"));
+    spy.clear();
+    feedClipboardOutput(widget, request);
+    QVERIFY(collectedPtyOutput(spy).contains("status=EPERM"));
 }
 
 void TestTerminalWidget::testOsc52WritesClipboard() {
